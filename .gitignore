@@ -32,3 +32,4 @@ playwright.config.ts
 *.njsproj
 *.sln
 *.sw?
+.env
