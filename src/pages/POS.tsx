@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, Plus, Minus, Trash2, ShoppingCart, Banknote, Smartphone, CreditCard, CheckCircle2, ClipboardList, ScanLine, Printer, MessageCircle, BarChart2 } from "lucide-react";
+import { Search, Plus, Minus, Trash2, ShoppingCart, Banknote, Smartphone, CreditCard, CheckCircle2, ClipboardList, ScanLine, Printer, MessageCircle, BarChart2, AlertTriangle } from "lucide-react";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { toast } from "sonner";
@@ -15,7 +15,7 @@ import OrdersPanel from "@/components/OrdersPanel";
 import Paginator, { usePagination } from "@/components/Paginator";
 import { POSSkeleton } from "@/components/Skeletons";
 
-type Product = { id: string; name: string; sku: string | null; selling_price: number; stock_quantity: number; category: string | null };
+type Product = { id: string; name: string; sku: string | null; selling_price: number; stock_quantity: number; reorder_level: number; category: string | null };
 type CartItem = { product: Product; qty: number };
 
 const methods = [
@@ -41,7 +41,7 @@ export default function POS() {
   const [eod, setEod] = useState<EodData | null>(null);
 
   const load = async () => {
-    const { data } = await supabase.from("products").select("id,name,sku,selling_price,stock_quantity,category").gt("stock_quantity", 0).order("name");
+    const { data } = await supabase.from("products").select("id,name,sku,selling_price,stock_quantity,reorder_level,category").gt("stock_quantity", 0).order("name");
     setProducts((data as Product[]) || []);
     setLoading(false);
   };
@@ -257,11 +257,13 @@ export default function POS() {
               ) : (
                 <>
                   <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
-                    {paged.map(p => (
+                    {paged.map(p => {
+                      const low = Number(p.stock_quantity) <= Number(p.reorder_level);
+                      return (
                       <button
                         key={p.id}
                         onClick={() => addToCart(p)}
-                        className="group text-left p-4 rounded-xl bg-card border border-border/60 shadow-card hover:shadow-elevated hover:border-brand/40 hover:-translate-y-0.5 transition-all"
+                        className={`group text-left p-4 rounded-xl bg-card border shadow-card hover:shadow-elevated hover:-translate-y-0.5 transition-all ${low ? "border-warning/40 hover:border-warning" : "border-border/60 hover:border-brand/40"}`}
                       >
                         <div className="size-12 rounded-lg bg-gradient-brand mb-3 grid place-items-center text-brand-foreground font-display font-bold text-lg">
                           {p.name.charAt(0).toUpperCase()}
@@ -269,10 +271,17 @@ export default function POS() {
                         <div className="font-medium text-sm text-brand-dark line-clamp-2 min-h-[2.5em]">{p.name}</div>
                         <div className="flex items-end justify-between mt-2">
                           <div className="font-display font-bold text-brand">{fmt(p.selling_price)}</div>
-                          <Badge variant="outline" className="bg-secondary text-xs">{Number(p.stock_quantity)} left</Badge>
+                          <Badge
+                            variant="outline"
+                            title={low ? "Low stock" : undefined}
+                            className={`text-xs gap-1 ${low ? "bg-warning/10 text-warning border-warning/20" : "bg-secondary"}`}
+                          >
+                            {low && <AlertTriangle className="size-3" />}{Number(p.stock_quantity)} left
+                          </Badge>
                         </div>
                       </button>
-                    ))}
+                      );
+                    })}
                   </div>
                   {pageCount > 1 && (
                     <Paginator page={page} pageCount={pageCount} pageSize={pageSize} total={productCount} onPageChange={setPage} onPageSizeChange={setPageSize} />
