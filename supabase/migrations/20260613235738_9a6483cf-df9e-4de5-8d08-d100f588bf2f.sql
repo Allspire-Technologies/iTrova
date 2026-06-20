@@ -1,0 +1,1 @@
+GRANT EXECUTE ON FUNCTION public.next_doc_number(UUID, TEXT, TEXT, TEXT) TO authenticated;

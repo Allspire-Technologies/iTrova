@@ -1,0 +1,1 @@
+DROP TRIGGER IF EXISTS trg_create_invoice_from_sale ON public.sales;
