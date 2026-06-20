@@ -1,12 +1,13 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { LayoutDashboard, Package, ShoppingCart, Truck, FileText, ClipboardList, Users, BarChart3, Sparkles, Settings, LogOut, Bell, Store, Menu, Boxes, ChevronLeft, ChevronRight } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingCart, Truck, FileText, ClipboardList, Users, BarChart3, Sparkles, Settings, LogOut, Store, Menu, Boxes, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import { useEffect, useState } from "react";
 import { AppShellSkeleton } from "@/components/Skeletons";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import NotificationsBell from "@/components/NotificationsBell";
 
 import type { AppRole } from "@/contexts/AuthContext";
 
@@ -188,7 +189,7 @@ export default function AppShell() {
               <div className="hidden md:block text-sm text-muted-foreground">
                 {new Date().toLocaleDateString("en-NG", { timeZone: business?.timezone ?? "Africa/Lagos", weekday: "long", day: "numeric", month: "long" })}
               </div>
-              <Button variant="ghost" size="icon"><Bell className="size-4" /></Button>
+              <NotificationsBell />
               <div className="flex items-center gap-2">
                 <Avatar className="size-9 bg-brand-light text-brand-dark">
                   <AvatarFallback className="bg-brand-light text-brand-dark font-semibold">{initials}</AvatarFallback>

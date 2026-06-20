@@ -33,3 +33,6 @@ playwright.config.ts
 *.sln
 *.sw?
 .env
+
+# Claude memory
+/memory/
