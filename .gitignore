@@ -36,3 +36,6 @@ playwright.config.ts
 
 # Claude memory
 /memory/
+
+# Supabase
+supabase/.temp

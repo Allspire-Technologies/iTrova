@@ -1,3 +1,4 @@
+CREATE EXTENSION IF NOT EXISTS pgcrypto SCHEMA public;
 
 -- 1. Role enum
 DO $$ BEGIN
@@ -63,7 +64,7 @@ CREATE TABLE IF NOT EXISTS public.invitations (
   business_id UUID NOT NULL REFERENCES public.businesses(id) ON DELETE CASCADE,
   email TEXT NOT NULL,
   role public.app_role NOT NULL DEFAULT 'cashier',
-  token TEXT NOT NULL UNIQUE DEFAULT encode(gen_random_bytes(24), 'hex'),
+  token TEXT NOT NULL UNIQUE DEFAULT encode(extensions.gen_random_bytes(24), 'hex'),
   invited_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   expires_at TIMESTAMPTZ NOT NULL DEFAULT (now() + INTERVAL '14 days'),
   accepted_at TIMESTAMPTZ,
