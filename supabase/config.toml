@@ -1,5 +1,3 @@
-project_id = "epnauvegcinblnwxytuy"
-
 [functions]
   [functions.auth-email-hook]
     verify_jwt = false
