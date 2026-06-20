@@ -552,6 +552,7 @@ export type Database = {
           description: string
           id: string
           line_total: number
+          product_id: string | null
           purchase_order_id: string
           quantity: number
           raw_material_id: string | null
@@ -561,6 +562,7 @@ export type Database = {
           description: string
           id?: string
           line_total?: number
+          product_id?: string | null
           purchase_order_id: string
           quantity?: number
           raw_material_id?: string | null
@@ -570,12 +572,20 @@ export type Database = {
           description?: string
           id?: string
           line_total?: number
+          product_id?: string | null
           purchase_order_id?: string
           quantity?: number
           raw_material_id?: string | null
           unit_cost?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "purchase_order_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "purchase_order_items_purchase_order_id_fkey"
             columns: ["purchase_order_id"]

@@ -26,7 +26,8 @@ type PO = {
 };
 type Supplier = { id: string; name: string; phone: string | null; email: string | null; address: string | null };
 type RawMat = { id: string; name: string; unit: string; cost_per_unit: number };
-type Item = { id?: string; raw_material_id: string | null; description: string; quantity: number; unit_cost: number; line_total: number };
+type Product = { id: string; name: string; unit: string | null; cost_price: number };
+type Item = { id?: string; product_id: string | null; raw_material_id: string | null; description: string; quantity: number; unit_cost: number; line_total: number };
 
 const STATUSES = ["draft", "sent", "received", "cancelled"];
 type SortCol = "po_number" | "created_at" | "supplier" | "expected_date" | "total_amount" | "status";
@@ -39,6 +40,7 @@ export default function PurchaseOrders() {
   const [loading, setLoading] = useState(true);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [materials, setMaterials] = useState<RawMat[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
@@ -49,20 +51,22 @@ export default function PurchaseOrders() {
   const [viewing, setViewing] = useState<PO | null>(null);
   const [viewItems, setViewItems] = useState<Item[]>([]);
   const [form, setForm] = useState({ supplier_id: "", expected_date: "", notes: "" });
-  const [lines, setLines] = useState<Item[]>([{ raw_material_id: null, description: "", quantity: 1, unit_cost: 0, line_total: 0 }]);
+  const [lines, setLines] = useState<Item[]>([{ product_id: null, raw_material_id: null, description: "", quantity: 1, unit_cost: 0, line_total: 0 }]);
   const [pending, setPending] = useState<{ title: string; description: string; onConfirm: () => void } | null>(null);
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = async () => {
-    const [{ data: pos }, { data: sup }, { data: mat }] = await Promise.all([
+    const [{ data: pos }, { data: sup }, { data: mat }, { data: prod }] = await Promise.all([
       supabase.from("purchase_orders").select("*").order("created_at", { ascending: false }),
       supabase.from("suppliers").select("id, name, phone, email, address"),
       supabase.from("raw_materials").select("id, name, unit, cost_per_unit"),
+      supabase.from("products").select("id, name, unit, cost_price").order("name"),
     ]);
     setItems((pos as PO[]) || []);
     setSuppliers((sup as Supplier[]) || []);
     setMaterials((mat as RawMat[]) || []);
+    setProducts((prod as Product[]) || []);
     setLoading(false);
   };
   useEffect(() => { if (business) load(); }, [business]);
@@ -119,12 +123,32 @@ export default function PurchaseOrders() {
       return merged;
     }));
   };
-  const pickMaterial = (idx: number, rawId: string) => {
-    const m = materials.find(x => x.id === rawId);
-    if (!m) return;
-    updateLine(idx, { raw_material_id: rawId, description: `${m.name} (${m.unit})`, unit_cost: Number(m.cost_per_unit) });
+  // A single line can be sourced from an Inventory product, a Raw material, or a custom entry.
+  // Values are encoded as "product:<id>" / "material:<id>" / "_custom".
+  const sourceValue = (l: Item) =>
+    l.product_id ? `product:${l.product_id}` : l.raw_material_id ? `material:${l.raw_material_id}` : "_custom";
+  const sourceOptions = [
+    { value: "_custom", label: "Custom item (enter manually)" },
+    ...products.map(p => ({ value: `product:${p.id}`, label: `Inventory · ${p.name}` })),
+    ...materials.map(m => ({ value: `material:${m.id}`, label: `Raw material · ${m.name}` })),
+  ];
+  const pickSource = (idx: number, value: string) => {
+    if (value === "_custom") {
+      updateLine(idx, { product_id: null, raw_material_id: null });
+      return;
+    }
+    const [kind, id] = value.split(":");
+    if (kind === "product") {
+      const p = products.find(x => x.id === id);
+      if (!p) return;
+      updateLine(idx, { product_id: id, raw_material_id: null, description: p.unit ? `${p.name} (${p.unit})` : p.name, unit_cost: Number(p.cost_price) });
+    } else {
+      const m = materials.find(x => x.id === id);
+      if (!m) return;
+      updateLine(idx, { raw_material_id: id, product_id: null, description: `${m.name} (${m.unit})`, unit_cost: Number(m.cost_per_unit) });
+    }
   };
-  const addLine = () => setLines(prev => [...prev, { raw_material_id: null, description: "", quantity: 1, unit_cost: 0, line_total: 0 }]);
+  const addLine = () => setLines(prev => [...prev, { product_id: null, raw_material_id: null, description: "", quantity: 1, unit_cost: 0, line_total: 0 }]);
   const removeLine = (idx: number) => setLines(prev => prev.length === 1 ? prev : prev.filter((_, i) => i !== idx));
 
   const subtotal = lines.reduce((s, l) => s + (l.line_total || 0), 0);
@@ -150,7 +174,7 @@ export default function PurchaseOrders() {
     }).select().single();
     if (error) { setBusy(false); return toast.error(error.message); }
     const payload = lines.map(l => ({
-      purchase_order_id: po!.id, raw_material_id: l.raw_material_id,
+      purchase_order_id: po!.id, raw_material_id: l.raw_material_id, product_id: l.product_id,
       description: l.description, quantity: l.quantity, unit_cost: l.unit_cost, line_total: l.line_total,
     }));
     const { error: e2 } = await supabase.from("purchase_order_items").insert(payload);
@@ -159,7 +183,7 @@ export default function PurchaseOrders() {
     toast.success(`Purchase order ${po_number} created`);
     setOpen(false);
     setForm({ supplier_id: "", expected_date: "", notes: "" });
-    setLines([{ raw_material_id: null, description: "", quantity: 1, unit_cost: 0, line_total: 0 }]);
+    setLines([{ product_id: null, raw_material_id: null, description: "", quantity: 1, unit_cost: 0, line_total: 0 }]);
     load();
   };
 
@@ -400,22 +424,30 @@ export default function PurchaseOrders() {
             </div>
             <div className="space-y-2">
               <Label>Line items</Label>
+              <p className="text-xs text-muted-foreground -mt-1">
+                Pick an item from Inventory or Raw materials to auto-fill its name and cost, or choose “Custom” to enter a one-off. Stock is updated when you mark the PO as received.
+              </p>
+              <div className="hidden sm:grid grid-cols-12 gap-2 px-1 pt-1 text-xs font-medium text-muted-foreground">
+                <div className="col-span-4">Item (Inventory / Raw material)</div>
+                <div className="col-span-3">Description</div>
+                <div className="col-span-2">Qty</div>
+                <div className="col-span-2">Unit cost</div>
+                <div className="col-span-1 sr-only">Remove</div>
+              </div>
               {lines.map((l, idx) => (
                 <div key={idx} className="grid grid-cols-12 gap-2 items-center">
                   <SearchableSelect
-                    value={l.raw_material_id || "_custom"}
-                    onValueChange={(v) => v === "_custom" ? updateLine(idx, { raw_material_id: null }) : pickMaterial(idx, v)}
+                    value={sourceValue(l)}
+                    onValueChange={(v) => pickSource(idx, v)}
                     className="col-span-4"
-                    placeholder="Material"
-                    options={[
-                      { value: "_custom", label: "— Custom —" },
-                      ...materials.map(m => ({ value: m.id, label: m.name })),
-                    ]}
+                    placeholder="Choose item"
+                    searchPlaceholder="Search inventory & materials…"
+                    options={sourceOptions}
                   />
                   <Input className="col-span-3" placeholder="Description" value={l.description} onChange={e => updateLine(idx, { description: e.target.value })} />
                   <Input className="col-span-2" type="number" min={0} placeholder="Qty" value={l.quantity} onChange={e => updateLine(idx, { quantity: Number(e.target.value) })} />
                   <Input className="col-span-2" type="number" min={0} placeholder="Cost" value={l.unit_cost || ""} onChange={e => updateLine(idx, { unit_cost: Number(e.target.value) })} />
-                  <Button variant="ghost" size="icon" className="col-span-1" onClick={() => removeLine(idx)}><Trash2 className="size-4" /></Button>
+                  <Button variant="ghost" size="icon" className="col-span-1" onClick={() => removeLine(idx)} aria-label="Remove line"><Trash2 className="size-4" /></Button>
                 </div>
               ))}
               <Button variant="outline" size="sm" onClick={addLine}><Plus className="size-4 mr-1" /> Add line</Button>
