@@ -153,22 +153,24 @@ export default function Dashboard() {
 
   const { paged: activityPaged, page, setPage, pageSize, setPageSize, pageCount, total } = usePagination(activity, 10);
 
-  const renderActivityRow = (a: ActivityEntry) => (
-    <div key={a.id} className="flex items-center gap-3 py-2 border-b border-border/50 last:border-0">
-      <div className={`size-8 rounded-lg grid place-items-center shrink-0 ${
-        a.sign === "pos" ? "bg-brand-light text-brand" : a.sign === "neg" ? "bg-danger/10 text-danger" : "bg-muted text-muted-foreground"
-      }`}>
-        {a.sign === "pos" ? <ArrowUpRight className="size-4" /> : a.sign === "neg" ? <ArrowDownRight className="size-4" /> : <FileText className="size-4" />}
+  const renderActivityRow = (a: ActivityEntry) => {
+    const when = fmtDateTime(a.ts, { dateStyle: "short", timeStyle: "short" });
+    return (
+      <div key={a.id} className="flex items-start gap-3 py-2 border-b border-border/50 last:border-0">
+        <div className={`size-8 rounded-lg grid place-items-center shrink-0 ${
+          a.sign === "pos" ? "bg-brand-light text-brand" : a.sign === "neg" ? "bg-danger/10 text-danger" : "bg-muted text-muted-foreground"
+        }`}>
+          {a.sign === "pos" ? <ArrowUpRight className="size-4" /> : a.sign === "neg" ? <ArrowDownRight className="size-4" /> : <FileText className="size-4" />}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium text-brand-dark truncate">{a.label}</div>
+          <div className="text-xs text-muted-foreground truncate">{[a.sub, a.by && `by ${a.by}`].filter(Boolean).join(" · ")}</div>
+          <div className="text-[11px] text-muted-foreground mt-0.5 sm:hidden">{when}</div>
+        </div>
+        <div className="text-xs text-muted-foreground whitespace-nowrap shrink-0 hidden sm:block">{when}</div>
       </div>
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-brand-dark truncate">{a.label}</div>
-        <div className="text-xs text-muted-foreground truncate">{[a.sub, a.by && `by ${a.by}`].filter(Boolean).join(" · ")}</div>
-      </div>
-      <div className="text-xs text-muted-foreground whitespace-nowrap">
-        {fmtDateTime(a.ts, { dateStyle: "short", timeStyle: "short" })}
-      </div>
-    </div>
-  );
+    );
+  };
 
   if (loading) return <DashboardSkeleton />;
 
