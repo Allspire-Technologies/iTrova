@@ -38,7 +38,7 @@ export default function Inventory() {
   const [searchParams] = useSearchParams();
   const [items, setItems] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(() => searchParams.get("q") || "");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState(() => searchParams.get("status") || "all");
   const [open, setOpen] = useState(false);
@@ -156,6 +156,15 @@ export default function Inventory() {
     return true;
   });
   const { paged, page, setPage, pageSize, setPageSize, pageCount, total } = usePagination(filtered, 20);
+
+  // Sync filters from the URL on same-route navigation (deep-links while already mounted).
+  useEffect(() => {
+    const qp = searchParams.get("q");
+    const sp = searchParams.get("status");
+    if (qp !== null) setQ(qp);
+    if (sp !== null) setStatusFilter(sp);
+    if (qp !== null || sp !== null) setPage(1);
+  }, [searchParams, setPage]);
 
   const statusOf = (p: Product) => {
     const stock = Number(p.stock_quantity);

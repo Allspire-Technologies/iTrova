@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { AppShellSkeleton } from "@/components/Skeletons";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import NotificationsBell from "@/components/NotificationsBell";
+import HeaderClock from "@/components/HeaderClock";
 
 import type { AppRole } from "@/contexts/AuthContext";
 
@@ -189,6 +190,7 @@ export default function AppShell() {
               <div className="hidden md:block text-sm text-muted-foreground">
                 {new Date().toLocaleDateString("en-NG", { timeZone: business?.timezone ?? "Africa/Lagos", weekday: "long", day: "numeric", month: "long" })}
               </div>
+              <HeaderClock />
               <NotificationsBell />
               <div className="flex items-center gap-2">
                 <Avatar className="size-9 bg-brand-light text-brand-dark">

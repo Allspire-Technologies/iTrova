@@ -69,7 +69,7 @@ export default function Team() {
     const [{ data: roles }, { data: invs }, { data: salesData }, { data: emailData }] = await Promise.all([
       supabase.from("user_roles").select("user_id, role").eq("business_id", business.id),
       supabase.from("invitations").select("*").eq("business_id", business.id).order("created_at", { ascending: false }),
-      supabase.from("sales").select("staff_id, total_amount").eq("business_id", business.id),
+      supabase.from("sales").select("staff_id, total_amount").eq("business_id", business.id).eq("voided", false),
       supabase.rpc("get_member_emails", { p_business_id: business.id }),
     ]);
     const userIds = Array.from(new Set((roles || []).map(r => r.user_id)));

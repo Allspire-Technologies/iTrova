@@ -123,8 +123,7 @@ export default function PurchaseOrders() {
       return merged;
     }));
   };
-  // A single line can be sourced from an Inventory product, a Raw material, or a custom entry.
-  // Values are encoded as "product:<id>" / "material:<id>" / "_custom".
+  // Source value is encoded "product:<id>" / "material:<id>" / "_custom".
   const sourceValue = (l: Item) =>
     l.product_id ? `product:${l.product_id}` : l.raw_material_id ? `material:${l.raw_material_id}` : "_custom";
   const sourceOptions = [

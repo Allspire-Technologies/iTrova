@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -18,23 +19,27 @@ import Paginator, { usePagination } from "@/components/Paginator";
 import { TablePageSkeleton } from "@/components/Skeletons";
 import { getLimit, isAtLimit, limitMessage } from "@/lib/planLimits";
 import { useCurrency } from "@/hooks/useCurrency";
+import { useDateFormat } from "@/hooks/useDateFormat";
 
 type Invoice = {
   id: string; invoice_number: string; customer_name: string; customer_phone: string | null;
   customer_email: string | null; status: string; subtotal: number; tax: number; total: number;
   discount_amount: number;
   issue_date: string; due_date: string | null; notes: string | null; sale_id: string | null;
+  created_by: string | null;
 };
 type Item = { id?: string; description: string; quantity: number; unit_price: number; line_total: number };
 
 const STATUSES = ["draft", "issued", "paid", "void"];
 
 export default function Invoices() {
-  const { business } = useAuth();
+  const { business, user } = useAuth();
   const { fmt } = useCurrency();
+  const { timezone } = useDateFormat();
+  const [searchParams] = useSearchParams();
   const [items, setItems] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(() => searchParams.get("q") || "");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [open, setOpen] = useState(false);
   const [viewing, setViewing] = useState<Invoice | null>(null);
@@ -43,17 +48,27 @@ export default function Invoices() {
   const [lines, setLines] = useState<Item[]>([{ description: "", quantity: 1, unit_price: 0, line_total: 0 }]);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<Invoice | null>(null);
-  const [pending, setPending] = useState<{ title: string; description: string; onConfirm: () => void } | null>(null);
+  const [pending, setPending] = useState<{ title: string; description: string; confirmLabel?: string; onConfirm: () => void } | null>(null);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   type SortCol = "number" | "customer" | "date" | "total" | "status";
   const [sortCol, setSortCol] = useState<SortCol>("date");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [creators, setCreators] = useState<Record<string, string>>({});
+  const [creatorFilter, setCreatorFilter] = useState("all");
 
   const load = async () => {
-    const { data, error } = await supabase.from("invoices").select("*").order("created_at", { ascending: false });
+    const [{ data, error }, { data: profs }] = await Promise.all([
+      supabase.from("invoices").select("*").order("created_at", { ascending: false }),
+      supabase.from("profiles").select("id, owner_name"),
+    ]);
     if (error) return toast.error(error.message);
     setItems((data as Invoice[]) || []);
+    const map: Record<string, string> = {};
+    for (const p of (profs as { id: string; owner_name: string | null }[] | null) ?? []) {
+      if (p.owner_name) map[p.id] = p.owner_name;
+    }
+    setCreators(map);
     setLoading(false);
   };
   useEffect(() => { if (business) load(); }, [business]);
@@ -82,6 +97,7 @@ export default function Invoices() {
   const filtered = items
     .filter(i =>
       (statusFilter === "all" || i.status === statusFilter) &&
+      (creatorFilter === "all" || (creatorFilter === "none" ? !i.created_by : i.created_by === creatorFilter)) &&
       (!dateFrom || i.issue_date >= dateFrom) &&
       (!dateTo || i.issue_date <= dateTo) &&
       (q === "" || i.invoice_number.toLowerCase().includes(q.toLowerCase()) || i.customer_name.toLowerCase().includes(q.toLowerCase()))
@@ -97,6 +113,12 @@ export default function Invoices() {
     });
 
   const { paged, page, setPage, pageSize, setPageSize, pageCount, total } = usePagination(filtered, 20);
+
+  // Sync search from the URL on same-route navigation (deep-links while already mounted).
+  useEffect(() => {
+    const qp = searchParams.get("q");
+    if (qp !== null) { setQ(qp); setPage(1); }
+  }, [searchParams, setPage]);
 
   const tier = business?.subscription_tier;
   const invoiceLimit = getLimit(tier, "invoices");
@@ -150,6 +172,8 @@ export default function Invoices() {
       const { error: e2 } = await supabase.from("invoice_items").insert(itemPayload(editing.id));
       setBusy(false);
       if (e2) return toast.error(e2.message);
+      const { error: logErr } = await supabase.rpc("log_invoice_edit" as any, { _invoice_id: editing.id, _summary: `Invoice ${editing.invoice_number} edited` });
+      if (logErr) console.error("log_invoice_edit failed:", logErr);
       toast.success(`Invoice ${editing.invoice_number} updated`);
     } else {
       const { data: numData } = await supabase.rpc("next_doc_number" as any, {
@@ -164,6 +188,7 @@ export default function Invoices() {
         due_date: form.due_date || null,
         notes: form.notes || null,
         subtotal, total: subtotal, status: "issued",
+        created_by: user?.id ?? null,
       }).select().single();
       if (error) { setBusy(false); return toast.error(error.message); }
       const { error: e2 } = await supabase.from("invoice_items").insert(itemPayload(inv!.id));
@@ -192,10 +217,32 @@ export default function Invoices() {
   };
 
   const changeStatus = async (i: Invoice, status: string) => {
+    if (status === i.status) return;
     const { error } = await supabase.from("invoices").update({ status }).eq("id", i.id);
     if (error) return toast.error(error.message);
     setItems(prev => prev.map(x => x.id === i.id ? { ...x, status } : x));
+    const { error: logErr } = await supabase.rpc("log_invoice_edit" as any, { _invoice_id: i.id, _summary: `Invoice ${i.invoice_number} marked ${status}` });
+    if (logErr) console.error("log_invoice_edit failed:", logErr);
   };
+
+  // Voiding is final and reverses the sale, so confirm it first.
+  const requestStatusChange = (i: Invoice, status: string) => {
+    if (status === i.status) return;
+    if (status === "void") {
+      setPending({
+        title: `Void ${i.invoice_number}?`,
+        description: i.sale_id
+          ? "Voiding is final. The sale will be reversed — its revenue removed and the sold stock returned to inventory. The invoice can no longer be edited."
+          : "Voiding is final. The invoice will be marked void and can no longer be edited.",
+        confirmLabel: "Void invoice",
+        onConfirm: () => changeStatus(i, "void"),
+      });
+      return;
+    }
+    changeStatus(i, status);
+  };
+
+  const statusOptionsFor = (i: Invoice) => (i.sale_id ? ["paid", "void"] : STATUSES);
 
   const openView = async (i: Invoice) => {
     setViewing(i);
@@ -242,11 +289,12 @@ export default function Invoices() {
     }, `${i.invoice_number}.pdf`);
   };
 
+  const todayInTz = new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(new Date());
   const isOverdue = (inv: Invoice) =>
-    inv.status === "issued" && !!inv.due_date && new Date(inv.due_date) < new Date();
+    inv.status === "issued" && !!inv.due_date && inv.due_date < todayInTz;
 
   const overdueDays = (inv: Invoice) =>
-    Math.floor((Date.now() - new Date(inv.due_date!).getTime()) / 86_400_000);
+    Math.max(1, Math.round((Date.parse(todayInTz) - Date.parse(inv.due_date!)) / 86_400_000));
 
   const shareWa = (inv: Invoice) => {
     const text = [
@@ -293,6 +341,15 @@ export default function Invoices() {
       ? sortDir === "asc" ? <ArrowUp className="size-3 ml-1" /> : <ArrowDown className="size-3 ml-1" />
       : <ArrowUpDown className="size-3 ml-1 opacity-30" />;
 
+  const creatorName = (id: string | null) => (id ? (creators[id] || "Unknown") : "—");
+  const creatorOptions = [
+    { value: "all", label: "All creators" },
+    ...Array.from(new Set(items.map(i => i.created_by).filter(Boolean) as string[]))
+      .map(id => ({ value: id, label: creators[id] || "Unknown" }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
+    ...(items.some(i => !i.created_by) ? [{ value: "none", label: "No creator" }] : []),
+  ];
+
   if (loading) return <TablePageSkeleton />;
 
   return (
@@ -329,6 +386,12 @@ export default function Invoices() {
             ...STATUSES.map(s => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) })),
           ]}
         />
+        <SearchableSelect
+          value={creatorFilter}
+          onValueChange={(v) => { setCreatorFilter(v); setPage(1); }}
+          className="w-44"
+          options={creatorOptions}
+        />
         <div className="flex items-center gap-2">
           <Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }} className="w-36" title="From date" />
           <span className="text-muted-foreground text-sm shrink-0">to</span>
@@ -353,6 +416,7 @@ export default function Invoices() {
                   <th className="px-4 py-3">
                     <button onClick={() => toggleSort("customer")} className="flex items-center hover:text-foreground transition-colors">Customer <SortIcon col="customer" /></button>
                   </th>
+                  <th className="px-4 py-3 normal-case">Created by</th>
                   <th className="px-4 py-3">
                     <button onClick={() => toggleSort("date")} className="flex items-center hover:text-foreground transition-colors">Date <SortIcon col="date" /></button>
                   </th>
@@ -370,8 +434,14 @@ export default function Invoices() {
               <tbody>
                 {paged.map(i => (
                   <tr key={i.id} className="border-t hover:bg-muted/30">
-                    <td className="px-4 py-3 font-mono">{i.invoice_number}</td>
+                    <td className="px-4 py-3 font-mono">
+                      <div className="flex items-center gap-2">
+                        {i.invoice_number}
+                        {i.sale_id && <Badge variant="secondary" className="text-[10px] uppercase tracking-wider px-1.5 py-0">POS</Badge>}
+                      </div>
+                    </td>
                     <td className="px-4 py-3">{i.customer_name}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{creatorName(i.created_by)}</td>
                     <td className="px-4 py-3">{i.issue_date}</td>
                     <td className="px-4 py-3 text-right text-muted-foreground">{fmt(i.subtotal)}</td>
                     <td className="px-4 py-3 text-right">
@@ -384,9 +454,10 @@ export default function Invoices() {
                       <div className="flex items-center gap-2">
                         <SearchableSelect
                           value={i.status}
-                          onValueChange={(v) => changeStatus(i, v)}
+                          onValueChange={(v) => requestStatusChange(i, v)}
+                          disabled={i.status === "void"}
                           className="w-28 h-8"
-                          options={STATUSES.map(s => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) }))}
+                          options={statusOptionsFor(i).map(s => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) }))}
                         />
                         {isOverdue(i) && <Badge variant="destructive" className="text-xs shrink-0">Overdue</Badge>}
                       </div>
@@ -394,7 +465,7 @@ export default function Invoices() {
                     <td className="px-4 py-3 text-right">
                       <div className="flex gap-1 justify-end">
                         <Button variant="ghost" size="icon" onClick={() => openView(i)}><Eye className="size-4" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => openEdit(i)}><Pencil className="size-4" /></Button>
+                        <Button variant="ghost" size="icon" disabled={i.status === "void"} title={i.status === "void" ? "Voided invoices can't be edited" : undefined} onClick={() => openEdit(i)}><Pencil className="size-4" /></Button>
                         <Button variant="ghost" size="icon" onClick={() => exportPdf(i)}><Download className="size-4" /></Button>
                         <Button variant="ghost" size="icon" onClick={() => remove(i)}><Trash2 className="size-4 text-destructive" /></Button>
                       </div>
@@ -421,15 +492,25 @@ export default function Invoices() {
             </div>
             <div className="space-y-2">
               <Label>Line items</Label>
-              {lines.map((l, idx) => (
-                <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-                  <Input className="col-span-6" placeholder="Description" value={l.description} onChange={e => updateLine(idx, { description: e.target.value })} />
-                  <Input className="col-span-2" type="number" min={0} placeholder="Qty" value={l.quantity} onChange={e => updateLine(idx, { quantity: Number(e.target.value) })} />
-                  <Input className="col-span-3" type="number" min={0} placeholder="Unit price" value={l.unit_price || ""} onChange={e => updateLine(idx, { unit_price: Number(e.target.value) })} />
-                  <Button variant="ghost" size="icon" className="col-span-1" onClick={() => removeLine(idx)}><Trash2 className="size-4" /></Button>
-                </div>
-              ))}
-              <Button variant="outline" size="sm" onClick={addLine}><Plus className="size-4 mr-1" /> Add line</Button>
+              {editing?.sale_id && (
+                <p className="text-xs text-muted-foreground -mt-1">
+                  This invoice came from a POS sale — description and unit price are locked to the price at sale time. Only quantity can be adjusted.
+                </p>
+              )}
+              {lines.map((l, idx) => {
+                const posLocked = !!editing?.sale_id;
+                return (
+                  <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+                    <Input className="col-span-6" placeholder="Description" value={l.description} disabled={posLocked} onChange={e => updateLine(idx, { description: e.target.value })} />
+                    <Input className="col-span-2" type="number" min={0} placeholder="Qty" value={l.quantity} onChange={e => updateLine(idx, { quantity: Number(e.target.value) })} />
+                    <Input className="col-span-3" type="number" min={0} placeholder="Unit price" value={l.unit_price || ""} disabled={posLocked} onChange={e => updateLine(idx, { unit_price: Number(e.target.value) })} />
+                    <Button variant="ghost" size="icon" className="col-span-1" disabled={posLocked} onClick={() => removeLine(idx)}><Trash2 className="size-4" /></Button>
+                  </div>
+                );
+              })}
+              {!editing?.sale_id && (
+                <Button variant="outline" size="sm" onClick={addLine}><Plus className="size-4 mr-1" /> Add line</Button>
+              )}
             </div>
             <div><Label>Notes</Label><Textarea rows={2} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></div>
             <div className="text-right text-lg font-semibold">Total: {fmt(subtotal)}</div>
@@ -457,6 +538,7 @@ export default function Invoices() {
               </DialogHeader>
               <div className="space-y-3 text-sm">
                 <div><span className="text-muted-foreground">Customer:</span> {viewing.customer_name}</div>
+                <div><span className="text-muted-foreground">Created by:</span> {viewing.created_by ? (creators[viewing.created_by] || "Unknown") : "—"}{viewing.sale_id ? " (POS)" : ""}</div>
                 <div><span className="text-muted-foreground">Date:</span> {viewing.issue_date}</div>
                 {viewing.due_date && <div><span className="text-muted-foreground">Due:</span> {viewing.due_date}</div>}
                 <div className="border rounded-lg overflow-hidden">
@@ -509,6 +591,7 @@ export default function Invoices() {
         onOpenChange={(open) => !open && setPending(null)}
         title={pending?.title ?? ""}
         description={pending?.description}
+        confirmLabel={pending?.confirmLabel}
         onConfirm={pending?.onConfirm ?? (() => {})}
       />
     </div>

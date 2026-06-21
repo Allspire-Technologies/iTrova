@@ -52,12 +52,12 @@ export default function Reports() {
       const prevFromIso = new Date(new Date(prevToIso).getTime() - periodMs).toISOString();
 
       const [s, p, pr, mp, sup, prevS, prof] = await Promise.all([
-        supabase.from("sales").select("id,total_amount,created_at,staff_id").eq("business_id", business.id).gte("created_at", fromIso).lte("created_at", toIso),
+        supabase.from("sales").select("id,total_amount,created_at,staff_id").eq("business_id", business.id).eq("voided", false).gte("created_at", fromIso).lte("created_at", toIso),
         supabase.from("products").select("id,name,stock_quantity,reorder_level,cost_price,selling_price").eq("business_id", business.id),
         supabase.from("sale_items").select("sale_id,product_id,quantity,unit_price"),
         supabase.from("material_purchases").select("supplier_id,total_cost,created_at").eq("business_id", business.id).gte("created_at", fromIso).lte("created_at", toIso),
         supabase.from("suppliers").select("id,name").eq("business_id", business.id),
-        supabase.from("sales").select("id,total_amount").eq("business_id", business.id).gte("created_at", prevFromIso).lte("created_at", prevToIso),
+        supabase.from("sales").select("id,total_amount").eq("business_id", business.id).eq("voided", false).gte("created_at", prevFromIso).lte("created_at", prevToIso),
         supabase.from("profiles").select("id,owner_name").eq("business_id", business.id),
       ]);
 

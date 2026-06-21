@@ -86,7 +86,7 @@ export default function Auth() {
             Run your business<br/>like a pro.
           </h1>
           <p className="text-brand-foreground/80 text-lg max-w-md">
-            Inventory, sales, suppliers and staff — one platform built for business owners across Nigeria and Africa.
+            Inventory, sales, suppliers and staff — one platform built for business owners across Africa.
           </p>
           <div className="flex items-center gap-2 text-sm text-brand-foreground/70">
             <Sparkles className="size-4" />
