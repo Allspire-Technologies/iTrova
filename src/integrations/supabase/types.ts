@@ -14,6 +14,90 @@ export type Database = {
   }
   public: {
     Tables: {
+      activity_log: {
+        Row: {
+          actor_id: string | null
+          actor_name: string | null
+          business_id: string
+          created_at: string
+          entity_id: string | null
+          entity_type: string | null
+          id: string
+          link: string | null
+          summary: string
+          type: string
+        }
+        Insert: {
+          actor_id?: string | null
+          actor_name?: string | null
+          business_id: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          link?: string | null
+          summary: string
+          type: string
+        }
+        Update: {
+          actor_id?: string | null
+          actor_name?: string | null
+          business_id?: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          link?: string | null
+          summary?: string
+          type?: string
+        }
+        Relationships: []
+      }
+      notifications: {
+        Row: {
+          actor_id: string | null
+          body: string | null
+          business_id: string
+          created_at: string
+          entity_id: string | null
+          entity_type: string | null
+          id: string
+          link: string | null
+          read_at: string | null
+          recipient_id: string
+          title: string
+          type: string
+        }
+        Insert: {
+          actor_id?: string | null
+          body?: string | null
+          business_id: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          link?: string | null
+          read_at?: string | null
+          recipient_id: string
+          title: string
+          type: string
+        }
+        Update: {
+          actor_id?: string | null
+          body?: string | null
+          business_id?: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          link?: string | null
+          read_at?: string | null
+          recipient_id?: string
+          title?: string
+          type?: string
+        }
+        Relationships: []
+      }
       businesses: {
         Row: {
           created_at: string
@@ -223,6 +307,7 @@ export type Database = {
         Row: {
           business_id: string
           created_at: string
+          created_by: string | null
           customer_email: string | null
           customer_name: string
           customer_phone: string | null
@@ -242,6 +327,7 @@ export type Database = {
         Insert: {
           business_id: string
           created_at?: string
+          created_by?: string | null
           customer_email?: string | null
           customer_name?: string
           customer_phone?: string | null
@@ -261,6 +347,7 @@ export type Database = {
         Update: {
           business_id?: string
           created_at?: string
+          created_by?: string | null
           customer_email?: string | null
           customer_name?: string
           customer_phone?: string | null
@@ -760,6 +847,7 @@ export type Database = {
           payment_method: string
           staff_id: string | null
           total_amount: number
+          voided: boolean
         }
         Insert: {
           business_id: string
@@ -769,6 +857,7 @@ export type Database = {
           payment_method?: string
           staff_id?: string | null
           total_amount?: number
+          voided?: boolean
         }
         Update: {
           business_id?: string
@@ -778,6 +867,7 @@ export type Database = {
           payment_method?: string
           staff_id?: string | null
           total_amount?: number
+          voided?: boolean
         }
         Relationships: [
           {

@@ -133,6 +133,7 @@ export default function POS() {
       discount_amount: discount,
       total,
       sale_id: sale.id,
+      created_by: user?.id ?? null,
       issue_date: new Date().toISOString().slice(0, 10),
     } as any).select().single();
     if (e3) {
@@ -182,6 +183,7 @@ export default function POS() {
       .from("sales")
       .select("id,total_amount,payment_method,sale_items(product_id,quantity,products(name))")
       .eq("business_id", business.id)
+      .eq("voided", false)
       .gte("created_at", todayStart.toISOString());
 
     if (!todaySales) return;

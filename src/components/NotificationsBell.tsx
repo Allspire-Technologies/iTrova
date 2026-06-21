@@ -1,122 +1,86 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, PackageX, AlertTriangle, CalendarClock, CheckCircle2 } from "lucide-react";
+import { Bell, PackageX, AlertTriangle, CalendarClock, FileText, CheckCircle2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { useCurrency } from "@/hooks/useCurrency";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
-type NotifKind = "outofstock" | "lowstock" | "overdue";
-type Notif = { key: string; kind: NotifKind; title: string; detail: string; to: string };
+type NotifType = "low_stock" | "out_of_stock" | "overdue" | "invoice_edited";
+type Notif = {
+  id: string;
+  type: NotifType;
+  title: string;
+  body: string | null;
+  entity_type: string | null;
+  link: string | null;
+  read_at: string | null;
+  created_at: string;
+};
 
-const KIND_RANK: Record<NotifKind, number> = { outofstock: 0, overdue: 1, lowstock: 2 };
-
-const KIND_STYLE: Record<NotifKind, { icon: typeof Bell; wrap: string }> = {
-  outofstock: { icon: PackageX,       wrap: "bg-danger/10 text-danger" },
-  overdue:    { icon: CalendarClock,  wrap: "bg-danger/10 text-danger" },
-  lowstock:   { icon: AlertTriangle,  wrap: "bg-warning/10 text-warning" },
+const STYLE: Record<NotifType, { icon: typeof Bell; wrap: string }> = {
+  out_of_stock:   { icon: PackageX,      wrap: "bg-danger/10 text-danger" },
+  overdue:        { icon: CalendarClock, wrap: "bg-danger/10 text-danger" },
+  low_stock:      { icon: AlertTriangle, wrap: "bg-warning/10 text-warning" },
+  invoice_edited: { icon: FileText,      wrap: "bg-brand-light text-brand" },
 };
 
 export default function NotificationsBell() {
-  const { business, role, user } = useAuth();
-  const { fmt } = useCurrency();
+  const { business, user, role } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [notifs, setNotifs] = useState<Notif[]>([]);
-  const [seen, setSeen] = useState<Set<string>>(new Set());
 
-  // Low stock & overdue invoices are owner/manager concerns — those pages are role-gated.
-  const enabled = !!business && (role === "owner" || role === "manager");
-  const storageKey = business ? `itrova:notif-read:${business.id}` : "itrova:notif-read";
+  const enabled = !!business && !!user;
+  const canManage = role === "owner" || role === "manager";
 
-  const persistSeen = useCallback((s: Set<string>) => {
-    try { localStorage.setItem(storageKey, JSON.stringify([...s])); } catch { /* ignore */ }
-  }, [storageKey]);
-
-  const compute = useCallback(async (): Promise<Notif[]> => {
-    if (!enabled || !user) return [];
-
-    // Respect the user's Settings → Notification Preferences (both default on when unset).
-    const { data: prof } = await supabase.from("profiles").select("notification_prefs").eq("id", user.id).maybeSingle();
-    const prefs = (prof?.notification_prefs ?? {}) as Partial<{ low_stock_alerts: boolean; overdue_invoice_alerts: boolean }>;
-    const wantLowStock = prefs.low_stock_alerts !== false;
-    const wantOverdue = prefs.overdue_invoice_alerts !== false;
-
-    type ProdRow = { id: string; name: string; unit: string | null; stock_quantity: number; reorder_level: number };
-    type InvRow = { id: string; invoice_number: string; customer_name: string; total: number; due_date: string };
-
-    const list: Notif[] = [];
-
-    if (wantLowStock) {
-      const { data: prods } = await supabase.from("products").select("id,name,unit,stock_quantity,reorder_level");
-      for (const p of (prods as ProdRow[] | null) || []) {
-        const stock = Number(p.stock_quantity);
-        const reorder = Number(p.reorder_level);
-        if (stock <= 0) {
-          list.push({ key: `oos:${p.id}`, kind: "outofstock", title: p.name, detail: "Out of stock — restock needed", to: "/inventory" });
-        } else if (stock <= reorder) {
-          list.push({ key: `low:${p.id}`, kind: "lowstock", title: p.name, detail: `Low stock — ${stock}${p.unit ? ` ${p.unit}` : ""} left (reorder at ${reorder})`, to: "/inventory" });
-        }
-      }
-    }
-
-    if (wantOverdue) {
-      const today = new Date().toISOString().slice(0, 10);
-      const { data: invs } = await supabase.from("invoices")
-        .select("id,invoice_number,customer_name,total,due_date,status")
-        .eq("status", "issued").not("due_date", "is", null).lt("due_date", today);
-      for (const inv of (invs as InvRow[] | null) || []) {
-        const days = Math.max(1, Math.floor((Date.now() - new Date(inv.due_date).getTime()) / 86_400_000));
-        list.push({
-          key: `ovd:${inv.id}`,
-          kind: "overdue",
-          title: `${inv.invoice_number} · ${inv.customer_name}`,
-          detail: `${fmt(Number(inv.total))} · ${days} day${days === 1 ? "" : "s"} overdue`,
-          to: "/invoices",
-        });
-      }
-    }
-
-    list.sort((a, b) => KIND_RANK[a.kind] - KIND_RANK[b.kind] || a.title.localeCompare(b.title));
-    return list;
-  }, [enabled, user, fmt]);
-
-  // markRead=true acknowledges all current alerts (clears the badge); otherwise just
-  // prunes the seen set down to alerts that still exist so resolved-then-recurring
-  // issues notify again.
-  const load = useCallback(async (markRead = false) => {
-    const list = await compute();
-    setNotifs(list);
-    const currentKeys = new Set(list.map(n => n.key));
-    setSeen(prev => {
-      const next = markRead ? currentKeys : new Set([...prev].filter(k => currentKeys.has(k)));
-      persistSeen(next);
-      return next;
-    });
-  }, [compute, persistSeen]);
+  const load = useCallback(async (doSync: boolean) => {
+    if (!enabled) { setNotifs([]); return; }
+    if (doSync && canManage) await supabase.rpc("sync_notifications" as any);
+    const { data } = await supabase
+      .from("notifications")
+      .select("id,type,title,body,entity_type,link,read_at,created_at")
+      .order("created_at", { ascending: false });
+    setNotifs((data as Notif[] | null) ?? []);
+  }, [enabled, canManage]);
 
   useEffect(() => {
     if (!enabled) { setNotifs([]); return; }
-    try {
-      const raw = localStorage.getItem(storageKey);
-      setSeen(new Set(raw ? JSON.parse(raw) : []));
-    } catch { setSeen(new Set()); }
-    load(false);
+    load(true);
     const onFocus = () => load(false);
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, storageKey]);
+  }, [enabled, load]);
 
-  const unread = notifs.filter(n => !seen.has(n.key)).length;
+  const unread = notifs.filter(n => !n.read_at).length;
 
   const onOpenChange = (o: boolean) => {
     setOpen(o);
-    if (o) load(true); // opening the panel acknowledges the current alerts
+    if (o) load(true);
   };
 
-  const go = (to: string) => { setOpen(false); navigate(to); };
+  const markAllRead = async () => {
+    if (!notifs.some(n => !n.read_at)) return;
+    const now = new Date().toISOString();
+    setNotifs(prev => prev.map(n => n.read_at ? n : { ...n, read_at: now }));
+    await supabase.from("notifications").update({ read_at: now }).is("read_at", null);
+  };
+
+  const onClickNotif = async (n: Notif) => {
+    setOpen(false);
+    if (n.type === "invoice_edited") {
+      setNotifs(prev => prev.filter(x => x.id !== n.id));
+      await supabase.from("notifications").delete().eq("id", n.id);
+    } else if (!n.read_at) {
+      const now = new Date().toISOString();
+      setNotifs(prev => prev.map(x => x.id === n.id ? { ...x, read_at: now } : x));
+      await supabase.from("notifications").update({ read_at: now }).eq("id", n.id);
+    }
+    const to = n.entity_type === "product"
+      ? `/inventory?q=${encodeURIComponent(n.title)}`
+      : (n.link || "/");
+    navigate(to);
+  };
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
@@ -133,7 +97,9 @@ export default function NotificationsBell() {
       <PopoverContent align="end" className="w-80 p-0">
         <div className="flex items-center justify-between px-4 py-3 border-b">
           <div className="font-display font-semibold text-sm">Notifications</div>
-          {notifs.length > 0 && <span className="text-xs text-muted-foreground">{notifs.length} alert{notifs.length === 1 ? "" : "s"}</span>}
+          {unread > 0
+            ? <button onClick={markAllRead} className="text-xs font-medium text-brand hover:underline">Mark all as read</button>
+            : notifs.length > 0 && <span className="text-xs text-muted-foreground">{notifs.length} alert{notifs.length === 1 ? "" : "s"}</span>}
         </div>
 
         {notifs.length === 0 ? (
@@ -144,12 +110,11 @@ export default function NotificationsBell() {
         ) : (
           <div className="max-h-[60vh] overflow-y-auto py-1">
             {notifs.map(n => {
-              const { icon: Icon, wrap } = KIND_STYLE[n.kind];
-              const isUnread = !seen.has(n.key);
+              const { icon: Icon, wrap } = STYLE[n.type] ?? STYLE.invoice_edited;
               return (
                 <button
-                  key={n.key}
-                  onClick={() => go(n.to)}
+                  key={n.id}
+                  onClick={() => onClickNotif(n)}
                   className="w-full text-left flex items-start gap-3 px-4 py-3 hover:bg-muted/50 transition-colors"
                 >
                   <div className={`size-8 rounded-lg grid place-items-center shrink-0 ${wrap}`}>
@@ -157,9 +122,9 @@ export default function NotificationsBell() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium text-foreground truncate">{n.title}</div>
-                    <div className="text-xs text-muted-foreground">{n.detail}</div>
+                    {n.body && <div className="text-xs text-muted-foreground">{n.body}</div>}
                   </div>
-                  {isUnread && <span className="mt-1.5 size-2 rounded-full bg-brand shrink-0" aria-label="Unread" />}
+                  {!n.read_at && <span className="mt-1.5 size-2 rounded-full bg-brand shrink-0" aria-label="Unread" />}
                 </button>
               );
             })}

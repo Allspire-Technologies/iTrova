@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,12 +9,14 @@ import { DashboardSkeleton } from "@/components/Skeletons";
 import { ResponsiveContainer, AreaChart, Area, XAxis, Tooltip, BarChart, Bar, Cell, YAxis } from "recharts";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import Paginator, { usePagination } from "@/components/Paginator";
 import OnboardingDialog from "@/components/OnboardingDialog";
 
 type Sale = { id: string; total_amount: number; created_at: string };
 type Product = { id: string; name: string; stock_quantity: number; reorder_level: number; selling_price: number };
 type TopProduct = { product_id: string; name: string; qty: number; revenue: number };
-type ActivityEntry = { id: string; ts: string; label: string; sub: string; sign: "pos" | "neg" | "neu" };
+type ActivityEntry = { id: string; ts: string; label: string; sub: string; by?: string; sign: "pos" | "neg" | "neu" };
 
 export default function Dashboard() {
   const { business, profile, role, user } = useAuth();
@@ -28,6 +30,7 @@ export default function Dashboard() {
   const [trend, setTrend] = useState<{ day: string; total: number }[]>([]);
   const [topProducts, setTopProducts] = useState<TopProduct[]>([]);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
+  const [activityOpen, setActivityOpen] = useState(false);
   const showOnboarding = !!profile && profile.onboarded === false && role === "owner";
 
   // Silently mark invited staff as onboarded — they skip the owner setup flow
@@ -37,9 +40,9 @@ export default function Dashboard() {
     }
   }, [profile, role, user]);
 
-  useEffect(() => {
+  const loadDashboard = useCallback(async () => {
     if (!business) return;
-    (async () => {
+    {
       const since = new Date(); since.setDate(since.getDate() - 6); since.setHours(0, 0, 0, 0);
       const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
 
@@ -49,13 +52,22 @@ export default function Dashboard() {
         { count: openInvCount },
         { data: saleItems },
         { data: adjustments },
+        { data: activityLog },
+        { data: profs },
       ] = await Promise.all([
-        supabase.from("sales").select("id,total_amount,created_at").gte("created_at", since.toISOString()),
+        supabase.from("sales").select("id,total_amount,created_at").eq("voided", false).gte("created_at", since.toISOString()),
         supabase.from("products").select("id,name,stock_quantity,reorder_level,selling_price").order("created_at", { ascending: false }),
         supabase.from("invoices").select("id", { count: "exact", head: true }).in("status", ["draft", "issued"]),
         supabase.from("sale_items").select("sale_id, product_id, quantity, unit_price, products(name)"),
-        supabase.from("stock_adjustments").select("id,created_at,delta,reason,notes,product_id,raw_material_id,products(name),raw_materials(name)").order("created_at", { ascending: false }).limit(10),
+        supabase.from("stock_adjustments").select("id,created_at,delta,reason,notes,user_id,product_id,raw_material_id,products(name),raw_materials(name)").order("created_at", { ascending: false }).limit(50),
+        supabase.from("activity_log").select("id,created_at,summary,actor_name").order("created_at", { ascending: false }).limit(50),
+        supabase.from("profiles").select("id, owner_name"),
       ]);
+
+      const nameById: Record<string, string> = {};
+      for (const p of (profs as { id: string; owner_name: string | null }[] | null) ?? []) {
+        if (p.owner_name) nameById[p.id] = p.owner_name;
+      }
 
       // Today's sales metrics
       const todays = (sales as Sale[] | null)?.filter(s => new Date(s.created_at) >= todayStart) ?? [];
@@ -92,24 +104,38 @@ export default function Dashboard() {
         setTopProducts(sorted);
       }
 
-      // Activity feed from stock_adjustments
-      if (adjustments) {
-        const entries: ActivityEntry[] = (adjustments as any[]).map(a => {
-          const name = a.products?.name || a.raw_materials?.name || "Item";
-          const sign = Number(a.delta) >= 0 ? "pos" : "neg";
-          return {
-            id: a.id,
-            ts: a.created_at,
-            label: `${Number(a.delta) >= 0 ? "+" : ""}${a.delta} ${name}`,
-            sub: a.reason || a.notes || "Stock adjusted",
-            sign,
-          };
-        });
-        setActivity(entries);
-      }
+      const adjEntries: ActivityEntry[] = (adjustments as any[] | null ?? []).map(a => {
+        const name = a.products?.name || a.raw_materials?.name || "Item";
+        const sign: ActivityEntry["sign"] = Number(a.delta) >= 0 ? "pos" : "neg";
+        return {
+          id: a.id,
+          ts: a.created_at,
+          label: `${Number(a.delta) >= 0 ? "+" : ""}${a.delta} ${name}`,
+          sub: a.reason || a.notes || "Stock adjusted",
+          by: a.user_id ? nameById[a.user_id] : undefined,
+          sign,
+        };
+      });
+      type LogRow = { id: string; created_at: string; summary: string; actor_name: string | null };
+      const logEntries: ActivityEntry[] = ((activityLog as LogRow[] | null) ?? []).map(a => ({
+        id: a.id,
+        ts: a.created_at,
+        label: a.summary,
+        sub: "",
+        by: a.actor_name ?? undefined,
+        sign: "neu",
+      }));
+      setActivity([...adjEntries, ...logEntries].sort((x, y) => y.ts.localeCompare(x.ts)));
       setLoading(false);
-    })();
+    }
   }, [business]);
+
+  useEffect(() => {
+    loadDashboard();
+    const onFocus = () => loadDashboard();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [loadDashboard]);
 
   const outOfStock = products.filter(p => Number(p.stock_quantity) === 0);
   const lowStock = products.filter(p => Number(p.stock_quantity) > 0 && Number(p.stock_quantity) <= Number(p.reorder_level));
@@ -124,6 +150,25 @@ export default function Dashboard() {
       stock: Number(p.stock_quantity),
       low: Number(p.stock_quantity) <= Number(p.reorder_level),
     }));
+
+  const { paged: activityPaged, page, setPage, pageSize, setPageSize, pageCount, total } = usePagination(activity, 10);
+
+  const renderActivityRow = (a: ActivityEntry) => (
+    <div key={a.id} className="flex items-center gap-3 py-2 border-b border-border/50 last:border-0">
+      <div className={`size-8 rounded-lg grid place-items-center shrink-0 ${
+        a.sign === "pos" ? "bg-brand-light text-brand" : a.sign === "neg" ? "bg-danger/10 text-danger" : "bg-muted text-muted-foreground"
+      }`}>
+        {a.sign === "pos" ? <ArrowUpRight className="size-4" /> : a.sign === "neg" ? <ArrowDownRight className="size-4" /> : <FileText className="size-4" />}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-medium text-brand-dark truncate">{a.label}</div>
+        <div className="text-xs text-muted-foreground truncate">{[a.sub, a.by && `by ${a.by}`].filter(Boolean).join(" · ")}</div>
+      </div>
+      <div className="text-xs text-muted-foreground whitespace-nowrap">
+        {fmtDateTime(a.ts, { dateStyle: "short", timeStyle: "short" })}
+      </div>
+    </div>
+  );
 
   if (loading) return <DashboardSkeleton />;
 
@@ -304,32 +349,20 @@ export default function Dashboard() {
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Recent activity */}
         <Card className="lg:col-span-2 shadow-card border-border/60">
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="font-display text-lg flex items-center gap-2">
               <Clock className="size-4 text-brand" /> Recent activity
             </CardTitle>
+            {activity.length > 3 && (
+              <Button variant="ghost" size="sm" className="text-xs" onClick={() => { setPage(1); setActivityOpen(true); }}>View all</Button>
+            )}
           </CardHeader>
           <CardContent>
             {activity.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No stock adjustments recorded yet.</p>
+              <p className="text-sm text-muted-foreground">No recent activity yet.</p>
             ) : (
               <div className="space-y-2">
-                {activity.slice(0, 3).map(a => (
-                  <div key={a.id} className="flex items-center gap-3 py-2 border-b border-border/50 last:border-0">
-                    <div className={`size-8 rounded-lg grid place-items-center shrink-0 ${
-                      a.sign === "pos" ? "bg-brand-light text-brand" : "bg-danger/10 text-danger"
-                    }`}>
-                      {a.sign === "pos" ? <ArrowUpRight className="size-4" /> : <ArrowDownRight className="size-4" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-brand-dark truncate">{a.label}</div>
-                      <div className="text-xs text-muted-foreground truncate">{a.sub}</div>
-                    </div>
-                    <div className="text-xs text-muted-foreground whitespace-nowrap">
-                      {fmtDateTime(a.ts, { dateStyle: "short", timeStyle: "short" })}
-                    </div>
-                  </div>
-                ))}
+                {activity.slice(0, 3).map(renderActivityRow)}
               </div>
             )}
           </CardContent>
@@ -360,6 +393,24 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={activityOpen} onOpenChange={setActivityOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-display flex items-center gap-2"><Clock className="size-4 text-brand" /> Recent activity</DialogTitle>
+          </DialogHeader>
+          {activity.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-6 text-center">No recent activity yet.</p>
+          ) : (
+            <>
+              <div className="max-h-[55vh] overflow-y-auto pr-1">
+                {activityPaged.map(renderActivityRow)}
+              </div>
+              <Paginator page={page} pageCount={pageCount} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} />
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <OnboardingDialog open={showOnboarding} onClose={() => { /* refresh handled in dialog */ }} />
     </div>
