@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { LayoutDashboard, Package, ShoppingCart, Truck, FileText, ClipboardList, Users, BarChart3, Sparkles, Settings, LogOut, Store, Menu, Boxes, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,7 @@ const nav: NavItem[] = [
   { to: "/pos", label: "Point of Sale", icon: ShoppingCart },
   { to: "/suppliers", label: "Suppliers", icon: Truck, allow: ["owner", "manager"] },
   { to: "/raw-materials", label: "Raw Materials", icon: Boxes, allow: ["owner", "manager"] },
-  { to: "/invoices", label: "Invoices", icon: FileText, allow: ["owner", "manager"] },
+  { to: "/invoices", label: "Invoices", icon: FileText },
   { to: "/purchase-orders", label: "Purchase Orders", icon: ClipboardList, allow: ["owner", "manager"] },
   { to: "/team", label: "Team", icon: Users, allow: ["owner"] },
   { to: "/reports", label: "Reports", icon: BarChart3, allow: ["owner", "manager"] },
@@ -63,6 +63,7 @@ function NavList({ onNavigate, role, collapsed }: { onNavigate?: () => void; rol
 export default function AppShell() {
   const { user, profile, business, role, signOut, loading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [signOutOpen, setSignOutOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem("sidebar-collapsed") === "true");
@@ -206,7 +207,7 @@ export default function AppShell() {
           </div>
         </header>
         <main className="flex-1 p-4 lg:p-8 animate-fade-in">
-          <div className="w-full">
+          <div key={location.key} className="w-full">
             <Outlet />
           </div>
         </main>

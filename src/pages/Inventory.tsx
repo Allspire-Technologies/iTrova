@@ -67,20 +67,23 @@ export default function Inventory() {
       toast.error(limitMessage("products"));
       return;
     }
+    const sku = (form.sku || "").trim();
+    if (!sku) { toast.error("SKU is required"); return; }
+    const dup = items.find(p => p.id !== editing?.id && p.sku?.trim().toLowerCase() === sku.toLowerCase());
+    if (dup) { toast.error(`SKU "${sku}" is already used by ${dup.name}`); return; }
     setBusy(true);
     const payload = {
       name: form.name,
       category: form.category || null,
-      sku: form.sku || null,
+      sku,
       unit: form.unit || "pcs",
       selling_price: Number(form.selling_price) || 0,
       cost_price: Number(form.cost_price) || 0,
-      stock_quantity: Number(form.stock_quantity) || 0,
       reorder_level: Number(form.reorder_level) || 0,
     };
     const { error } = editing
       ? await supabase.from("products").update(payload).eq("id", editing.id)
-      : await supabase.from("products").insert({ ...payload, business_id: business.id });
+      : await supabase.from("products").insert({ ...payload, stock_quantity: Number(form.stock_quantity) || 0, business_id: business.id });
     setBusy(false);
     if (error) return toast.error(error.message);
     toast.success(editing ? "Product updated" : "Product added");
@@ -109,30 +112,64 @@ export default function Inventory() {
 
   const importCsv = async (file: File) => {
     if (!business) return;
-    if (isAtLimit(items.length, business.subscription_tier, "products")) {
-      toast.error(limitMessage("products"));
-      if (fileRef.current) fileRef.current.value = "";
-      return;
-    }
     try {
       const text = await readFileText(file);
       const rows = parseCsv(text);
-      const valid = rows.filter(r => r.name?.trim());
-      if (valid.length === 0) return toast.error("No valid rows found. Required column: name");
-      const payload = valid.map(r => ({
-        business_id: business.id,
-        name: r.name.trim(),
-        category: r.category || null,
-        sku: r.sku || null,
-        unit: r.unit || "pcs",
-        selling_price: Number(r.selling_price) || 0,
-        cost_price: Number(r.cost_price) || 0,
-        stock_quantity: Number(r.stock_quantity) || 0,
-        reorder_level: Number(r.reorder_level) || 5,
-      }));
-      const { error } = await supabase.from("products").insert(payload);
-      if (error) return toast.error(error.message);
-      toast.success(`Imported ${payload.length} product${payload.length === 1 ? "" : "s"}`);
+      const usable = rows.filter(r => r.name?.trim() && r.sku?.trim());
+      const noSku = rows.filter(r => r.name?.trim() && !r.sku?.trim()).length;
+      if (usable.length === 0) return toast.error("No valid rows. Required columns: name, sku");
+
+      // Aggregate by SKU (case-insensitive) so duplicate rows in the file merge.
+      const agg = new Map<string, { fields: Record<string, unknown>; qty: number }>();
+      for (const r of usable) {
+        const key = r.sku.trim().toLowerCase();
+        const fields: Record<string, unknown> = {
+          name: r.name.trim(),
+          category: r.category || null,
+          sku: r.sku.trim(),
+          unit: r.unit || "pcs",
+          selling_price: Number(r.selling_price) || 0,
+          cost_price: Number(r.cost_price) || 0,
+          reorder_level: Number(r.reorder_level) || 5,
+        };
+        const prev = agg.get(key);
+        agg.set(key, { fields, qty: (prev?.qty || 0) + (Number(r.stock_quantity) || 0) });
+      }
+
+      const existingBySku = new Map(items.filter(p => p.sku).map(p => [p.sku!.trim().toLowerCase(), p]));
+      const toUpdate: { id: string; fields: Record<string, unknown>; stock: number }[] = [];
+      const toInsert: Record<string, unknown>[] = [];
+      for (const [key, a] of agg) {
+        const ex = existingBySku.get(key);
+        if (ex) toUpdate.push({ id: ex.id, fields: a.fields, stock: Number(ex.stock_quantity) + a.qty });
+        else toInsert.push({ ...a.fields, stock_quantity: a.qty, business_id: business.id });
+      }
+
+      // The plan limit only restricts NEW products; restocks of existing ones are always allowed.
+      const limit = getLimit(business.subscription_tier, "products");
+      let insertList = toInsert;
+      let overLimit = 0;
+      if (limit !== null) {
+        const capacity = Math.max(0, limit - items.length);
+        if (toInsert.length > capacity) { overLimit = toInsert.length - capacity; insertList = toInsert.slice(0, capacity); }
+      }
+
+      let updated = 0;
+      for (const u of toUpdate) {
+        const { error } = await supabase.from("products").update({ ...u.fields, stock_quantity: u.stock }).eq("id", u.id);
+        if (!error) updated++;
+      }
+      if (insertList.length > 0) {
+        const { error } = await supabase.from("products").insert(insertList as never);
+        if (error) return toast.error(error.message);
+      }
+
+      const parts: string[] = [];
+      if (insertList.length) parts.push(`${insertList.length} added`);
+      if (updated) parts.push(`${updated} restocked`);
+      if (overLimit) parts.push(`${overLimit} skipped (plan limit)`);
+      if (noSku) parts.push(`${noSku} skipped (no SKU)`);
+      toast.success(parts.length ? `Import: ${parts.join(", ")}` : "Nothing to import");
       load();
     } catch (e: any) {
       toast.error(e.message || "Import failed");
@@ -216,8 +253,8 @@ export default function Inventory() {
                     <Input value={form.category || ""} onChange={e => setForm({ ...form, category: e.target.value })} placeholder="Foodstuff" />
                   </div>
                   <div className="space-y-2">
-                    <Label>SKU / barcode</Label>
-                    <Input value={form.sku || ""} onChange={e => setForm({ ...form, sku: e.target.value })} placeholder="GAR-50" />
+                    <Label>SKU / barcode *</Label>
+                    <Input required value={form.sku || ""} onChange={e => setForm({ ...form, sku: e.target.value })} placeholder="GAR-50" />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
@@ -233,7 +270,8 @@ export default function Inventory() {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label>Stock quantity</Label>
-                    <Input type="number" min="0" step="1" placeholder="0" value={form.stock_quantity} onChange={e => setForm({ ...form, stock_quantity: e.target.value })} />
+                    <Input type="number" min="0" step="1" placeholder="0" value={form.stock_quantity} disabled={!!editing} onChange={e => setForm({ ...form, stock_quantity: e.target.value })} />
+                    {editing && <p className="text-xs text-muted-foreground">Use “Adjust stock” to change quantity.</p>}
                   </div>
                   <div className="space-y-2">
                     <Label>Reorder level</Label>

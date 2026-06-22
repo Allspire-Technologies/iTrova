@@ -42,7 +42,7 @@ const App = () => (
               <Route path="/inventory" element={<RoleGate allow={["owner","manager"]}><Inventory /></RoleGate>} />
               <Route path="/suppliers" element={<RoleGate allow={["owner","manager"]}><Suppliers /></RoleGate>} />
               <Route path="/raw-materials" element={<RoleGate allow={["owner","manager"]}><RawMaterials /></RoleGate>} />
-              <Route path="/invoices" element={<RoleGate allow={["owner","manager"]}><Invoices /></RoleGate>} />
+              <Route path="/invoices" element={<Invoices />} />
               <Route path="/purchase-orders" element={<RoleGate allow={["owner","manager"]}><PurchaseOrders /></RoleGate>} />
               <Route path="/reports" element={<RoleGate allow={["owner","manager"]}><Reports /></RoleGate>} />
               <Route path="/team" element={<RoleGate allow={["owner"]}><Team /></RoleGate>} />

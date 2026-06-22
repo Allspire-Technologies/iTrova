@@ -52,7 +52,7 @@ export default function PurchaseOrders() {
   const [viewItems, setViewItems] = useState<Item[]>([]);
   const [form, setForm] = useState({ supplier_id: "", expected_date: "", notes: "" });
   const [lines, setLines] = useState<Item[]>([{ product_id: null, raw_material_id: null, description: "", quantity: 1, unit_cost: 0, line_total: 0 }]);
-  const [pending, setPending] = useState<{ title: string; description: string; onConfirm: () => void } | null>(null);
+  const [pending, setPending] = useState<{ title: string; description: string; confirmLabel?: string; variant?: "destructive" | "default"; onConfirm: () => void } | null>(null);
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -193,6 +193,22 @@ export default function PurchaseOrders() {
     load();
   };
 
+  // Receiving adds stock and is final, so confirm before doing it.
+  const requestStatusChange = (i: PO, status: string) => {
+    if (status === i.status) return;
+    if (status === "received") {
+      setPending({
+        title: `Mark ${i.po_number} as received?`,
+        description: "This adds the ordered items to stock (products and raw materials). Once received, the status can't be changed.",
+        confirmLabel: "Mark as received",
+        variant: "default",
+        onConfirm: () => changeStatus(i, status),
+      });
+      return;
+    }
+    changeStatus(i, status);
+  };
+
   const remove = (i: PO) => {
     setPending({
       title: `Delete ${i.po_number}?`,
@@ -312,8 +328,8 @@ export default function PurchaseOrders() {
         </div>
         <div className="flex gap-2 flex-wrap">
           <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => e.target.files?.[0] && importCsv(e.target.files[0])} />
-          <Button variant="outline" onClick={downloadTemplate}><Download className="size-4" /> CSV Template</Button>
-          <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={atPoLimit} title={atPoLimit ? limitMessage("purchaseOrders") : undefined}><Upload className="size-4" /> Import CSV</Button>
+          <Button variant="outline" disabled onClick={downloadTemplate}><Download className="size-4" /> CSV Template</Button>
+          <Button variant="outline" disabled onClick={() => fileRef.current?.click()}><Upload className="size-4" /> Import CSV</Button>
           <Button variant="outline" onClick={exportCsv} disabled={filtered.length === 0}><Download className="size-4" /> Export CSV</Button>
           {poLimit !== null && items.length >= Math.floor(poLimit * 0.8) && (
             <span className={`self-center text-xs font-medium ${atPoLimit ? "text-destructive" : "text-amber-600"}`}>
@@ -381,7 +397,8 @@ export default function PurchaseOrders() {
                       <td className="px-4 py-3">
                         <SearchableSelect
                           value={i.status}
-                          onValueChange={(v) => changeStatus(i, v)}
+                          onValueChange={(v) => requestStatusChange(i, v)}
+                          disabled={i.status === "received"}
                           className="w-28 h-8"
                           options={STATUSES.map(s => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) }))}
                         />
@@ -501,6 +518,8 @@ export default function PurchaseOrders() {
         onOpenChange={(open) => !open && setPending(null)}
         title={pending?.title ?? ""}
         description={pending?.description}
+        confirmLabel={pending?.confirmLabel}
+        variant={pending?.variant}
         onConfirm={pending?.onConfirm ?? (() => {})}
       />
     </div>
