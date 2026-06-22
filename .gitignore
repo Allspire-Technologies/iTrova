@@ -19,8 +19,6 @@ docs
 /playwright-report/
 /blob-report/
 playwright/.cache/
-playwright.config.ts
-/tests/
 
 # Editor directories and files
 .vscode/*
