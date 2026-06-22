@@ -33,7 +33,8 @@ type Item = { id?: string; description: string; quantity: number; unit_price: nu
 const STATUSES = ["draft", "issued", "paid", "void"];
 
 export default function Invoices() {
-  const { business, user } = useAuth();
+  const { business, user, role } = useAuth();
+  const canManage = role === "owner" || role === "manager";
   const { fmt } = useCurrency();
   const { timezone } = useDateFormat();
   const [searchParams] = useSearchParams();
@@ -48,7 +49,7 @@ export default function Invoices() {
   const [lines, setLines] = useState<Item[]>([{ description: "", quantity: 1, unit_price: 0, line_total: 0 }]);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<Invoice | null>(null);
-  const [pending, setPending] = useState<{ title: string; description: string; confirmLabel?: string; onConfirm: () => void } | null>(null);
+  const [pending, setPending] = useState<{ title: string; description: string; confirmLabel?: string; variant?: "destructive" | "default"; onConfirm: () => void } | null>(null);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   type SortCol = "number" | "customer" | "date" | "total" | "status";
@@ -239,10 +240,21 @@ export default function Invoices() {
       });
       return;
     }
+    if (status === "paid") {
+      setPending({
+        title: `Mark ${i.invoice_number} as paid?`,
+        description: "Once marked paid, the only further change allowed is voiding it.",
+        confirmLabel: "Mark as paid",
+        variant: "default",
+        onConfirm: () => changeStatus(i, "paid"),
+      });
+      return;
+    }
     changeStatus(i, status);
   };
 
-  const statusOptionsFor = (i: Invoice) => (i.sale_id ? ["paid", "void"] : STATUSES);
+  // POS invoices, and any invoice already paid, are limited to paid/void.
+  const statusOptionsFor = (i: Invoice) => (i.sale_id || i.status === "paid" ? ["paid", "void"] : STATUSES);
 
   const openView = async (i: Invoice) => {
     setViewing(i);
@@ -360,9 +372,11 @@ export default function Invoices() {
           <p className="text-sm text-muted-foreground">Sales receipts and customer invoices</p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" onClick={exportCsv} disabled={filtered.length === 0}>
-            <Download className="size-4 mr-1" /> Export CSV
-          </Button>
+          {canManage && (
+            <Button variant="outline" onClick={exportCsv} disabled={filtered.length === 0}>
+              <Download className="size-4 mr-1" /> Export CSV
+            </Button>
+          )}
           {invoiceLimit !== null && items.length >= Math.floor(invoiceLimit * 0.8) && (
             <span className={`self-center text-xs font-medium ${atInvoiceLimit ? "text-destructive" : "text-amber-600"}`}>
               {items.length} / {invoiceLimit}
@@ -452,22 +466,26 @@ export default function Invoices() {
                     <td className="px-4 py-3 text-right font-medium">{fmt(i.total)}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <SearchableSelect
-                          value={i.status}
-                          onValueChange={(v) => requestStatusChange(i, v)}
-                          disabled={i.status === "void"}
-                          className="w-28 h-8"
-                          options={statusOptionsFor(i).map(s => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) }))}
-                        />
+                        {canManage ? (
+                          <SearchableSelect
+                            value={i.status}
+                            onValueChange={(v) => requestStatusChange(i, v)}
+                            disabled={i.status === "void"}
+                            className="w-28 h-8"
+                            options={statusOptionsFor(i).map(s => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) }))}
+                          />
+                        ) : (
+                          <Badge variant={statusColor(i.status) as any}>{i.status}</Badge>
+                        )}
                         {isOverdue(i) && <Badge variant="destructive" className="text-xs shrink-0">Overdue</Badge>}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex gap-1 justify-end">
                         <Button variant="ghost" size="icon" onClick={() => openView(i)}><Eye className="size-4" /></Button>
-                        <Button variant="ghost" size="icon" disabled={i.status === "void"} title={i.status === "void" ? "Voided invoices can't be edited" : undefined} onClick={() => openEdit(i)}><Pencil className="size-4" /></Button>
+                        {canManage && <Button variant="ghost" size="icon" disabled={i.status === "void"} title={i.status === "void" ? "Voided invoices can't be edited" : undefined} onClick={() => openEdit(i)}><Pencil className="size-4" /></Button>}
                         <Button variant="ghost" size="icon" onClick={() => exportPdf(i)}><Download className="size-4" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => remove(i)}><Trash2 className="size-4 text-destructive" /></Button>
+                        {canManage && <Button variant="ghost" size="icon" onClick={() => remove(i)}><Trash2 className="size-4 text-destructive" /></Button>}
                       </div>
                     </td>
                   </tr>
@@ -592,6 +610,7 @@ export default function Invoices() {
         title={pending?.title ?? ""}
         description={pending?.description}
         confirmLabel={pending?.confirmLabel}
+        variant={pending?.variant}
         onConfirm={pending?.onConfirm ?? (() => {})}
       />
     </div>
