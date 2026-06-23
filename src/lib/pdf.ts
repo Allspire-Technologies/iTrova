@@ -13,8 +13,10 @@ export type PdfDocInput = {
   party: { name: string; phone?: string | null; email?: string | null; address?: string | null };
   items: { description: string; quantity: number; unit_price: number; line_total: number }[];
   subtotal: number;
+  discount?: number;
   tax?: number;
   total: number;
+  formatMoney?: (n: number) => string;
   notes?: string | null;
 };
 
@@ -22,6 +24,7 @@ export function buildPdf(input: PdfDocInput) {
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
   const M = 40;
+  const money = input.formatMoney ?? formatNaira;
 
   // Header
   doc.setFont("helvetica", "bold").setFontSize(22);
@@ -58,8 +61,8 @@ export function buildPdf(input: PdfDocInput) {
     body: input.items.map((it) => [
       it.description,
       String(it.quantity),
-      formatNaira(it.unit_price),
-      formatNaira(it.line_total),
+      money(it.unit_price),
+      money(it.line_total),
     ]),
     styles: { fontSize: 10, cellPadding: 6 },
     headStyles: { fillColor: [30, 41, 59], textColor: 255 },
@@ -72,22 +75,29 @@ export function buildPdf(input: PdfDocInput) {
   const endY: number = doc.lastAutoTable.finalY + 16;
   const lx = pageW - M - 180;
   const vx = pageW - M;
-  doc.setFontSize(10);
-  doc.text("Subtotal", lx, endY);
-  doc.text(formatNaira(input.subtotal), vx, endY, { align: "right" });
-  if (input.tax) {
-    doc.text("Tax", lx, endY + 16);
-    doc.text(formatNaira(input.tax), vx, endY + 16, { align: "right" });
+  doc.setFont("helvetica", "normal").setFontSize(10);
+  let row = endY;
+  doc.text("Subtotal", lx, row);
+  doc.text(money(input.subtotal), vx, row, { align: "right" });
+  if (input.discount && input.discount > 0) {
+    row += 16;
+    doc.text("Discount", lx, row);
+    doc.text(`-${money(input.discount)}`, vx, row, { align: "right" });
   }
+  if (input.tax) {
+    row += 16;
+    doc.text("Tax", lx, row);
+    doc.text(money(input.tax), vx, row, { align: "right" });
+  }
+  row += 22;
   doc.setFont("helvetica", "bold").setFontSize(12);
-  const ty = endY + (input.tax ? 38 : 22);
-  doc.text("Total", lx, ty);
-  doc.text(formatNaira(input.total), vx, ty, { align: "right" });
+  doc.text("Total", lx, row);
+  doc.text(money(input.total), vx, row, { align: "right" });
 
   if (input.notes) {
     doc.setFont("helvetica", "normal").setFontSize(9);
-    doc.text("Notes:", M, ty + 28);
-    doc.text(doc.splitTextToSize(input.notes, pageW - M * 2) as string[], M, ty + 42);
+    doc.text("Notes:", M, row + 28);
+    doc.text(doc.splitTextToSize(input.notes, pageW - M * 2) as string[], M, row + 42);
   }
 
   doc.setFontSize(8).setTextColor(120);

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -11,9 +11,12 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import SearchableSelect from "@/components/SearchableSelect";
 import ConfirmDialog from "@/components/ConfirmDialog";
-import { Plus, Search, FileText, Trash2, Download, Eye, MessageCircle, Pencil, Mail, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { Plus, Search, FileText, Trash2, Download, Eye, MessageCircle, Pencil, Mail, ArrowUp, ArrowDown, ArrowUpDown, Printer, MoreHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { downloadPdf } from "@/lib/pdf";
+import { buildReceiptHtml } from "@/lib/receipt";
 import { toCsv, downloadCsv } from "@/lib/csv";
 import Paginator, { usePagination } from "@/components/Paginator";
 import { TablePageSkeleton } from "@/components/Skeletons";
@@ -30,6 +33,17 @@ type Invoice = {
   created_by: string | null;
 };
 type Item = { id?: string; description: string; quantity: number; unit_price: number; line_total: number };
+
+function IconBtn({ label, onClick, disabled, children }: { label: string; onClick: () => void; disabled?: boolean; children: ReactNode }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button variant="ghost" size="icon" disabled={disabled} aria-label={label} onClick={onClick}>{children}</Button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
 
 export default function Invoices() {
   const { business, user, role } = useAuth();
@@ -292,9 +306,36 @@ export default function Invoices() {
       partyLabel: "Bill to",
       party: { name: i.customer_name, phone: i.customer_phone, email: i.customer_email },
       items: (data as Item[]) || [],
-      subtotal: Number(i.subtotal), tax: Number(i.tax), total: Number(i.total),
+      subtotal: Number(i.subtotal), discount: Number(i.discount_amount) || 0, tax: Number(i.tax), total: Number(i.total),
+      formatMoney: fmt,
       notes: i.notes,
     }, `${i.invoice_number}.pdf`);
+  };
+
+  const printReceipt = async (i: Invoice) => {
+    const { data } = await supabase.from("invoice_items").select("*").eq("invoice_id", i.id);
+    const items = ((data as Item[]) || []).map(it => ({
+      description: it.description,
+      quantity: Number(it.quantity),
+      line_total: Number(it.line_total),
+    }));
+    const html = buildReceiptHtml({
+      businessName: business?.name || "",
+      docNumber: i.invoice_number,
+      date: i.issue_date,
+      customerName: i.customer_name,
+      servedBy: i.created_by ? creators[i.created_by] : null,
+      items,
+      subtotal: Number(i.subtotal),
+      discount: Number(i.discount_amount) || 0,
+      total: Number(i.total),
+      paid: i.status === "paid",
+      formatMoney: fmt,
+    });
+    const w = window.open("", "_blank", "width=360,height=640");
+    if (!w) { toast.error("Allow pop-ups to print the receipt"); return; }
+    w.document.write(html);
+    w.document.close();
   };
 
   const todayInTz = new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(new Date());
@@ -473,10 +514,23 @@ export default function Invoices() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex gap-1 justify-end">
-                        <Button variant="ghost" size="icon" onClick={() => openView(i)}><Eye className="size-4" /></Button>
-                        {canManage && <Button variant="ghost" size="icon" disabled={i.status === "void"} title={i.status === "void" ? "Voided invoices can't be edited" : undefined} onClick={() => openEdit(i)}><Pencil className="size-4" /></Button>}
-                        <Button variant="ghost" size="icon" onClick={() => exportPdf(i)}><Download className="size-4" /></Button>
-                        {canManage && <Button variant="ghost" size="icon" onClick={() => remove(i)}><Trash2 className="size-4 text-destructive" /></Button>}
+                        <IconBtn label="View" onClick={() => openView(i)}><Eye className="size-4" /></IconBtn>
+                        {canManage && <IconBtn label={i.status === "void" ? "Voided invoices can't be edited" : "Edit"} disabled={i.status === "void"} onClick={() => openEdit(i)}><Pencil className="size-4" /></IconBtn>}
+                        {i.status === "paid" && <IconBtn label="Print" onClick={() => printReceipt(i)}><Printer className="size-4" /></IconBtn>}
+                        <DropdownMenu>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" aria-label="More actions"><MoreHorizontal className="size-4" /></Button>
+                              </DropdownMenuTrigger>
+                            </TooltipTrigger>
+                            <TooltipContent>More actions</TooltipContent>
+                          </Tooltip>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => exportPdf(i)}><Download className="size-4 mr-2" /> Download</DropdownMenuItem>
+                            {canManage && <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => remove(i)}><Trash2 className="size-4 mr-2" /> Delete</DropdownMenuItem>}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </td>
                   </tr>
@@ -570,7 +624,6 @@ export default function Invoices() {
                 {viewing.notes && <div className="text-muted-foreground">{viewing.notes}</div>}
               </div>
               <DialogFooter className="flex-wrap gap-2">
-                <Button variant="outline" onClick={() => setViewing(null)}>Close</Button>
                 <Button variant="outline" disabled={!viewing.customer_email} onClick={() => {
                   const subject = encodeURIComponent(`Invoice ${viewing.invoice_number} from ${business?.name || ""}`);
                   const body = encodeURIComponent([
@@ -588,7 +641,8 @@ export default function Invoices() {
                   window.open(`mailto:${viewing.customer_email}?subject=${subject}&body=${body}`);
                 }}><Mail className="size-4 mr-1" /> Email</Button>
                 <Button variant="outline" onClick={() => shareWa(viewing)}><MessageCircle className="size-4 mr-1" /> WhatsApp</Button>
-                <Button onClick={() => exportPdf(viewing)}><Download className="size-4 mr-1" /> Download PDF</Button>
+                {viewing.status === "paid" && <Button variant="outline" onClick={() => printReceipt(viewing)}><Printer className="size-4 mr-1" /> Print</Button>}
+                <Button onClick={() => exportPdf(viewing)}><Download className="size-4 mr-1" /> Download</Button>
               </DialogFooter>
             </>
           )}
