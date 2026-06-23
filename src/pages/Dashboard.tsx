@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import Paginator, { usePagination } from "@/components/Paginator";
 import OnboardingDialog from "@/components/OnboardingDialog";
+import { salesRevenue, outOfStockProducts, lowStockProducts, totalStockUnits as sumStockUnits } from "@/lib/reportMetrics";
 
 type Sale = { id: string; total_amount: number; created_at: string };
 type Product = { id: string; name: string; stock_quantity: number; reorder_level: number; selling_price: number };
@@ -71,7 +72,7 @@ export default function Dashboard() {
 
       // Today's sales metrics
       const todays = (sales as Sale[] | null)?.filter(s => new Date(s.created_at) >= todayStart) ?? [];
-      setTodaySales(todays.reduce((a, s) => a + Number(s.total_amount), 0));
+      setTodaySales(salesRevenue(todays));
       setSalesCount(todays.length);
       setProducts((prods as Product[]) || []);
       setOpenInvoices(openInvCount ?? 0);
@@ -137,9 +138,9 @@ export default function Dashboard() {
     return () => window.removeEventListener("focus", onFocus);
   }, [loadDashboard]);
 
-  const outOfStock = products.filter(p => Number(p.stock_quantity) === 0);
-  const lowStock = products.filter(p => Number(p.stock_quantity) > 0 && Number(p.stock_quantity) <= Number(p.reorder_level));
-  const totalStockUnits = products.reduce((a, p) => a + Number(p.stock_quantity), 0);
+  const outOfStock = outOfStockProducts(products);
+  const lowStock = lowStockProducts(products);
+  const totalStockUnits = sumStockUnits(products);
 
   // Top 6 products by stock for bar chart
   const stockChart = [...products]
