@@ -274,9 +274,9 @@ export default function POS() {
         </div>
 
         <TabsContent value="sale" className="mt-6">
-          <div className="grid lg:grid-cols-[1fr,400px] gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-6">
             {/* Product grid */}
-            <div className="space-y-4">
+            <div className="space-y-4 min-w-0">
               <div className="grid sm:grid-cols-[1fr,260px] gap-2">
                 <div className="relative">
                   <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -341,7 +341,7 @@ export default function POS() {
             </div>
 
             {/* Cart */}
-            <Card className="shadow-elevated border-border/60 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] flex flex-col">
+            <Card className="shadow-elevated border-border/60 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] flex flex-col min-w-0">
               <div className="p-5 border-b border-border flex items-center gap-2">
                 <ShoppingCart className="size-4 text-brand" />
                 <h2 className="font-display font-semibold text-brand-dark">Active Sale</h2>

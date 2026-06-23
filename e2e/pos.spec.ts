@@ -47,4 +47,17 @@ test.describe("Point of Sale", () => {
     await expect(page.getByText("Cart is empty")).toBeHidden();
     await expect(page.getByText("1 item", { exact: true })).toBeVisible();
   });
+
+  test.describe("on a mobile viewport", () => {
+    test.use({ viewport: { width: 375, height: 812 } });
+
+    test("lays out the title/tabs/held row without horizontal overflow", async ({ page }) => {
+      await page.getByRole("button", { name: /Garri 50kg/ }).click();
+      await page.getByRole("button", { name: "Hold sale", exact: true }).click();
+      await expect(page.getByRole("button", { name: /Held sales \(1\)/ })).toBeVisible();
+      await page.getByRole("button", { name: /Garri 50kg/ }).click();
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      expect(overflow).toBeLessThanOrEqual(1);
+    });
+  });
 });
