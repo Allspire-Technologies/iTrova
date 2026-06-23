@@ -3,7 +3,7 @@ import { authenticate, stubRows } from "../e2e/support/auth";
 import { stubDbReads, FAKE_USER } from "../e2e/support/supabase";
 
 const DIR = "docs/user-guide/screenshots";
-const DESKTOP = { width: 1366, height: 900 };
+const DESKTOP = { width: 1440, height: 900 };
 const MOBILE = { width: 375, height: 812 };
 
 const created = (d: string) => new Date(d).toISOString();
@@ -20,15 +20,15 @@ const products = [
 ];
 
 const invoices = [
-  { id: "i1", business_id: "biz-1", invoice_number: "INV-0007", customer_name: "Blessing Stores", customer_phone: "+2348012345678", customer_email: "blessing@stores.ng", status: "paid", subtotal: 110000, discount_amount: 0, tax: 0, total: 110000, issue_date: "2026-06-20", due_date: null, sale_id: "s1", created_by: FAKE_USER.id, notes: null, created_at: created("2026-06-20") },
-  { id: "i2", business_id: "biz-1", invoice_number: "INV-0006", customer_name: "Chidi Ventures", customer_phone: "+2348098765432", customer_email: "chidi@ventures.ng", status: "issued", subtotal: 78000, discount_amount: 0, tax: 0, total: 78000, issue_date: "2026-06-18", due_date: "2026-06-25", sale_id: null, created_by: FAKE_USER.id, notes: null, created_at: created("2026-06-18") },
+  { id: "i1", business_id: "biz-1", invoice_number: "INV-0007", customer_name: "Blessing Stores", customer_phone: "+234 800 000 0010", customer_email: "blessing@example.com", status: "paid", subtotal: 110000, discount_amount: 0, tax: 0, total: 110000, issue_date: "2026-06-20", due_date: null, sale_id: "s1", created_by: FAKE_USER.id, notes: null, created_at: created("2026-06-20") },
+  { id: "i2", business_id: "biz-1", invoice_number: "INV-0006", customer_name: "Chidi Ventures", customer_phone: "+234 800 000 0011", customer_email: "chidi@example.com", status: "issued", subtotal: 78000, discount_amount: 0, tax: 0, total: 78000, issue_date: "2026-06-18", due_date: "2026-06-25", sale_id: null, created_by: FAKE_USER.id, notes: null, created_at: created("2026-06-18") },
   { id: "i3", business_id: "biz-1", invoice_number: "INV-0005", customer_name: "Walk-in Customer", customer_phone: null, customer_email: null, status: "paid", subtotal: 41000, discount_amount: 1000, tax: 0, total: 40000, issue_date: "2026-06-17", due_date: null, sale_id: "s2", created_by: FAKE_USER.id, notes: null, created_at: created("2026-06-17") },
 ];
 
 const suppliers = [
-  { id: "sup1", business_id: "biz-1", name: "Olu Farms Ltd", contact_name: "Olu Adewale", phone: "+2348012345678", email: "olu@farms.ng", address: "Ikeja, Lagos", rating: 5, notes: null, created_at: created("2026-06-01") },
-  { id: "sup2", business_id: "biz-1", name: "Kano Grains Co", contact_name: "Amina Bello", phone: "+2348098765432", email: "sales@kanograins.ng", address: "Kano", rating: 4, notes: null, created_at: created("2026-06-02") },
-  { id: "sup3", business_id: "biz-1", name: "Delta Oil Mills", contact_name: "Emeka Obi", phone: "+2348022223333", email: "info@deltaoil.ng", address: "Warri", rating: 4, notes: null, created_at: created("2026-06-03") },
+  { id: "sup1", business_id: "biz-1", name: "Olu Farms Ltd", contact_name: "Olu Adewale", phone: "+234 800 000 0001", email: "sales@example.com", address: "Ikeja, Lagos", rating: 5, notes: null, created_at: created("2026-06-01") },
+  { id: "sup2", business_id: "biz-1", name: "Kano Grains Co", contact_name: "Amina Bello", phone: "+234 800 000 0002", email: "sales@example.com", address: "Kano", rating: 4, notes: null, created_at: created("2026-06-02") },
+  { id: "sup3", business_id: "biz-1", name: "Delta Oil Mills", contact_name: "Emeka Obi", phone: "+234 800 000 0003", email: "info@example.com", address: "Warri", rating: 4, notes: null, created_at: created("2026-06-03") },
 ];
 
 const rawMaterials = [
@@ -63,7 +63,7 @@ const reportSaleItems = [
 ];
 
 const invitations = [
-  { id: "inv1", business_id: "biz-1", email: "tunde@sunrise.ng", role: "cashier", status: "pending", token: "tok-1", created_at: created("2026-06-21") },
+  { id: "inv1", business_id: "biz-1", email: "teammate@example.com", role: "cashier", status: "pending", token: "tok-1", created_at: created("2026-06-21") },
 ];
 
 async function shoot(page: Page, name: string, fullPage = true) {
