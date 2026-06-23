@@ -33,4 +33,18 @@ test.describe("Point of Sale", () => {
     await expect(page.getByText("Cart is empty")).toBeHidden();
     await expect(page.getByText("1 item", { exact: true })).toBeVisible();
   });
+
+  test("holds a sale and resumes it from the held-sales modal", async ({ page }) => {
+    await page.getByRole("button", { name: /Garri 50kg/ }).click();
+    await expect(page.getByText("1 item", { exact: true })).toBeVisible();
+
+    await page.getByRole("button", { name: "Hold sale", exact: true }).click();
+    await expect(page.getByText("Cart is empty")).toBeVisible();
+
+    await page.getByRole("button", { name: /Held sales \(1\)/ }).click();
+    await page.getByRole("button", { name: "Resume" }).click();
+
+    await expect(page.getByText("Cart is empty")).toBeHidden();
+    await expect(page.getByText("1 item", { exact: true })).toBeVisible();
+  });
 });
