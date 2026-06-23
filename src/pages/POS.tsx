@@ -261,7 +261,7 @@ export default function POS() {
               <TabsTrigger value="orders" className="gap-2"><ClipboardList className="size-4" /> Orders</TabsTrigger>
             </TabsList>
             {held.length > 0 && (
-              <Button variant="outline" size="sm" onClick={() => setHeldOpen(true)}>
+              <Button variant="outline" size="sm" className="border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 hover:text-amber-800" onClick={() => setHeldOpen(true)}>
                 <ClipboardList className="size-4 mr-1" /> Held sales ({held.length})
               </Button>
             )}
