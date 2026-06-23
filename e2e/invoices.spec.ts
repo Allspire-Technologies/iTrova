@@ -43,6 +43,15 @@ test.describe("Invoices", () => {
     await stubRows(page, "invoices", [paidInvoice]);
     await page.goto("/invoices");
     await expect(page.getByText("INV-001")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Print receipt" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Print", exact: true })).toBeVisible();
+  });
+
+  test("download and delete live in the actions menu", async ({ page }) => {
+    await authenticate(page, { role: "owner" });
+    await stubRows(page, "invoices", [paidInvoice]);
+    await page.goto("/invoices");
+    await page.getByRole("button", { name: "More actions" }).click();
+    await expect(page.getByRole("menuitem", { name: "Download", exact: true })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Delete" })).toBeVisible();
   });
 });
