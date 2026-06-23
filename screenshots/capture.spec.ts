@@ -3,8 +3,8 @@ import { authenticate, stubRows } from "../e2e/support/auth";
 import { stubDbReads, FAKE_USER } from "../e2e/support/supabase";
 
 const DIR = "docs/user-guide/screenshots";
-const DESKTOP = { width: 1280, height: 900 };
-const MOBILE = { width: 390, height: 844 };
+const DESKTOP = { width: 1366, height: 900 };
+const MOBILE = { width: 375, height: 812 };
 
 const created = (d: string) => new Date(d).toISOString();
 
