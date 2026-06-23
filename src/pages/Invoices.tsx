@@ -400,8 +400,8 @@ export default function Invoices() {
     <div className="space-y-6 w-full">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-display font-bold">Invoices</h1>
-          <p className="text-sm text-muted-foreground">Sales receipts and customer invoices</p>
+          <h1 className="font-display text-3xl lg:text-4xl font-bold text-brand-dark">Invoices</h1>
+          <p className="text-muted-foreground mt-1">Sales receipts and customer invoices</p>
         </div>
         <div className="flex gap-2 flex-wrap">
           {canManage && (

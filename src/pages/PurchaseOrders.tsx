@@ -323,8 +323,8 @@ export default function PurchaseOrders() {
     <div className="space-y-6 w-full">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-display font-bold">Purchase Orders</h1>
-          <p className="text-sm text-muted-foreground">Orders to suppliers — mark as received to add stock</p>
+          <h1 className="font-display text-3xl lg:text-4xl font-bold text-brand-dark">Purchase Orders</h1>
+          <p className="text-muted-foreground mt-1">Orders to suppliers — mark as received to add stock</p>
         </div>
         <div className="flex gap-2 flex-wrap">
           <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => e.target.files?.[0] && importCsv(e.target.files[0])} />
