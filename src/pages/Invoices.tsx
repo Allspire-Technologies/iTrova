@@ -11,9 +11,10 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import SearchableSelect from "@/components/SearchableSelect";
 import ConfirmDialog from "@/components/ConfirmDialog";
-import { Plus, Search, FileText, Trash2, Download, Eye, MessageCircle, Pencil, Mail, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { Plus, Search, FileText, Trash2, Download, Eye, MessageCircle, Pencil, Mail, ArrowUp, ArrowDown, ArrowUpDown, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { downloadPdf } from "@/lib/pdf";
+import { buildReceiptHtml } from "@/lib/receipt";
 import { toCsv, downloadCsv } from "@/lib/csv";
 import Paginator, { usePagination } from "@/components/Paginator";
 import { TablePageSkeleton } from "@/components/Skeletons";
@@ -297,6 +298,32 @@ export default function Invoices() {
     }, `${i.invoice_number}.pdf`);
   };
 
+  const printReceipt = async (i: Invoice) => {
+    const { data } = await supabase.from("invoice_items").select("*").eq("invoice_id", i.id);
+    const items = ((data as Item[]) || []).map(it => ({
+      description: it.description,
+      quantity: Number(it.quantity),
+      line_total: Number(it.line_total),
+    }));
+    const html = buildReceiptHtml({
+      businessName: business?.name || "",
+      docNumber: i.invoice_number,
+      date: i.issue_date,
+      customerName: i.customer_name,
+      servedBy: i.created_by ? creators[i.created_by] : null,
+      items,
+      subtotal: Number(i.subtotal),
+      discount: Number(i.discount_amount) || 0,
+      total: Number(i.total),
+      paid: i.status === "paid",
+      formatMoney: fmt,
+    });
+    const w = window.open("", "_blank", "width=360,height=640");
+    if (!w) { toast.error("Allow pop-ups to print the receipt"); return; }
+    w.document.write(html);
+    w.document.close();
+  };
+
   const todayInTz = new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(new Date());
 
   const shareWa = (inv: Invoice) => {
@@ -476,6 +503,7 @@ export default function Invoices() {
                         <Button variant="ghost" size="icon" onClick={() => openView(i)}><Eye className="size-4" /></Button>
                         {canManage && <Button variant="ghost" size="icon" disabled={i.status === "void"} title={i.status === "void" ? "Voided invoices can't be edited" : undefined} onClick={() => openEdit(i)}><Pencil className="size-4" /></Button>}
                         <Button variant="ghost" size="icon" onClick={() => exportPdf(i)}><Download className="size-4" /></Button>
+                        {i.status === "paid" && <Button variant="ghost" size="icon" title="Print receipt" onClick={() => printReceipt(i)}><Printer className="size-4" /></Button>}
                         {canManage && <Button variant="ghost" size="icon" onClick={() => remove(i)}><Trash2 className="size-4 text-destructive" /></Button>}
                       </div>
                     </td>
@@ -588,6 +616,7 @@ export default function Invoices() {
                   window.open(`mailto:${viewing.customer_email}?subject=${subject}&body=${body}`);
                 }}><Mail className="size-4 mr-1" /> Email</Button>
                 <Button variant="outline" onClick={() => shareWa(viewing)}><MessageCircle className="size-4 mr-1" /> WhatsApp</Button>
+                {viewing.status === "paid" && <Button variant="outline" onClick={() => printReceipt(viewing)}><Printer className="size-4 mr-1" /> Print receipt</Button>}
                 <Button onClick={() => exportPdf(viewing)}><Download className="size-4 mr-1" /> Download PDF</Button>
               </DialogFooter>
             </>
