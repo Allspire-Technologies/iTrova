@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, Plus, Minus, Trash2, ShoppingCart, Banknote, Smartphone, CreditCard, CheckCircle2, ClipboardList, ScanLine, Printer, MessageCircle, BarChart2, AlertTriangle } from "lucide-react";
+import { Search, Plus, Minus, Trash2, ShoppingCart, Banknote, Smartphone, CreditCard, CheckCircle2, ClipboardList, ScanLine, Printer, MessageCircle, BarChart2, AlertTriangle, PauseCircle } from "lucide-react";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { toast } from "sonner";
@@ -14,6 +14,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import OrdersPanel from "@/components/OrdersPanel";
 import Paginator, { usePagination } from "@/components/Paginator";
 import { POSSkeleton } from "@/components/Skeletons";
+import ConfirmDialog from "@/components/ConfirmDialog";
+import { summarizeHeldSale, heldItemsPreview, parseHeldSales, serializeHeldSales, heldStorageKey, type HeldSale } from "@/lib/heldSales";
 
 type Product = { id: string; name: string; sku: string | null; selling_price: number; stock_quantity: number; reorder_level: number; category: string | null };
 type CartItem = { product: Product; qty: number };
@@ -39,6 +41,20 @@ export default function POS() {
   const [busy, setBusy] = useState(false);
   const [receipt, setReceipt] = useState<{ total: number; discount: number; items: CartItem[]; method: string } | null>(null);
   const [eod, setEod] = useState<EodData | null>(null);
+  const [held, setHeld] = useState<HeldSale[]>([]);
+  const [heldOpen, setHeldOpen] = useState(false);
+  const [clearConfirm, setClearConfirm] = useState(false);
+
+  const heldKey = business ? heldStorageKey(business.id) : null;
+
+  useEffect(() => {
+    if (heldKey) setHeld(parseHeldSales(localStorage.getItem(heldKey)));
+  }, [heldKey]);
+
+  const persistHeld = (next: HeldSale[]) => {
+    setHeld(next);
+    if (heldKey) localStorage.setItem(heldKey, serializeHeldSales(next));
+  };
 
   const load = async () => {
     const { data } = await supabase.from("products").select("id,name,sku,selling_price,stock_quantity,reorder_level,category").gt("stock_quantity", 0).order("name");
@@ -92,6 +108,32 @@ export default function POS() {
   };
 
   const remove = (id: string) => setCart(prev => prev.filter(i => i.product.id !== id));
+
+  const newId = () => (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+
+  const holdSale = () => {
+    if (cart.length === 0) return;
+    persistHeld([{ id: newId(), createdAt: new Date().toISOString(), items: cart, discount }, ...held]);
+    setCart([]);
+    setDiscount(0);
+    toast.success("Sale held");
+  };
+
+  const resumeHeld = (sale: HeldSale) => {
+    let next = held.filter(s => s.id !== sale.id);
+    if (cart.length > 0) {
+      next = [{ id: newId(), createdAt: new Date().toISOString(), items: cart, discount }, ...next];
+      toast.success("Current sale held");
+    }
+    persistHeld(next);
+    setCart(sale.items as CartItem[]);
+    setDiscount(sale.discount);
+    setHeldOpen(false);
+  };
+
+  const discardHeld = (id: string) => persistHeld(held.filter(s => s.id !== id));
+
+  const clearCart = () => { setCart([]); setDiscount(0); setClearConfirm(false); };
 
   const subtotal = cart.reduce((a, i) => a + i.qty * Number(i.product.selling_price), 0);
   const total = Math.max(0, subtotal - discount);
@@ -207,28 +249,34 @@ export default function POS() {
 
   return (
     <div className="space-y-6 w-full">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl md:text-3xl lg:text-4xl font-bold text-brand-dark">Point of Sale</h1>
-          <p className="text-muted-foreground mt-1 text-sm md:text-base">Walk-in sales and online / phone orders.</p>
-        </div>
-        {(role === "owner" || role === "manager") && (
-          <Button variant="outline" onClick={openEod}>
-            <BarChart2 className="size-4 mr-1" /> End of Day
-          </Button>
-        )}
-      </div>
-
       <Tabs defaultValue="sale" className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
-          <TabsTrigger value="sale" className="gap-2"><ShoppingCart className="size-4" /> Sale</TabsTrigger>
-          <TabsTrigger value="orders" className="gap-2"><ClipboardList className="size-4" /> Orders</TabsTrigger>
-        </TabsList>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="font-display text-2xl md:text-3xl lg:text-4xl font-bold text-brand-dark">Point of Sale</h1>
+            <p className="text-muted-foreground mt-1 text-sm md:text-base">Walk-in sales and online / phone orders.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <TabsList className="grid grid-cols-2">
+              <TabsTrigger value="sale" className="gap-2"><ShoppingCart className="size-4" /> Sale</TabsTrigger>
+              <TabsTrigger value="orders" className="gap-2"><ClipboardList className="size-4" /> Orders</TabsTrigger>
+            </TabsList>
+            {held.length > 0 && (
+              <Button variant="outline" size="sm" className="border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 hover:text-amber-800" onClick={() => setHeldOpen(true)}>
+                <ClipboardList className="size-4 mr-1" /> Held sales ({held.length})
+              </Button>
+            )}
+            {(role === "owner" || role === "manager") && (
+              <Button variant="outline" size="sm" onClick={openEod}>
+                <BarChart2 className="size-4 mr-1" /> End of Day
+              </Button>
+            )}
+          </div>
+        </div>
 
         <TabsContent value="sale" className="mt-6">
-          <div className="grid lg:grid-cols-[1fr,400px] gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-6">
             {/* Product grid */}
-            <div className="space-y-4">
+            <div className="space-y-4 min-w-0">
               <div className="grid sm:grid-cols-[1fr,260px] gap-2">
                 <div className="relative">
                   <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -293,12 +341,19 @@ export default function POS() {
             </div>
 
             {/* Cart */}
-            <Card className="shadow-elevated border-border/60 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] flex flex-col">
+            <Card className="shadow-elevated border-border/60 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] flex flex-col min-w-0">
               <div className="p-5 border-b border-border flex items-center gap-2">
                 <ShoppingCart className="size-4 text-brand" />
                 <h2 className="font-display font-semibold text-brand-dark">Active Sale</h2>
                 <Badge variant="outline" className="ml-auto bg-brand-light text-brand-dark border-brand/20">{cart.length} item{cart.length === 1 ? "" : "s"}</Badge>
               </div>
+
+              {cart.length > 0 && (
+                <div className="px-3 pt-3 flex gap-2">
+                  <Button variant="outline" size="sm" className="flex-1" onClick={holdSale}><PauseCircle className="size-4 mr-1" /> Hold sale</Button>
+                  {cart.length > 1 && <Button variant="outline" size="sm" className="flex-1 text-muted-foreground hover:text-destructive" onClick={() => setClearConfirm(true)}><Trash2 className="size-4 mr-1" /> Clear all</Button>}
+                </div>
+              )}
 
               <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-[200px]">
                 {cart.length === 0 ? (
@@ -392,6 +447,45 @@ export default function POS() {
           <OrdersPanel products={products} onStockChanged={load} />
         </TabsContent>
       </Tabs>
+
+      {/* Held sales */}
+      <Dialog open={heldOpen} onOpenChange={setHeldOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display">Held sales</DialogTitle>
+          </DialogHeader>
+          {held.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-6">No held sales.</p>
+          ) : (
+            <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+              {held.map(s => {
+                const sum = summarizeHeldSale(s);
+                return (
+                  <div key={s.id} className="p-3 rounded-lg bg-secondary/50 flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-sm text-brand-dark">{fmt(sum.total)} · {sum.count} item{sum.count === 1 ? "" : "s"}</div>
+                      <div className="text-xs text-muted-foreground truncate">{heldItemsPreview(s.items)}</div>
+                      <div className="text-[11px] text-muted-foreground">{fmtDateTime(s.createdAt)}</div>
+                    </div>
+                    <Button size="sm" onClick={() => resumeHeld(s)}>Resume</Button>
+                    <Button size="icon" variant="ghost" className="size-8 text-muted-foreground hover:text-destructive" aria-label="Discard held sale" onClick={() => discardHeld(s.id)}><Trash2 className="size-4" /></Button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={clearConfirm}
+        onOpenChange={setClearConfirm}
+        title="Clear all items?"
+        description="This removes every item from the current sale. Held sales are not affected."
+        confirmLabel="Clear all"
+        variant="destructive"
+        onConfirm={clearCart}
+      />
 
       {/* End of Day summary */}
       <Dialog open={!!eod} onOpenChange={(o) => !o && setEod(null)}>
