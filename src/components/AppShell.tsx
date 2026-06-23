@@ -9,6 +9,7 @@ import { AppShellSkeleton } from "@/components/Skeletons";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import NotificationsBell from "@/components/NotificationsBell";
 import HeaderClock from "@/components/HeaderClock";
+import IdleTimeout from "@/components/IdleTimeout";
 
 import type { AppRole } from "@/contexts/AuthContext";
 
@@ -221,6 +222,8 @@ export default function AppShell() {
         confirmLabel="Sign out"
         onConfirm={confirmSignOut}
       />
+
+      <IdleTimeout />
     </div>
   );
 }
