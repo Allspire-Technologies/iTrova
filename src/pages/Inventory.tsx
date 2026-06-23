@@ -16,6 +16,7 @@ import StockAdjustDialog from "@/components/StockAdjustDialog";
 import Paginator, { usePagination } from "@/components/Paginator";
 import { TablePageSkeleton } from "@/components/Skeletons";
 import { getLimit, isAtLimit, limitMessage } from "@/lib/planLimits";
+import { findSkuConflict, buildImportPlan } from "@/lib/inventoryRules";
 import { useCurrency } from "@/hooks/useCurrency";
 
 type Product = {
@@ -69,7 +70,7 @@ export default function Inventory() {
     }
     const sku = (form.sku || "").trim();
     if (!sku) { toast.error("SKU is required"); return; }
-    const dup = items.find(p => p.id !== editing?.id && p.sku?.trim().toLowerCase() === sku.toLowerCase());
+    const dup = findSkuConflict(sku, items, editing?.id);
     if (dup) { toast.error(`SKU "${sku}" is already used by ${dup.name}`); return; }
     setBusy(true);
     const payload = {
@@ -115,60 +116,26 @@ export default function Inventory() {
     try {
       const text = await readFileText(file);
       const rows = parseCsv(text);
-      const usable = rows.filter(r => r.name?.trim() && r.sku?.trim());
-      const noSku = rows.filter(r => r.name?.trim() && !r.sku?.trim()).length;
-      if (usable.length === 0) return toast.error("No valid rows. Required columns: name, sku");
-
-      // Aggregate by SKU (case-insensitive) so duplicate rows in the file merge.
-      const agg = new Map<string, { fields: Record<string, unknown>; qty: number }>();
-      for (const r of usable) {
-        const key = r.sku.trim().toLowerCase();
-        const fields: Record<string, unknown> = {
-          name: r.name.trim(),
-          category: r.category || null,
-          sku: r.sku.trim(),
-          unit: r.unit || "pcs",
-          selling_price: Number(r.selling_price) || 0,
-          cost_price: Number(r.cost_price) || 0,
-          reorder_level: Number(r.reorder_level) || 5,
-        };
-        const prev = agg.get(key);
-        agg.set(key, { fields, qty: (prev?.qty || 0) + (Number(r.stock_quantity) || 0) });
-      }
-
-      const existingBySku = new Map(items.filter(p => p.sku).map(p => [p.sku!.trim().toLowerCase(), p]));
-      const toUpdate: { id: string; fields: Record<string, unknown>; stock: number }[] = [];
-      const toInsert: Record<string, unknown>[] = [];
-      for (const [key, a] of agg) {
-        const ex = existingBySku.get(key);
-        if (ex) toUpdate.push({ id: ex.id, fields: a.fields, stock: Number(ex.stock_quantity) + a.qty });
-        else toInsert.push({ ...a.fields, stock_quantity: a.qty, business_id: business.id });
-      }
-
-      // The plan limit only restricts NEW products; restocks of existing ones are always allowed.
-      const limit = getLimit(business.subscription_tier, "products");
-      let insertList = toInsert;
-      let overLimit = 0;
-      if (limit !== null) {
-        const capacity = Math.max(0, limit - items.length);
-        if (toInsert.length > capacity) { overLimit = toInsert.length - capacity; insertList = toInsert.slice(0, capacity); }
+      const plan = buildImportPlan(rows, items, items.length, getLimit(business.subscription_tier, "products"));
+      if (plan.inserts.length === 0 && plan.updates.length === 0) {
+        return toast.error("No valid rows. Required columns: name, sku");
       }
 
       let updated = 0;
-      for (const u of toUpdate) {
+      for (const u of plan.updates) {
         const { error } = await supabase.from("products").update({ ...u.fields, stock_quantity: u.stock }).eq("id", u.id);
         if (!error) updated++;
       }
-      if (insertList.length > 0) {
-        const { error } = await supabase.from("products").insert(insertList as never);
+      if (plan.inserts.length > 0) {
+        const { error } = await supabase.from("products").insert(plan.inserts.map(i => ({ ...i, business_id: business.id })) as never);
         if (error) return toast.error(error.message);
       }
 
       const parts: string[] = [];
-      if (insertList.length) parts.push(`${insertList.length} added`);
+      if (plan.inserts.length) parts.push(`${plan.inserts.length} added`);
       if (updated) parts.push(`${updated} restocked`);
-      if (overLimit) parts.push(`${overLimit} skipped (plan limit)`);
-      if (noSku) parts.push(`${noSku} skipped (no SKU)`);
+      if (plan.overLimit) parts.push(`${plan.overLimit} skipped (plan limit)`);
+      if (plan.skippedNoSku) parts.push(`${plan.skippedNoSku} skipped (no SKU)`);
       toast.success(parts.length ? `Import: ${parts.join(", ")}` : "Nothing to import");
       load();
     } catch (e: any) {

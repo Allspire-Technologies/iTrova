@@ -20,6 +20,7 @@ import { TablePageSkeleton } from "@/components/Skeletons";
 import { getLimit, isAtLimit, limitMessage } from "@/lib/planLimits";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useDateFormat } from "@/hooks/useDateFormat";
+import { INVOICE_STATUSES as STATUSES, statusOptionsFor, isOverdue, overdueDays } from "@/lib/invoiceStatus";
 
 type Invoice = {
   id: string; invoice_number: string; customer_name: string; customer_phone: string | null;
@@ -29,8 +30,6 @@ type Invoice = {
   created_by: string | null;
 };
 type Item = { id?: string; description: string; quantity: number; unit_price: number; line_total: number };
-
-const STATUSES = ["draft", "issued", "paid", "void"];
 
 export default function Invoices() {
   const { business, user, role } = useAuth();
@@ -253,9 +252,6 @@ export default function Invoices() {
     changeStatus(i, status);
   };
 
-  // POS invoices, and any invoice already paid, are limited to paid/void.
-  const statusOptionsFor = (i: Invoice) => (i.sale_id || i.status === "paid" ? ["paid", "void"] : STATUSES);
-
   const openView = async (i: Invoice) => {
     setViewing(i);
     const { data } = await supabase.from("invoice_items").select("*").eq("invoice_id", i.id);
@@ -302,11 +298,6 @@ export default function Invoices() {
   };
 
   const todayInTz = new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(new Date());
-  const isOverdue = (inv: Invoice) =>
-    inv.status === "issued" && !!inv.due_date && inv.due_date < todayInTz;
-
-  const overdueDays = (inv: Invoice) =>
-    Math.max(1, Math.round((Date.parse(todayInTz) - Date.parse(inv.due_date!)) / 86_400_000));
 
   const shareWa = (inv: Invoice) => {
     const text = [
@@ -477,7 +468,7 @@ export default function Invoices() {
                         ) : (
                           <Badge variant={statusColor(i.status) as any}>{i.status}</Badge>
                         )}
-                        {isOverdue(i) && <Badge variant="destructive" className="text-xs shrink-0">Overdue</Badge>}
+                        {isOverdue(i, todayInTz) && <Badge variant="destructive" className="text-xs shrink-0">Overdue</Badge>}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right">
@@ -549,8 +540,8 @@ export default function Invoices() {
                 <DialogTitle className="flex items-center gap-2 flex-wrap">
                   {viewing.invoice_number}
                   <Badge variant={statusColor(viewing.status) as any}>{viewing.status}</Badge>
-                  {isOverdue(viewing) && (
-                    <Badge variant="destructive">{overdueDays(viewing)} day{overdueDays(viewing) === 1 ? "" : "s"} overdue</Badge>
+                  {isOverdue(viewing, todayInTz) && (
+                    <Badge variant="destructive">{overdueDays(viewing.due_date!, todayInTz)} day{overdueDays(viewing.due_date!, todayInTz) === 1 ? "" : "s"} overdue</Badge>
                   )}
                 </DialogTitle>
               </DialogHeader>
