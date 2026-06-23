@@ -12,6 +12,17 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { toast } from "sonner";
 import { ReportsChartSkeleton } from "@/components/Skeletons";
+import {
+  salesSummary,
+  supplierSpendTotal,
+  pctChange,
+  outOfStockProducts,
+  lowStockProducts,
+  topProductsByRevenue,
+  staffRevenue,
+  productTurnover,
+  supplierSpendRows as supplierSpendRowsOf,
+} from "@/lib/reportMetrics";
 
 type Sale = { id: string; total_amount: number; created_at: string; staff_id?: string | null };
 type SaleItem = { sale_id: string; product_id: string | null; quantity: number; unit_price: number };
@@ -86,20 +97,10 @@ export default function Reports() {
     })();
   }, [business, from, to]);
 
-  const totals = useMemo(() => {
-    const revenue = sales.reduce((a, s) => a + Number(s.total_amount), 0);
-    const txns = sales.length;
-    const avg = txns ? revenue / txns : 0;
-    const units = saleItems.reduce((a, i) => a + Number(i.quantity), 0);
-    const productById = new Map(products.map(p => [p.id, p]));
-    const cogs = saleItems.reduce((a, i) => {
-      const p = i.product_id ? productById.get(i.product_id) : null;
-      return a + Number(p?.cost_price || 0) * Number(i.quantity);
-    }, 0);
-    const grossProfit = revenue - cogs;
-    const supplierSpend = purchases.reduce((a, p) => a + Number(p.total_cost), 0);
-    return { revenue, txns, avg, units, cogs, grossProfit, supplierSpend };
-  }, [sales, saleItems, products, purchases]);
+  const totals = useMemo(
+    () => ({ ...salesSummary(sales, saleItems, products), supplierSpend: supplierSpendTotal(purchases) }),
+    [sales, saleItems, products, purchases]
+  );
 
   const dailyTrend = useMemo(() => {
     const map = new Map<string, number>();
@@ -114,86 +115,27 @@ export default function Reports() {
     return Array.from(map.entries()).map(([day, total]) => ({ day: day.slice(5), total }));
   }, [sales, from, to]);
 
-  const topProducts = useMemo(() => {
-    const map = new Map<string, { name: string; qty: number; revenue: number }>();
-    const pById = new Map(products.map(p => [p.id, p]));
-    saleItems.forEach(i => {
-      const id = i.product_id || "—";
-      const name = (i.product_id && pById.get(i.product_id)?.name) || "Unknown";
-      const cur = map.get(id) || { name, qty: 0, revenue: 0 };
-      cur.qty += Number(i.quantity);
-      cur.revenue += Number(i.quantity) * Number(i.unit_price);
-      map.set(id, cur);
-    });
-    return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 10);
-  }, [saleItems, products]);
+  const topProducts = useMemo(() => topProductsByRevenue(saleItems, products), [saleItems, products]);
 
-  const supplierSpendRows = useMemo(() => {
-    const sById = new Map(suppliers.map(s => [s.id, s.name]));
-    const map = new Map<string, number>();
-    purchases.forEach(p => {
-      const k = p.supplier_id || "—";
-      map.set(k, (map.get(k) || 0) + Number(p.total_cost));
-    });
-    return Array.from(map.entries())
-      .map(([id, total]) => ({ name: sById.get(id) || "Unknown", total }))
-      .sort((a, b) => b.total - a.total);
-  }, [purchases, suppliers]);
+  const supplierSpendRows = useMemo(() => supplierSpendRowsOf(purchases, suppliers), [purchases, suppliers]);
 
   const outOfStock = useMemo(
-    () => products.filter(p => Number(p.stock_quantity) === 0).sort((a, b) => a.name.localeCompare(b.name)),
+    () => outOfStockProducts(products).sort((a, b) => a.name.localeCompare(b.name)),
     [products]
   );
 
   const lowStock = useMemo(
-    () => products
-      .filter(p => Number(p.stock_quantity) > 0 && Number(p.stock_quantity) <= Number(p.reorder_level))
-      .sort((a, b) => Number(a.stock_quantity) - Number(b.stock_quantity)),
+    () => lowStockProducts(products).sort((a, b) => Number(a.stock_quantity) - Number(b.stock_quantity)),
     [products]
   );
 
-  const byStaff = useMemo(() => {
-    const map = new Map<string, { name: string; revenue: number }>();
-    sales.forEach(s => {
-      const name = (s.staff_id && staffProfiles[s.staff_id]) || (s.staff_id ? "Staff" : "Walk-in");
-      const cur = map.get(name) || { name, revenue: 0 };
-      cur.revenue += Number(s.total_amount);
-      map.set(name, cur);
-    });
-    return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue);
-  }, [sales, staffProfiles]);
+  const byStaff = useMemo(() => staffRevenue(sales, staffProfiles), [sales, staffProfiles]);
 
-  const turnover = useMemo(() => {
-    const soldById = new Map<string, number>();
-    saleItems.forEach(i => {
-      if (i.product_id) soldById.set(i.product_id, (soldById.get(i.product_id) || 0) + Number(i.quantity));
-    });
-    return products
-      .filter(p => soldById.has(p.id))
-      .map(p => ({
-        name: p.name,
-        sold: soldById.get(p.id) || 0,
-        stock: Number(p.stock_quantity),
-        rate: Number(p.stock_quantity) > 0 ? (soldById.get(p.id) || 0) / Number(p.stock_quantity) : null,
-      }))
-      .sort((a, b) => (b.rate ?? Infinity) - (a.rate ?? Infinity))
-      .slice(0, 10);
-  }, [saleItems, products]);
+  const turnover = useMemo(() => productTurnover(saleItems, products), [saleItems, products]);
 
-  const prevTotals = useMemo(() => {
-    const revenue = prevSales.reduce((a, s) => a + Number(s.total_amount), 0);
-    const txns = prevSales.length;
-    const units = prevSaleItems.reduce((a, i) => a + Number(i.quantity), 0);
-    const productById = new Map(products.map(p => [p.id, p]));
-    const cogs = prevSaleItems.reduce((a, i) => {
-      const p = i.product_id ? productById.get(i.product_id) : null;
-      return a + Number(p?.cost_price || 0) * Number(i.quantity);
-    }, 0);
-    return { revenue, txns, units, grossProfit: revenue - cogs };
-  }, [prevSales, prevSaleItems, products]);
+  const prevTotals = useMemo(() => salesSummary(prevSales, prevSaleItems, products), [prevSales, prevSaleItems, products]);
 
-  const pct = (cur: number, prev: number): number | null =>
-    prev === 0 ? null : ((cur - prev) / prev) * 100;
+  const pct = pctChange;
 
   const exportPdf = () => {
     const doc = new jsPDF({ unit: "pt", format: "a4" });
