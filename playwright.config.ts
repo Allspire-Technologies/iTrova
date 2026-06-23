@@ -14,7 +14,9 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
     // Serve a production build so there's no first-request dep-optimization stall.
-    command: "npm run build && npm run preview -- --port 8080 --strictPort",
+    // Call vite preview directly: the `preview` script is repurposed for `wrangler dev`,
+    // which rejects Vite's --strictPort flag.
+    command: "npm run build && npx vite preview --port 8080 --strictPort",
     url: "http://localhost:8080",
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
