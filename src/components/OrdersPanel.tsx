@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import Paginator, { usePagination } from "@/components/Paginator";
 import SearchableSelect from "@/components/SearchableSelect";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import { orderStatusOptions, isOrderLocked } from "@/lib/orderStatus";
 
 type Product = { id: string; name: string; selling_price: number; stock_quantity: number; category: string | null };
 type OrderItem = { id?: string; product_id: string; product_name?: string; quantity: number; unit_price: number };
@@ -58,7 +59,7 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<OrderItem[]>([]);
   const [saving, setSaving] = useState(false);
-  const [pending, setPending] = useState<{ title: string; description: string; onConfirm: () => void } | null>(null);
+  const [pending, setPending] = useState<{ title: string; description: string; confirmLabel?: string; variant?: "destructive" | "default"; onConfirm: () => void } | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -148,9 +149,36 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
     }
     const { error } = await supabase.from("orders").update({ status: newStatus }).eq("id", order.id);
     if (error) return toast.error(error.message);
-    toast.success(`Order marked ${newStatus}`);
+    toast.success(newStatus === "cancelled" ? "Order cancelled" : `Order marked ${newStatus}`);
     load();
-    if (newStatus === "shipped") onStockChanged();
+    if (newStatus === "shipped" || newStatus === "cancelled") onStockChanged();
+  };
+
+  const requestStatusChange = (order: Order, newStatus: string) => {
+    if (newStatus === order.status) return;
+    if (newStatus === "delivered") {
+      setPending({
+        title: "Mark this order delivered?",
+        description: "Once delivered, the order can only be cancelled — you won't be able to set it back to pending or shipped.",
+        confirmLabel: "Mark delivered",
+        variant: "default",
+        onConfirm: () => updateStatus(order, "delivered"),
+      });
+      return;
+    }
+    if (newStatus === "cancelled") {
+      setPending({
+        title: `Cancel order for ${order.customer_name}?`,
+        description: order.stock_deducted
+          ? "The items will be returned to stock and the order can't be reopened."
+          : "This order will be cancelled and can't be reopened.",
+        confirmLabel: "Cancel order",
+        variant: "destructive",
+        onConfirm: () => updateStatus(order, "cancelled"),
+      });
+      return;
+    }
+    updateStatus(order, newStatus);
   };
 
   const deleteOrder = (o: Order) => {
@@ -318,9 +346,10 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
                   </div>
                   <SearchableSelect
                     value={o.status}
-                    onValueChange={(v) => updateStatus(o, v)}
+                    onValueChange={(v) => requestStatusChange(o, v)}
+                    disabled={isOrderLocked(o.status)}
                     className="h-9 w-[140px]"
-                    options={STATUSES.map(s => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) }))}
+                    options={orderStatusOptions(o.status).map(s => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) }))}
                   />
                   <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive" onClick={() => deleteOrder(o)}>
                     <Trash2 className="size-4" />
@@ -341,6 +370,8 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
         onOpenChange={(open) => !open && setPending(null)}
         title={pending?.title ?? ""}
         description={pending?.description}
+        confirmLabel={pending?.confirmLabel}
+        variant={pending?.variant}
         onConfirm={pending?.onConfirm ?? (() => {})}
       />
     </div>
