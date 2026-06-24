@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import SearchableSelect from "@/components/SearchableSelect";
 import { CURRENCY_OPTIONS } from "@/lib/format";
 import { SETTINGS_PAGE_CLASS, SETTINGS_FIELD_GRID, SETTINGS_PLANS_GRID } from "@/lib/settingsLayout";
-import { highestCataloguePlan, featuresBeyond } from "@/lib/planFeatures";
+import { highestCataloguePlan, previousCataloguePlan, includesAll, featuresBeyond } from "@/lib/planFeatures";
 import { toast } from "sonner";
 import { Eye, EyeOff, Building2, Globe, Bell, Link2, CreditCard, Shield, CheckCircle2 } from "lucide-react";
 
@@ -52,8 +52,9 @@ const TIMEZONES = [
 type NotifPrefs = { low_stock_alerts: boolean; overdue_invoice_alerts: boolean; daily_summary: boolean };
 const DEFAULT_PREFS: NotifPrefs = { low_stock_alerts: true, overdue_invoice_alerts: true, daily_summary: false };
 
-function PlanCard({ plan, currentPlan, businessName }: { plan: Plan; currentPlan: string; businessName: string }) {
+function PlanCard({ plan, inheritsFrom, currentPlan, businessName }: { plan: Plan; inheritsFrom: { name: string; features: string[] } | null; currentPlan: string; businessName: string }) {
   const active = plan.key === currentPlan;
+  const shownFeatures = inheritsFrom ? featuresBeyond(plan.features || [], inheritsFrom.features) : (plan.features || []);
   const cycles = (plan.prices || [])
     .filter(p => p.is_active)
     .sort((a, b) => CYCLE_ORDER.indexOf(a.cycle) - CYCLE_ORDER.indexOf(b.cycle));
@@ -109,7 +110,13 @@ function PlanCard({ plan, currentPlan, businessName }: { plan: Plan; currentPlan
       </div>
 
       <ul className="space-y-1.5 flex-1">
-        {(plan.features || []).map(f => (
+        {inheritsFrom && (
+          <li className="text-xs font-medium text-brand-dark flex items-start gap-1.5">
+            <span className="text-brand shrink-0 mt-0.5">✓</span>
+            Everything in {inheritsFrom.name}
+          </li>
+        )}
+        {shownFeatures.map(f => (
           <li key={f} className="text-xs text-muted-foreground flex items-start gap-1.5">
             <span className="text-brand shrink-0 mt-0.5">✓</span>
             {f}
@@ -537,9 +544,13 @@ export default function Settings() {
               <p className="text-sm text-muted-foreground">No plans available yet.</p>
             ) : (
             <div className={SETTINGS_PLANS_GRID}>
-              {plans.map(plan => (
-                <PlanCard key={plan.key} plan={plan} currentPlan={currentPlan} businessName={business?.name || ""} />
-              ))}
+              {plans.map(plan => {
+                const prev = previousCataloguePlan(plans, plan);
+                const inheritsFrom = prev && includesAll(plan.features || [], prev.features) ? prev : null;
+                return (
+                  <PlanCard key={plan.key} plan={plan} inheritsFrom={inheritsFrom} currentPlan={currentPlan} businessName={business?.name || ""} />
+                );
+              })}
             </div>
             )}
             <CustomPlanCard reference={highestCataloguePlan(plans)} />
