@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import SearchableSelect from "@/components/SearchableSelect";
 import { CURRENCY_OPTIONS } from "@/lib/format";
+import { useDateFormat } from "@/hooks/useDateFormat";
 import { SETTINGS_PAGE_CLASS, SETTINGS_FIELD_GRID, SETTINGS_PLANS_GRID } from "@/lib/settingsLayout";
 import { highestCataloguePlan, previousCataloguePlan, includesAll, featuresBeyond, planChangeAction, type PlanChange } from "@/lib/planFeatures";
 import { isDirty, isPasswordFormReady } from "@/lib/settingsForms";
@@ -207,7 +208,8 @@ function CustomPlanCard({ reference }: { reference: { name: string; features: st
 }
 
 export default function Settings() {
-  const { user, profile, business, role, plans, refresh } = useAuth();
+  const { user, profile, business, role, subscription, plans, refresh } = useAuth();
+  const { fmtDate } = useDateFormat();
   const isOwner = role === "owner";
 
   // Business Profile
@@ -541,6 +543,18 @@ export default function Settings() {
                 <CardDescription>
                   You are currently on the{" "}
                   <strong className="text-foreground capitalize">{currentPlan}</strong> plan.
+                  {subscription?.expired && (
+                    <span className="block mt-0.5 text-destructive">
+                      Your {plans.find(p => p.key === subscription.tier)?.name ?? subscription.tier} plan expired
+                      {subscription.renewsAt ? ` on ${fmtDate(subscription.renewsAt)}` : ""} — you've been moved to Free.
+                    </span>
+                  )}
+                  {!subscription?.expired && subscription?.daysRemaining != null && subscription.tier !== "free" && (
+                    <span className="block mt-0.5">
+                      Renews in {subscription.daysRemaining} day{subscription.daysRemaining === 1 ? "" : "s"}
+                      {subscription.renewsAt ? ` (${fmtDate(subscription.renewsAt)})` : ""}.
+                    </span>
+                  )}
                 </CardDescription>
               </div>
             </div>
