@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import SearchableSelect from "@/components/SearchableSelect";
 import { CURRENCY_OPTIONS } from "@/lib/format";
 import { SETTINGS_PAGE_CLASS, SETTINGS_FIELD_GRID, SETTINGS_PLANS_GRID } from "@/lib/settingsLayout";
-import { highestCataloguePlan, previousCataloguePlan, includesAll, featuresBeyond } from "@/lib/planFeatures";
+import { highestCataloguePlan, previousCataloguePlan, includesAll, featuresBeyond, planChangeAction, type PlanChange } from "@/lib/planFeatures";
 import { toast } from "sonner";
 import { Eye, EyeOff, Building2, Globe, Bell, Link2, CreditCard, Shield, CheckCircle2 } from "lucide-react";
 
@@ -52,7 +52,7 @@ const TIMEZONES = [
 type NotifPrefs = { low_stock_alerts: boolean; overdue_invoice_alerts: boolean; daily_summary: boolean };
 const DEFAULT_PREFS: NotifPrefs = { low_stock_alerts: true, overdue_invoice_alerts: true, daily_summary: false };
 
-function PlanCard({ plan, inheritsFrom, currentPlan, businessName }: { plan: Plan; inheritsFrom: { name: string; features: string[] } | null; currentPlan: string; businessName: string }) {
+function PlanCard({ plan, inheritsFrom, action, currentPlan, businessName }: { plan: Plan; inheritsFrom: { name: string; features: string[] } | null; action: PlanChange; currentPlan: string; businessName: string }) {
   const active = plan.key === currentPlan;
   const shownFeatures = inheritsFrom ? featuresBeyond(plan.features || [], inheritsFrom.features) : (plan.features || []);
   const cycles = (plan.prices || [])
@@ -134,11 +134,11 @@ function PlanCard({ plan, inheritsFrom, currentPlan, businessName }: { plan: Pla
             className="w-full"
             onClick={() => {
               const priceText = base > 0 ? `${money(effective)}/${CYCLE_PERIOD[cycle]}` : money(effective);
-              const msg = `Hi, I'd like to upgrade ${businessName || "my business"} to the ${plan.name} plan (${CYCLE_LABEL[cycle]}) — ${priceText}.`;
+              const msg = `Hi, I'd like to ${action} ${businessName || "my business"} to the ${plan.name} plan (${CYCLE_LABEL[cycle]}) — ${priceText}.`;
               window.open(`https://wa.me/2348137000305?text=${encodeURIComponent(msg)}`, "_blank");
             }}
           >
-            Request upgrade
+            {action === "downgrade" ? "Request downgrade" : "Request upgrade"}
           </Button>
         )}
       </div>
@@ -547,8 +547,10 @@ export default function Settings() {
               {plans.map(plan => {
                 const prev = previousCataloguePlan(plans, plan);
                 const inheritsFrom = prev && includesAll(plan.features || [], prev.features) ? prev : null;
+                const currentSortOrder = plans.find(p => p.key === currentPlan)?.sort_order ?? null;
+                const action = planChangeAction(plan.sort_order, currentSortOrder);
                 return (
-                  <PlanCard key={plan.key} plan={plan} inheritsFrom={inheritsFrom} currentPlan={currentPlan} businessName={business?.name || ""} />
+                  <PlanCard key={plan.key} plan={plan} inheritsFrom={inheritsFrom} action={action} currentPlan={currentPlan} businessName={business?.name || ""} />
                 );
               })}
             </div>
