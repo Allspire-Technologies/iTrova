@@ -46,35 +46,11 @@ const TIMEZONES = [
   { value: "Pacific/Auckland", label: "Pacific/Auckland (UTC+12/+13) — New Zealand" },
 ];
 
-const PLANS = [
-  {
-    key: "free",
-    name: "Free",
-    price: "₦0",
-    period: "",
-    features: ["Inventory management", "POS & sales", "Invoices & purchase orders", "Supplier management", "Basic reports"],
-  },
-  {
-    key: "pro",
-    name: "Pro",
-    price: "₦5,000",
-    period: "/month",
-    features: ["Everything in Free", "AI Business Insights", "Advanced analytics", "PDF report exports", "Priority support"],
-  },
-  {
-    key: "business",
-    name: "Business",
-    price: "₦15,000",
-    period: "/month",
-    features: ["Everything in Pro", "Multi-branch support", "API access", "Team analytics", "Dedicated support"],
-  },
-];
-
 type NotifPrefs = { low_stock_alerts: boolean; overdue_invoice_alerts: boolean; daily_summary: boolean };
 const DEFAULT_PREFS: NotifPrefs = { low_stock_alerts: true, overdue_invoice_alerts: true, daily_summary: false };
 
 export default function Settings() {
-  const { user, profile, business, role, refresh } = useAuth();
+  const { user, profile, business, role, plans, refresh } = useAuth();
   const isOwner = role === "owner";
 
   // Business Profile
@@ -408,9 +384,15 @@ export default function Settings() {
             </div>
           </CardHeader>
           <CardContent>
+            {plans.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No plans available yet.</p>
+            ) : (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {PLANS.map(plan => {
+              {plans.map(plan => {
                 const active = plan.key === currentPlan;
+                const price = Number(plan.price_amount) === 0
+                  ? "Free"
+                  : new Intl.NumberFormat(undefined, { style: "currency", currency: plan.price_currency || "NGN", currencyDisplay: "narrowSymbol", maximumFractionDigits: 0 }).format(Number(plan.price_amount));
                 return (
                   <div
                     key={plan.key}
@@ -423,11 +405,11 @@ export default function Settings() {
                       {active && <CheckCircle2 className="size-4 text-brand" />}
                     </div>
                     <div>
-                      <span className="text-2xl font-display font-bold text-brand-dark">{plan.price}</span>
-                      <span className="text-xs text-muted-foreground">{plan.period}</span>
+                      <span className="text-2xl font-display font-bold text-brand-dark">{price}</span>
+                      {plan.billing_period && <span className="text-xs text-muted-foreground">/{plan.billing_period}</span>}
                     </div>
                     <ul className="space-y-1.5 flex-1">
-                      {plan.features.map(f => (
+                      {(plan.features || []).map(f => (
                         <li key={f} className="text-xs text-muted-foreground flex items-start gap-1.5">
                           <span className="text-brand shrink-0 mt-0.5">✓</span>
                           {f}
@@ -438,8 +420,13 @@ export default function Settings() {
                       {active ? (
                         <p className="text-xs text-brand font-medium text-center">Current plan</p>
                       ) : (
-                        <Button variant="outline" size="sm" disabled className="w-full">
-                          Upgrade — Coming soon
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full"
+                          onClick={() => { window.location.href = `mailto:hello@allspire.tech?subject=${encodeURIComponent(`Upgrade to ${plan.name} plan`)}`; }}
+                        >
+                          Request upgrade
                         </Button>
                       )}
                     </div>
@@ -447,6 +434,7 @@ export default function Settings() {
                 );
               })}
             </div>
+            )}
           </CardContent>
         </Card>
       )}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getLimit, isAtLimit, limitMessage } from "./planLimits";
+import { getLimit, isAtLimit, limitMessage, registerPlanLimits } from "./planLimits";
 
 describe("getLimit", () => {
   it("returns the free cap for free/unset tiers", () => {
@@ -31,5 +31,21 @@ describe("limitMessage", () => {
     const msg = limitMessage("products");
     expect(msg).toContain("100");
     expect(msg).toContain("products");
+  });
+});
+
+describe("registerPlanLimits (DB-driven)", () => {
+  it("uses the registered caps for a tier, with null meaning unlimited", () => {
+    registerPlanLimits([{ key: "scale", limits: { products: 500, staff: null } }]);
+    expect(getLimit("scale", "products")).toBe(500);
+    expect(getLimit("scale", "staff")).toBeNull();
+    expect(isAtLimit(500, "scale", "products")).toBe(true);
+    expect(isAtLimit(499, "scale", "products")).toBe(false);
+  });
+
+  it("treats a resource absent from the registered plan as unlimited (non-free tier)", () => {
+    registerPlanLimits([{ key: "partial", limits: { products: 7 } }]);
+    expect(getLimit("partial", "products")).toBe(7);
+    expect(getLimit("partial", "suppliers")).toBeNull();
   });
 });

@@ -1,4 +1,5 @@
 export type PlanResource = "products" | "suppliers" | "rawMaterials" | "purchaseOrders" | "invoices" | "staff";
+export type PlanLimits = Partial<Record<PlanResource, number | null>>;
 
 const FREE_LIMITS: Record<PlanResource, number> = {
   products:       100,
@@ -18,8 +19,21 @@ const RESOURCE_LABELS: Record<PlanResource, string> = {
   staff:          "team members",
 };
 
+// Limits by plan key, populated from the Supabase `plans` table at runtime. Until it's
+// loaded (or for an unknown tier) we fall back to the Free caps so enforcement is safe.
+const registry: Record<string, PlanLimits> = {};
+
+export function registerPlanLimits(plans: { key: string; limits?: PlanLimits | null }[]): void {
+  for (const p of plans) registry[p.key] = p.limits ?? {};
+}
+
 /** Returns the numeric cap for a resource on the given tier, or null if unlimited. */
 export function getLimit(tier: string | null | undefined, resource: PlanResource): number | null {
+  const planLimits = tier ? registry[tier] : undefined;
+  if (planLimits && resource in planLimits) {
+    const v = planLimits[resource];
+    return v == null ? null : Number(v);
+  }
   if (!tier || tier === "free") return FREE_LIMITS[resource];
   return null;
 }
