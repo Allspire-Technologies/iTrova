@@ -40,3 +40,10 @@ export function featuresBeyond(features: string[], base: string[]): string[] {
   }
   return out;
 }
+
+export type PlanChange = "upgrade" | "downgrade";
+
+/** Whether switching to `planSortOrder` from the current tier is an upgrade or a downgrade. */
+export function planChangeAction(planSortOrder: number, currentSortOrder: number | null | undefined): PlanChange {
+  return currentSortOrder != null && planSortOrder < currentSortOrder ? "downgrade" : "upgrade";
+}

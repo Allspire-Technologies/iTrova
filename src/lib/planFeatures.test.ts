@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { highestCataloguePlan, previousCataloguePlan, includesAll, featuresBeyond } from "./planFeatures";
+import { highestCataloguePlan, previousCataloguePlan, includesAll, featuresBeyond, planChangeAction } from "./planFeatures";
 
 const plan = (key: string, sort_order: number, business_id: string | null = null) => ({ key, sort_order, business_id });
 
@@ -41,6 +41,20 @@ describe("includesAll", () => {
   });
   it("is false when a base feature is missing", () => {
     expect(includesAll(["A", "C"], ["A", "B"])).toBe(false);
+  });
+});
+
+describe("planChangeAction", () => {
+  it("is a downgrade when the target tier is below the current tier", () => {
+    expect(planChangeAction(1, 4)).toBe("downgrade"); // Free while on Enterprise
+    expect(planChangeAction(2, 3)).toBe("downgrade");
+  });
+  it("is an upgrade when the target tier is above the current tier", () => {
+    expect(planChangeAction(4, 1)).toBe("upgrade");
+  });
+  it("defaults to upgrade when the current tier is unknown", () => {
+    expect(planChangeAction(1, null)).toBe("upgrade");
+    expect(planChangeAction(1, undefined)).toBe("upgrade");
   });
 });
 
