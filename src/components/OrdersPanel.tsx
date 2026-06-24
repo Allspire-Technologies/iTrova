@@ -156,6 +156,18 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
 
   const requestStatusChange = (order: Order, newStatus: string) => {
     if (newStatus === order.status) return;
+    if (newStatus === "shipped") {
+      setPending({
+        title: "Mark this order shipped?",
+        description: order.stock_deducted
+          ? "The order will be marked as shipped."
+          : "This takes the items out of stock and marks the order shipped.",
+        confirmLabel: "Mark shipped",
+        variant: "default",
+        onConfirm: () => updateStatus(order, "shipped"),
+      });
+      return;
+    }
     if (newStatus === "delivered") {
       setPending({
         title: "Mark this order delivered?",
