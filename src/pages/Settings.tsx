@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth, type Plan } from "@/contexts/AuthContext";
-import { CYCLE_ORDER, CYCLE_LABEL, CYCLE_PERIOD, isPromoActive, effectivePrice, type BillingCycle } from "@/lib/planPricing";
+import { CYCLE_ORDER, CYCLE_LABEL, CYCLE_PERIOD, isPromoActive, cyclePrice, type BillingCycle } from "@/lib/planPricing";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,8 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import SearchableSelect from "@/components/SearchableSelect";
 import { CURRENCY_OPTIONS } from "@/lib/format";
+import { SETTINGS_PAGE_CLASS, SETTINGS_FIELD_GRID, SETTINGS_PLANS_GRID } from "@/lib/settingsLayout";
+import { highestCataloguePlan, previousCataloguePlan, includesAll, featuresBeyond } from "@/lib/planFeatures";
 import { toast } from "sonner";
 import { Eye, EyeOff, Building2, Globe, Bell, Link2, CreditCard, Shield, CheckCircle2 } from "lucide-react";
 
@@ -50,16 +52,18 @@ const TIMEZONES = [
 type NotifPrefs = { low_stock_alerts: boolean; overdue_invoice_alerts: boolean; daily_summary: boolean };
 const DEFAULT_PREFS: NotifPrefs = { low_stock_alerts: true, overdue_invoice_alerts: true, daily_summary: false };
 
-function PlanCard({ plan, currentPlan, businessName }: { plan: Plan; currentPlan: string; businessName: string }) {
+function PlanCard({ plan, inheritsFrom, currentPlan, businessName }: { plan: Plan; inheritsFrom: { name: string; features: string[] } | null; currentPlan: string; businessName: string }) {
   const active = plan.key === currentPlan;
+  const shownFeatures = inheritsFrom ? featuresBeyond(plan.features || [], inheritsFrom.features) : (plan.features || []);
   const cycles = (plan.prices || [])
     .filter(p => p.is_active)
     .sort((a, b) => CYCLE_ORDER.indexOf(a.cycle) - CYCLE_ORDER.indexOf(b.cycle));
   const [cycle, setCycle] = useState<BillingCycle>(cycles[0]?.cycle ?? "monthly");
   const selected = cycles.find(p => p.cycle === cycle) ?? cycles[0];
   const base = selected ? Number(selected.price_amount) : Number(plan.price_amount);
+  const cycleDiscount = selected ? Number(selected.discount_percent) : 0;
   const promoOn = isPromoActive(plan.promo_percent, plan.promo_until);
-  const effective = effectivePrice(base, plan.promo_percent, plan.promo_until);
+  const effective = cyclePrice(base, cycleDiscount, plan.promo_percent, plan.promo_until);
   const money = (n: number) =>
     n === 0
       ? "Free"
@@ -91,7 +95,7 @@ function PlanCard({ plan, currentPlan, businessName }: { plan: Plan; currentPlan
 
       <div>
         <div className="flex items-baseline gap-1.5 flex-wrap">
-          {promoOn && effective !== base && <span className="text-sm text-muted-foreground line-through">{money(base)}</span>}
+          {effective < base && <span className="text-sm text-muted-foreground line-through">{money(base)}</span>}
           <span className="text-2xl font-display font-bold text-brand-dark">{money(effective)}</span>
           {base > 0 && <span className="text-xs text-muted-foreground">/{CYCLE_PERIOD[cycle]}</span>}
         </div>
@@ -106,7 +110,13 @@ function PlanCard({ plan, currentPlan, businessName }: { plan: Plan; currentPlan
       </div>
 
       <ul className="space-y-1.5 flex-1">
-        {(plan.features || []).map(f => (
+        {inheritsFrom && (
+          <li className="text-xs font-medium text-brand-dark flex items-start gap-1.5">
+            <span className="text-brand shrink-0 mt-0.5">✓</span>
+            Everything in {inheritsFrom.name}
+          </li>
+        )}
+        {shownFeatures.map(f => (
           <li key={f} className="text-xs text-muted-foreground flex items-start gap-1.5">
             <span className="text-brand shrink-0 mt-0.5">✓</span>
             {f}
@@ -131,6 +141,65 @@ function PlanCard({ plan, currentPlan, businessName }: { plan: Plan; currentPlan
             Request upgrade
           </Button>
         )}
+      </div>
+    </div>
+  );
+}
+
+const CUSTOM_PLAN_IDEAL = ["Large organisations", "Enterprise deployments", "Sector-specific implementations"];
+const CUSTOM_PLAN_PLUS = [
+  "Custom branding",
+  "Custom workflows",
+  "Custom reports",
+  "Dedicated infrastructure",
+  "API integrations",
+  "SLA agreements",
+  "Custom onboarding and training",
+];
+
+function CustomPlanCard({ reference }: { reference: { name: string; features: string[] } | null }) {
+  const plus = featuresBeyond(CUSTOM_PLAN_PLUS, reference?.features ?? []);
+  return (
+    <div className="mt-4 rounded-xl border-2 border-brand/30 bg-brand-light/20 p-5 flex flex-col lg:flex-row gap-6">
+      <div className="lg:w-1/4 lg:border-r lg:border-border/60 lg:pr-6 space-y-3">
+        <div>
+          <Badge variant="outline" className="text-[10px] uppercase tracking-wider bg-secondary">Custom Plan</Badge>
+          <p className="mt-2 text-2xl font-display font-bold text-brand-dark">Custom Pricing</p>
+        </div>
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Ideal for</p>
+          <ul className="mt-1.5 space-y-1">
+            {CUSTOM_PLAN_IDEAL.map(t => (
+              <li key={t} className="text-sm text-muted-foreground">{t}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
+      <div className="flex-1 space-y-4">
+        {reference && (
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Includes</p>
+            <p className="mt-1.5 text-sm text-brand-dark flex items-center gap-1.5">
+              <span className="text-brand shrink-0">✓</span> Everything in {reference.name}
+            </p>
+          </div>
+        )}
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{reference ? "Plus" : "Includes"}</p>
+          <ul className="mt-1.5 grid sm:grid-cols-2 gap-x-4 gap-y-1.5">
+            {plus.map(f => (
+              <li key={f} className="text-sm text-muted-foreground flex items-start gap-1.5">
+                <span className="text-brand shrink-0 mt-0.5">✓</span>
+                {f}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="pt-1">
+          <Button asChild variant="brand" className="w-full sm:w-auto">
+            <a href="mailto:sales@allspire.tech?subject=Custom%20Plan%20enquiry">Contact Sales</a>
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -258,7 +327,7 @@ export default function Settings() {
   };
 
   return (
-    <div className="space-y-6 w-full max-w-3xl">
+    <div className={SETTINGS_PAGE_CLASS}>
       <div>
         <h1 className="font-display text-3xl lg:text-4xl font-bold text-brand-dark">Settings</h1>
         <p className="text-muted-foreground mt-1">Manage your account and business preferences.</p>
@@ -283,7 +352,7 @@ export default function Settings() {
               <Label>Business name</Label>
               <Input value={bizName} onChange={e => setBizName(e.target.value)} placeholder="Enter your business name" />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className={SETTINGS_FIELD_GRID}>
               <div className="space-y-2">
                 <Label>Owner name</Label>
                 <Input value={ownerName} onChange={e => setOwnerName(e.target.value)} placeholder="Enter your name" />
@@ -317,7 +386,7 @@ export default function Settings() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className={SETTINGS_FIELD_GRID}>
               <div className="space-y-2">
                 <Label>Currency</Label>
                 <SearchableSelect
@@ -428,26 +497,26 @@ export default function Settings() {
                   Your business WhatsApp number, used as the default for invoice and receipt sharing.
                 </p>
               </div>
-              <div className="flex gap-3">
+              <div className="flex flex-col sm:flex-row gap-3">
                 <Input
                   value={whatsapp}
                   onChange={e => setWhatsapp(e.target.value)}
                   placeholder="+234 801 234 5678"
-                  className="max-w-xs"
+                  className="w-full sm:max-w-xs"
                 />
-                <Button variant="brand" onClick={saveIntegrations} disabled={integrationsBusy}>
+                <Button variant="brand" onClick={saveIntegrations} disabled={integrationsBusy} className="w-full sm:w-auto">
                   {integrationsBusy ? "Saving..." : "Save"}
                 </Button>
               </div>
             </div>
-            <div className="rounded-lg border border-border/60 p-4 flex items-center justify-between bg-secondary/30">
+            <div className="rounded-lg border border-border/60 p-4 flex items-center justify-between gap-3 bg-secondary/30">
               <div>
                 <p className="text-sm font-medium">Paystack</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   Accept card and bank transfer payments directly from invoices.
                 </p>
               </div>
-              <Badge variant="outline" className="text-[10px] uppercase tracking-wider">Coming soon</Badge>
+              <Badge variant="outline" className="text-[10px] uppercase tracking-wider shrink-0">Coming soon</Badge>
             </div>
           </CardContent>
         </Card>
@@ -474,12 +543,17 @@ export default function Settings() {
             {plans.length === 0 ? (
               <p className="text-sm text-muted-foreground">No plans available yet.</p>
             ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {plans.map(plan => (
-                <PlanCard key={plan.key} plan={plan} currentPlan={currentPlan} businessName={business?.name || ""} />
-              ))}
+            <div className={SETTINGS_PLANS_GRID}>
+              {plans.map(plan => {
+                const prev = previousCataloguePlan(plans, plan);
+                const inheritsFrom = prev && includesAll(plan.features || [], prev.features) ? prev : null;
+                return (
+                  <PlanCard key={plan.key} plan={plan} inheritsFrom={inheritsFrom} currentPlan={currentPlan} businessName={business?.name || ""} />
+                );
+              })}
             </div>
             )}
+            <CustomPlanCard reference={highestCataloguePlan(plans)} />
           </CardContent>
         </Card>
       )}
@@ -499,7 +573,7 @@ export default function Settings() {
         </CardHeader>
         <CardContent className="space-y-4">
           <form onSubmit={changePassword} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className={SETTINGS_FIELD_GRID}>
               <div className="space-y-2">
                 <Label htmlFor="np">New password</Label>
                 <div className="relative">
@@ -555,14 +629,14 @@ export default function Settings() {
               </Button>
             </div>
           </form>
-          <div className="rounded-lg border border-border/60 p-4 flex items-center justify-between bg-secondary/30">
+          <div className="rounded-lg border border-border/60 p-4 flex items-center justify-between gap-3 bg-secondary/30">
             <div>
               <p className="text-sm font-medium">Two-factor authentication</p>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Add an extra layer of security with an authenticator app.
               </p>
             </div>
-            <Badge variant="outline" className="text-[10px] uppercase tracking-wider">Coming soon</Badge>
+            <Badge variant="outline" className="text-[10px] uppercase tracking-wider shrink-0">Coming soon</Badge>
           </div>
         </CardContent>
       </Card>
