@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import SearchableSelect from "@/components/SearchableSelect";
 import { CURRENCY_OPTIONS } from "@/lib/format";
 import { SETTINGS_PAGE_CLASS, SETTINGS_FIELD_GRID, SETTINGS_PLANS_GRID } from "@/lib/settingsLayout";
+import { highestCataloguePlan, featuresBeyond } from "@/lib/planFeatures";
 import { toast } from "sonner";
 import { Eye, EyeOff, Building2, Globe, Bell, Link2, CreditCard, Shield, CheckCircle2 } from "lucide-react";
 
@@ -149,7 +150,8 @@ const CUSTOM_PLAN_PLUS = [
   "Custom onboarding and training",
 ];
 
-function CustomPlanCard() {
+function CustomPlanCard({ reference }: { reference: { name: string; features: string[] } | null }) {
+  const plus = featuresBeyond(CUSTOM_PLAN_PLUS, reference?.features ?? []);
   return (
     <div className="mt-4 rounded-xl border-2 border-brand/30 bg-brand-light/20 p-5 flex flex-col lg:flex-row gap-6">
       <div className="lg:w-1/4 lg:border-r lg:border-border/60 lg:pr-6 space-y-3">
@@ -167,16 +169,18 @@ function CustomPlanCard() {
         </div>
       </div>
       <div className="flex-1 space-y-4">
+        {reference && (
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Includes</p>
+            <p className="mt-1.5 text-sm text-brand-dark flex items-center gap-1.5">
+              <span className="text-brand shrink-0">✓</span> Everything in {reference.name}
+            </p>
+          </div>
+        )}
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Includes</p>
-          <p className="mt-1.5 text-sm text-brand-dark flex items-center gap-1.5">
-            <span className="text-brand shrink-0">✓</span> Everything in Enterprise
-          </p>
-        </div>
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Plus</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{reference ? "Plus" : "Includes"}</p>
           <ul className="mt-1.5 grid sm:grid-cols-2 gap-x-4 gap-y-1.5">
-            {CUSTOM_PLAN_PLUS.map(f => (
+            {plus.map(f => (
               <li key={f} className="text-sm text-muted-foreground flex items-start gap-1.5">
                 <span className="text-brand shrink-0 mt-0.5">✓</span>
                 {f}
@@ -538,7 +542,7 @@ export default function Settings() {
               ))}
             </div>
             )}
-            <CustomPlanCard />
+            <CustomPlanCard reference={highestCataloguePlan(plans)} />
           </CardContent>
         </Card>
       )}
