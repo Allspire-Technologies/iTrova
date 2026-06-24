@@ -184,11 +184,10 @@ function CustomPlanCard() {
             ))}
           </ul>
         </div>
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-1">
+        <div className="pt-1">
           <Button asChild variant="brand" className="w-full sm:w-auto">
             <a href="mailto:sales@allspire.tech?subject=Custom%20Plan%20enquiry">Contact Sales</a>
           </Button>
-          <a href="mailto:sales@allspire.tech" className="text-sm text-brand hover:underline">sales@allspire.tech</a>
         </div>
       </div>
     </div>
