@@ -138,6 +138,67 @@ function PlanCard({ plan, currentPlan, businessName }: { plan: Plan; currentPlan
   );
 }
 
+const CUSTOM_PLAN_IDEAL = ["Large organisations", "Enterprise deployments", "Sector-specific implementations"];
+const CUSTOM_PLAN_PLUS = [
+  "Custom branding",
+  "Custom workflows",
+  "Custom reports",
+  "Dedicated infrastructure",
+  "API integrations",
+  "SLA agreements",
+  "Custom onboarding and training",
+];
+
+function CustomPlanCard() {
+  return (
+    <div className="mt-4 rounded-xl border-2 border-brand/30 bg-brand-light/20 p-5 flex flex-col lg:flex-row gap-6">
+      <div className="lg:w-1/4 lg:border-r lg:border-border/60 lg:pr-6 space-y-3">
+        <div>
+          <Badge variant="outline" className="text-[10px] uppercase tracking-wider bg-secondary">Custom Plan</Badge>
+          <p className="mt-2 text-2xl font-display font-bold text-brand-dark">Custom Pricing</p>
+        </div>
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Ideal for</p>
+          <ul className="mt-1.5 space-y-1">
+            {CUSTOM_PLAN_IDEAL.map(t => (
+              <li key={t} className="text-sm text-muted-foreground">{t}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
+      <div className="flex-1 space-y-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Includes</p>
+          <p className="mt-1.5 text-sm text-brand-dark flex items-center gap-1.5">
+            <span className="text-brand shrink-0">✓</span> Everything in Enterprise
+          </p>
+        </div>
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Plus</p>
+          <ul className="mt-1.5 grid sm:grid-cols-2 gap-x-4 gap-y-1.5">
+            {CUSTOM_PLAN_PLUS.map(f => (
+              <li key={f} className="text-sm text-muted-foreground flex items-start gap-1.5">
+                <span className="text-brand shrink-0 mt-0.5">✓</span>
+                {f}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-1">
+          <Button
+            variant="brand"
+            className="w-full sm:w-auto"
+            onClick={() => { window.location.href = "mailto:sales@allspire.tech?subject=Custom%20Plan%20enquiry"; }}
+          >
+            Contact Sales
+          </Button>
+          <a href="mailto:sales@allspire.tech" className="text-sm text-brand hover:underline">sales@allspire.tech</a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Settings() {
   const { user, profile, business, role, plans, refresh } = useAuth();
   const isOwner = role === "owner";
@@ -482,6 +543,7 @@ export default function Settings() {
               ))}
             </div>
             )}
+            <CustomPlanCard />
           </CardContent>
         </Card>
       )}
