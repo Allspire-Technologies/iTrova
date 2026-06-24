@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import SearchableSelect from "@/components/SearchableSelect";
 import { CURRENCY_OPTIONS } from "@/lib/format";
+import { SETTINGS_PAGE_CLASS, SETTINGS_FIELD_GRID, SETTINGS_PLANS_GRID } from "@/lib/settingsLayout";
 import { toast } from "sonner";
 import { Eye, EyeOff, Building2, Globe, Bell, Link2, CreditCard, Shield, CheckCircle2 } from "lucide-react";
 
@@ -258,7 +259,7 @@ export default function Settings() {
   };
 
   return (
-    <div className="space-y-6 w-full max-w-3xl">
+    <div className={SETTINGS_PAGE_CLASS}>
       <div>
         <h1 className="font-display text-3xl lg:text-4xl font-bold text-brand-dark">Settings</h1>
         <p className="text-muted-foreground mt-1">Manage your account and business preferences.</p>
@@ -283,7 +284,7 @@ export default function Settings() {
               <Label>Business name</Label>
               <Input value={bizName} onChange={e => setBizName(e.target.value)} placeholder="Enter your business name" />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className={SETTINGS_FIELD_GRID}>
               <div className="space-y-2">
                 <Label>Owner name</Label>
                 <Input value={ownerName} onChange={e => setOwnerName(e.target.value)} placeholder="Enter your name" />
@@ -317,7 +318,7 @@ export default function Settings() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className={SETTINGS_FIELD_GRID}>
               <div className="space-y-2">
                 <Label>Currency</Label>
                 <SearchableSelect
@@ -428,26 +429,26 @@ export default function Settings() {
                   Your business WhatsApp number, used as the default for invoice and receipt sharing.
                 </p>
               </div>
-              <div className="flex gap-3">
+              <div className="flex flex-col sm:flex-row gap-3">
                 <Input
                   value={whatsapp}
                   onChange={e => setWhatsapp(e.target.value)}
                   placeholder="+234 801 234 5678"
-                  className="max-w-xs"
+                  className="w-full sm:max-w-xs"
                 />
-                <Button variant="brand" onClick={saveIntegrations} disabled={integrationsBusy}>
+                <Button variant="brand" onClick={saveIntegrations} disabled={integrationsBusy} className="w-full sm:w-auto">
                   {integrationsBusy ? "Saving..." : "Save"}
                 </Button>
               </div>
             </div>
-            <div className="rounded-lg border border-border/60 p-4 flex items-center justify-between bg-secondary/30">
+            <div className="rounded-lg border border-border/60 p-4 flex items-center justify-between gap-3 bg-secondary/30">
               <div>
                 <p className="text-sm font-medium">Paystack</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   Accept card and bank transfer payments directly from invoices.
                 </p>
               </div>
-              <Badge variant="outline" className="text-[10px] uppercase tracking-wider">Coming soon</Badge>
+              <Badge variant="outline" className="text-[10px] uppercase tracking-wider shrink-0">Coming soon</Badge>
             </div>
           </CardContent>
         </Card>
@@ -474,7 +475,7 @@ export default function Settings() {
             {plans.length === 0 ? (
               <p className="text-sm text-muted-foreground">No plans available yet.</p>
             ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className={SETTINGS_PLANS_GRID}>
               {plans.map(plan => (
                 <PlanCard key={plan.key} plan={plan} currentPlan={currentPlan} businessName={business?.name || ""} />
               ))}
@@ -499,7 +500,7 @@ export default function Settings() {
         </CardHeader>
         <CardContent className="space-y-4">
           <form onSubmit={changePassword} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className={SETTINGS_FIELD_GRID}>
               <div className="space-y-2">
                 <Label htmlFor="np">New password</Label>
                 <div className="relative">
@@ -555,14 +556,14 @@ export default function Settings() {
               </Button>
             </div>
           </form>
-          <div className="rounded-lg border border-border/60 p-4 flex items-center justify-between bg-secondary/30">
+          <div className="rounded-lg border border-border/60 p-4 flex items-center justify-between gap-3 bg-secondary/30">
             <div>
               <p className="text-sm font-medium">Two-factor authentication</p>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Add an extra layer of security with an authenticator app.
               </p>
             </div>
-            <Badge variant="outline" className="text-[10px] uppercase tracking-wider">Coming soon</Badge>
+            <Badge variant="outline" className="text-[10px] uppercase tracking-wider shrink-0">Coming soon</Badge>
           </div>
         </CardContent>
       </Card>
