@@ -32,7 +32,7 @@ const ROLE_DESC: Record<AppRole, string> = {
 };
 
 export default function Team() {
-  const { business, user, role: myRole } = useAuth();
+  const { business, user, role: myRole, hasModule } = useAuth();
   const { fmt } = useCurrency();
   const { fmtDate } = useDateFormat();
   const [members, setMembers] = useState<Member[]>([]);
@@ -100,7 +100,7 @@ export default function Team() {
     setLoading(false);
   };
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [business?.id]);
+  useEffect(() => { load();   }, [business?.id]);
 
   const sendInvite = async () => {
     if (!business || !inviteEmail) return;
@@ -254,7 +254,7 @@ export default function Team() {
           <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden"
             onChange={e => e.target.files?.[0] && importCsv(e.target.files[0])} />
           <Button variant="outline" onClick={downloadTemplate}><Download className="size-4" /> CSV Template</Button>
-          <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={atStaffLimit} title={atStaffLimit ? limitMessage("staff") : undefined}><Upload className="size-4" /> Import CSV</Button>
+          {hasModule("csv_import") && <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={atStaffLimit} title={atStaffLimit ? limitMessage("staff") : undefined}><Upload className="size-4" /> Import CSV</Button>}
           <Button variant="outline" onClick={exportMembers} disabled={members.length === 0}><Download className="size-4" /> Export</Button>
           {staffLimit !== null && members.length >= Math.floor(staffLimit * 0.8) && (
             <span className={`self-center text-xs font-medium ${atStaffLimit ? "text-destructive" : "text-amber-600"}`}>

@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { registerPlanLimits, type PlanLimits } from "@/lib/planLimits";
 import type { BillingCycle } from "@/lib/planPricing";
+import { canAccessModule } from "@/lib/moduleAccess";
 
 export type AppRole = Database["public"]["Enums"]["app_role"];
 
@@ -48,6 +49,7 @@ export type Plan = {
   promo_percent: number;
   promo_label: string | null;
   promo_until: string | null;
+  modules: string[];
   prices: PlanPrice[];
 };
 
@@ -59,6 +61,7 @@ type AuthContextValue = {
   role: AppRole | null;
   plans: Plan[];
   plan: Plan | null;
+  hasModule: (key: string) => boolean;
   loading: boolean;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -132,7 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .eq("is_active", true)
       .order("sort_order")
       .then(({ data }: { data: Plan[] | null }) => {
-        const rows = (data ?? []).map((p) => ({ ...p, prices: p.prices ?? [] }));
+        const rows = (data ?? []).map((p) => ({ ...p, prices: p.prices ?? [], modules: p.modules ?? [] }));
         setPlans(rows);
         registerPlanLimits(rows);
       });
@@ -143,6 +146,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [plans, business?.subscription_tier]
   );
 
+  const hasModule = (key: string) => canAccessModule(plan?.modules, key);
+
   const signOut = async () => {
     await supabase.auth.signOut();
   };
@@ -152,7 +157,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, profile, business, role, plans, plan, loading, signOut, refresh }}>
+    <AuthContext.Provider value={{ user, session, profile, business, role, plans, plan, hasModule, loading, signOut, refresh }}>
       {children}
     </AuthContext.Provider>
   );
