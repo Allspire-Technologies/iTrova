@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth, type Plan } from "@/contexts/AuthContext";
+import { CYCLE_ORDER, CYCLE_LABEL, CYCLE_PERIOD, isPromoActive, effectivePrice, type BillingCycle } from "@/lib/planPricing";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -48,6 +49,88 @@ const TIMEZONES = [
 
 type NotifPrefs = { low_stock_alerts: boolean; overdue_invoice_alerts: boolean; daily_summary: boolean };
 const DEFAULT_PREFS: NotifPrefs = { low_stock_alerts: true, overdue_invoice_alerts: true, daily_summary: false };
+
+function PlanCard({ plan, currentPlan }: { plan: Plan; currentPlan: string }) {
+  const active = plan.key === currentPlan;
+  const cycles = (plan.prices || [])
+    .filter(p => p.is_active)
+    .sort((a, b) => CYCLE_ORDER.indexOf(a.cycle) - CYCLE_ORDER.indexOf(b.cycle));
+  const [cycle, setCycle] = useState<BillingCycle>(cycles[0]?.cycle ?? "monthly");
+  const selected = cycles.find(p => p.cycle === cycle) ?? cycles[0];
+  const base = selected ? Number(selected.price_amount) : Number(plan.price_amount);
+  const promoOn = isPromoActive(plan.promo_percent, plan.promo_until);
+  const effective = effectivePrice(base, plan.promo_percent, plan.promo_until);
+  const money = (n: number) =>
+    n === 0
+      ? "Free"
+      : new Intl.NumberFormat(undefined, { style: "currency", currency: plan.price_currency || "NGN", currencyDisplay: "narrowSymbol", maximumFractionDigits: 0 }).format(n);
+
+  return (
+    <div className={`rounded-xl border-2 p-4 flex flex-col gap-3 transition-colors ${active ? "border-brand bg-brand-light/30" : "border-border/60"}`}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-display font-semibold text-brand-dark">{plan.name}</span>
+        <div className="flex items-center gap-1.5">
+          {plan.business_id && <Badge variant="outline" className="text-[10px] bg-secondary">Custom</Badge>}
+          {active && <CheckCircle2 className="size-4 text-brand" />}
+        </div>
+      </div>
+
+      {cycles.length > 1 && (
+        <div className="flex flex-wrap gap-1">
+          {cycles.map(p => (
+            <button
+              key={p.cycle}
+              onClick={() => setCycle(p.cycle)}
+              className={`text-[11px] px-2 py-1 rounded-md border transition-colors ${cycle === p.cycle ? "bg-brand text-brand-foreground border-brand" : "border-border text-muted-foreground hover:border-brand/40"}`}
+            >
+              {CYCLE_LABEL[p.cycle]}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div>
+        <div className="flex items-baseline gap-1.5 flex-wrap">
+          {promoOn && effective !== base && <span className="text-sm text-muted-foreground line-through">{money(base)}</span>}
+          <span className="text-2xl font-display font-bold text-brand-dark">{money(effective)}</span>
+          {base > 0 && <span className="text-xs text-muted-foreground">/{CYCLE_PERIOD[cycle]}</span>}
+        </div>
+        <div className="flex flex-wrap gap-1.5 mt-1.5 empty:hidden">
+          {selected && Number(selected.discount_percent) > 0 && (
+            <Badge variant="outline" className="text-[10px] bg-brand-light text-brand border-brand/20">Save {Number(selected.discount_percent)}%</Badge>
+          )}
+          {promoOn && (
+            <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">{plan.promo_label || "Promo"} · {Number(plan.promo_percent)}% off</Badge>
+          )}
+        </div>
+      </div>
+
+      <ul className="space-y-1.5 flex-1">
+        {(plan.features || []).map(f => (
+          <li key={f} className="text-xs text-muted-foreground flex items-start gap-1.5">
+            <span className="text-brand shrink-0 mt-0.5">✓</span>
+            {f}
+          </li>
+        ))}
+      </ul>
+
+      <div className="pt-1">
+        {active ? (
+          <p className="text-xs text-brand font-medium text-center">Current plan</p>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            onClick={() => { window.location.href = `mailto:hello@allspire.tech?subject=${encodeURIComponent(`Upgrade to ${plan.name} (${CYCLE_LABEL[cycle]})`)}`; }}
+          >
+            Request upgrade
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function Settings() {
   const { user, profile, business, role, plans, refresh } = useAuth();
@@ -388,51 +471,9 @@ export default function Settings() {
               <p className="text-sm text-muted-foreground">No plans available yet.</p>
             ) : (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {plans.map(plan => {
-                const active = plan.key === currentPlan;
-                const price = Number(plan.price_amount) === 0
-                  ? "Free"
-                  : new Intl.NumberFormat(undefined, { style: "currency", currency: plan.price_currency || "NGN", currencyDisplay: "narrowSymbol", maximumFractionDigits: 0 }).format(Number(plan.price_amount));
-                return (
-                  <div
-                    key={plan.key}
-                    className={`rounded-xl border-2 p-4 flex flex-col gap-3 transition-colors ${
-                      active ? "border-brand bg-brand-light/30" : "border-border/60"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-display font-semibold text-brand-dark">{plan.name}</span>
-                      {active && <CheckCircle2 className="size-4 text-brand" />}
-                    </div>
-                    <div>
-                      <span className="text-2xl font-display font-bold text-brand-dark">{price}</span>
-                      {plan.billing_period && <span className="text-xs text-muted-foreground">/{plan.billing_period}</span>}
-                    </div>
-                    <ul className="space-y-1.5 flex-1">
-                      {(plan.features || []).map(f => (
-                        <li key={f} className="text-xs text-muted-foreground flex items-start gap-1.5">
-                          <span className="text-brand shrink-0 mt-0.5">✓</span>
-                          {f}
-                        </li>
-                      ))}
-                    </ul>
-                    <div className="pt-1">
-                      {active ? (
-                        <p className="text-xs text-brand font-medium text-center">Current plan</p>
-                      ) : (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="w-full"
-                          onClick={() => { window.location.href = `mailto:hello@allspire.tech?subject=${encodeURIComponent(`Upgrade to ${plan.name} plan`)}`; }}
-                        >
-                          Request upgrade
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+              {plans.map(plan => (
+                <PlanCard key={plan.key} plan={plan} currentPlan={currentPlan} />
+              ))}
             </div>
             )}
           </CardContent>
