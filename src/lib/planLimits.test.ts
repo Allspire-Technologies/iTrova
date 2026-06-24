@@ -48,4 +48,10 @@ describe("registerPlanLimits (DB-driven)", () => {
     expect(getLimit("partial", "products")).toBe(7);
     expect(getLimit("partial", "suppliers")).toBeNull();
   });
+
+  it("resolves limits keyed by module name", () => {
+    registerPlanLimits([{ key: "modplan", limits: { inventory: 80, team: null } }]);
+    expect(getLimit("modplan", "products")).toBe(80); // products -> inventory module
+    expect(getLimit("modplan", "staff")).toBeNull();  // staff -> team module (unlimited)
+  });
 });

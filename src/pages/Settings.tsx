@@ -50,7 +50,7 @@ const TIMEZONES = [
 type NotifPrefs = { low_stock_alerts: boolean; overdue_invoice_alerts: boolean; daily_summary: boolean };
 const DEFAULT_PREFS: NotifPrefs = { low_stock_alerts: true, overdue_invoice_alerts: true, daily_summary: false };
 
-function PlanCard({ plan, currentPlan }: { plan: Plan; currentPlan: string }) {
+function PlanCard({ plan, currentPlan, businessName }: { plan: Plan; currentPlan: string; businessName: string }) {
   const active = plan.key === currentPlan;
   const cycles = (plan.prices || [])
     .filter(p => p.is_active)
@@ -122,7 +122,11 @@ function PlanCard({ plan, currentPlan }: { plan: Plan; currentPlan: string }) {
             variant="outline"
             size="sm"
             className="w-full"
-            onClick={() => { window.location.href = `mailto:hello@allspire.tech?subject=${encodeURIComponent(`Upgrade to ${plan.name} (${CYCLE_LABEL[cycle]})`)}`; }}
+            onClick={() => {
+              const priceText = base > 0 ? `${money(effective)}/${CYCLE_PERIOD[cycle]}` : money(effective);
+              const msg = `Hi, I'd like to upgrade ${businessName || "my business"} to the ${plan.name} plan (${CYCLE_LABEL[cycle]}) — ${priceText}.`;
+              window.open(`https://wa.me/2348137000305?text=${encodeURIComponent(msg)}`, "_blank");
+            }}
           >
             Request upgrade
           </Button>
@@ -472,7 +476,7 @@ export default function Settings() {
             ) : (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {plans.map(plan => (
-                <PlanCard key={plan.key} plan={plan} currentPlan={currentPlan} />
+                <PlanCard key={plan.key} plan={plan} currentPlan={currentPlan} businessName={business?.name || ""} />
               ))}
             </div>
             )}

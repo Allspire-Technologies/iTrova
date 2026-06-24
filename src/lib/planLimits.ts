@@ -1,5 +1,17 @@
 export type PlanResource = "products" | "suppliers" | "rawMaterials" | "purchaseOrders" | "invoices" | "staff";
-export type PlanLimits = Partial<Record<PlanResource, number | null>>;
+export type PlanLimits = Record<string, number | null>;
+
+// Each countable resource belongs to a module, so a plan's limits can be keyed by the
+// module name (e.g. {"inventory": 100, "team": 5}) and still resolve. The legacy
+// resource keys ({"products": 100}) keep working as a fallback.
+const RESOURCE_MODULE: Record<PlanResource, string> = {
+  products:       "inventory",
+  suppliers:      "suppliers",
+  rawMaterials:   "raw_materials",
+  purchaseOrders: "purchase_orders",
+  invoices:       "invoices",
+  staff:          "team",
+};
 
 const FREE_LIMITS: Record<PlanResource, number> = {
   products:       100,
@@ -30,9 +42,12 @@ export function registerPlanLimits(plans: { key: string; limits?: PlanLimits | n
 /** Returns the numeric cap for a resource on the given tier, or null if unlimited. */
 export function getLimit(tier: string | null | undefined, resource: PlanResource): number | null {
   const planLimits = tier ? registry[tier] : undefined;
-  if (planLimits && resource in planLimits) {
-    const v = planLimits[resource];
-    return v == null ? null : Number(v);
+  if (planLimits) {
+    const moduleKey = RESOURCE_MODULE[resource];
+    const v = moduleKey in planLimits ? planLimits[moduleKey]
+      : resource in planLimits ? planLimits[resource]
+      : undefined;
+    if (v !== undefined) return v == null ? null : Number(v);
   }
   if (!tier || tier === "free") return FREE_LIMITS[resource];
   return null;

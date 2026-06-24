@@ -46,7 +46,7 @@ function IconBtn({ label, onClick, disabled, children }: { label: string; onClic
 }
 
 export default function Invoices() {
-  const { business, user, role } = useAuth();
+  const { business, user, role, hasModule } = useAuth();
   const canManage = role === "owner" || role === "manager";
   const { fmt } = useCurrency();
   const { timezone } = useDateFormat();
@@ -404,7 +404,7 @@ export default function Invoices() {
           <p className="text-muted-foreground mt-1">Sales receipts and customer invoices</p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          {canManage && (
+          {canManage && hasModule("csv_export") && (
             <Button variant="outline" onClick={exportCsv} disabled={filtered.length === 0}>
               <Download className="size-4 mr-1" /> Export CSV
             </Button>

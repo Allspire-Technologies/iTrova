@@ -21,6 +21,7 @@ import Team from "./pages/Team";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound.tsx";
 import { RoleGate } from "@/components/RoleGate";
+import { ModuleGate } from "@/components/ModuleGate";
 
 const queryClient = new QueryClient();
 
@@ -39,13 +40,13 @@ const App = () => (
             <Route element={<AppShell />}>
               <Route path="/" element={<Dashboard />} />
               <Route path="/pos" element={<POS />} />
-              <Route path="/inventory" element={<RoleGate allow={["owner","manager"]}><Inventory /></RoleGate>} />
-              <Route path="/suppliers" element={<RoleGate allow={["owner","manager"]}><Suppliers /></RoleGate>} />
-              <Route path="/raw-materials" element={<RoleGate allow={["owner","manager"]}><RawMaterials /></RoleGate>} />
-              <Route path="/invoices" element={<Invoices />} />
-              <Route path="/purchase-orders" element={<RoleGate allow={["owner","manager"]}><PurchaseOrders /></RoleGate>} />
-              <Route path="/reports" element={<RoleGate allow={["owner","manager"]}><Reports /></RoleGate>} />
-              <Route path="/team" element={<RoleGate allow={["owner"]}><Team /></RoleGate>} />
+              <Route path="/inventory" element={<RoleGate allow={["owner","manager"]}><ModuleGate module="inventory"><Inventory /></ModuleGate></RoleGate>} />
+              <Route path="/suppliers" element={<RoleGate allow={["owner","manager"]}><ModuleGate module="suppliers"><Suppliers /></ModuleGate></RoleGate>} />
+              <Route path="/raw-materials" element={<RoleGate allow={["owner","manager"]}><ModuleGate module="raw_materials"><RawMaterials /></ModuleGate></RoleGate>} />
+              <Route path="/invoices" element={<ModuleGate module="invoices"><Invoices /></ModuleGate>} />
+              <Route path="/purchase-orders" element={<RoleGate allow={["owner","manager"]}><ModuleGate module="purchase_orders"><PurchaseOrders /></ModuleGate></RoleGate>} />
+              <Route path="/reports" element={<RoleGate allow={["owner","manager"]}><ModuleGate module="reports"><Reports /></ModuleGate></RoleGate>} />
+              <Route path="/team" element={<RoleGate allow={["owner"]}><ModuleGate module="team"><Team /></ModuleGate></RoleGate>} />
               <Route path="/settings" element={<Settings />} />
             </Route>
             <Route path="*" element={<NotFound />} />

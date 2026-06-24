@@ -13,24 +13,27 @@ import IdleTimeout from "@/components/IdleTimeout";
 
 import type { AppRole } from "@/contexts/AuthContext";
 
-type NavItem = { to: string; label: string; icon: any; end?: boolean; soon?: boolean; allow?: AppRole[] };
+type NavItem = { to: string; label: string; icon: any; end?: boolean; soon?: boolean; allow?: AppRole[]; module?: string };
 
 const nav: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
-  { to: "/inventory", label: "Inventory", icon: Package, allow: ["owner", "manager"] },
+  { to: "/inventory", label: "Inventory", icon: Package, allow: ["owner", "manager"], module: "inventory" },
   { to: "/pos", label: "Point of Sale", icon: ShoppingCart },
-  { to: "/suppliers", label: "Suppliers", icon: Truck, allow: ["owner", "manager"] },
-  { to: "/raw-materials", label: "Raw Materials", icon: Boxes, allow: ["owner", "manager"] },
-  { to: "/invoices", label: "Invoices", icon: FileText },
-  { to: "/purchase-orders", label: "Purchase Orders", icon: ClipboardList, allow: ["owner", "manager"] },
-  { to: "/team", label: "Team", icon: Users, allow: ["owner"] },
-  { to: "/reports", label: "Reports", icon: BarChart3, allow: ["owner", "manager"] },
-  { to: "/insights", label: "AI Insights", icon: Sparkles, soon: true },
+  { to: "/suppliers", label: "Suppliers", icon: Truck, allow: ["owner", "manager"], module: "suppliers" },
+  { to: "/raw-materials", label: "Raw Materials", icon: Boxes, allow: ["owner", "manager"], module: "raw_materials" },
+  { to: "/invoices", label: "Invoices", icon: FileText, module: "invoices" },
+  { to: "/purchase-orders", label: "Purchase Orders", icon: ClipboardList, allow: ["owner", "manager"], module: "purchase_orders" },
+  { to: "/team", label: "Team", icon: Users, allow: ["owner"], module: "team" },
+  { to: "/reports", label: "Reports", icon: BarChart3, allow: ["owner", "manager"], module: "reports" },
+  { to: "/insights", label: "AI Insights", icon: Sparkles, soon: true, module: "insights" },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 
-function NavList({ onNavigate, role, collapsed }: { onNavigate?: () => void; role: AppRole | null; collapsed?: boolean }) {
-  const visible = nav.filter(item => !item.allow || (role && item.allow.includes(role)));
+function NavList({ onNavigate, role, hasModule, collapsed }: { onNavigate?: () => void; role: AppRole | null; hasModule: (key: string) => boolean; collapsed?: boolean }) {
+  const visible = nav.filter(item =>
+    (!item.allow || (role && item.allow.includes(role))) &&
+    (!item.module || hasModule(item.module))
+  );
   return (
     <nav className="flex-1 px-2 space-y-1 overflow-y-auto">
       {visible.map((item) => (
@@ -62,7 +65,7 @@ function NavList({ onNavigate, role, collapsed }: { onNavigate?: () => void; rol
 }
 
 export default function AppShell() {
-  const { user, profile, business, role, signOut, loading } = useAuth();
+  const { user, profile, business, role, hasModule, signOut, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -135,7 +138,7 @@ export default function AppShell() {
           )}
         </div>
 
-        <NavList role={role} collapsed={collapsed} />
+        <NavList role={role} hasModule={hasModule} collapsed={collapsed} />
 
         {/* Sign out */}
         <div className={`p-3 border-t border-sidebar-border shrink-0`}>
@@ -177,7 +180,7 @@ export default function AppShell() {
               <SheetContent side="left" className="p-0 w-72 bg-sidebar text-sidebar-foreground border-sidebar-border flex flex-col">
                 <SheetTitle className="sr-only">Navigation</SheetTitle>
                 {MobileBrand}
-                <NavList role={role} onNavigate={() => setMobileOpen(false)} />
+                <NavList role={role} hasModule={hasModule} onNavigate={() => setMobileOpen(false)} />
                 {MobileSignOut}
               </SheetContent>
             </Sheet>
