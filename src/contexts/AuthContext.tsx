@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { registerPlanLimits, type PlanLimits } from "@/lib/planLimits";
 import type { BillingCycle } from "@/lib/planPricing";
-import { canAccessModule } from "@/lib/moduleAccess";
+import { canAccessModule, planModules } from "@/lib/moduleAccess";
 
 export type AppRole = Database["public"]["Enums"]["app_role"];
 
@@ -146,7 +146,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [plans, business?.subscription_tier]
   );
 
-  const hasModule = (key: string) => canAccessModule(plan?.modules, key);
+  const hasModule = (key: string) => canAccessModule(planModules(plan), key);
 
   const signOut = async () => {
     await supabase.auth.signOut();
