@@ -415,11 +415,9 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
                     className="h-9 w-[140px]"
                     options={orderStatusOptions(o.status).map(s => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) }))}
                   />
-                  {canManage && (
-                    <Button variant="ghost" size="icon" aria-label="Edit order" disabled={o.status !== "pending"} title={o.status !== "pending" ? "Only pending orders can be edited" : undefined} onClick={() => openEdit(o)}>
-                      <Pencil className="size-4" />
-                    </Button>
-                  )}
+                  <Button variant="ghost" size="icon" aria-label="Edit order" disabled={o.status !== "pending"} title={o.status !== "pending" ? "Only pending orders can be edited" : undefined} onClick={() => openEdit(o)}>
+                    <Pencil className="size-4" />
+                  </Button>
                   {canManage && (
                     <Button variant="ghost" size="icon" aria-label="Delete order" className="text-muted-foreground hover:text-destructive" onClick={() => deleteOrder(o)}>
                       <Trash2 className="size-4" />

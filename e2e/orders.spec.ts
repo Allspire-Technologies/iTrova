@@ -50,9 +50,11 @@ test.describe("POS orders", () => {
     await expect(page.getByRole("button", { name: "Delete order" })).toBeVisible();
   });
 
-  test("cashier cannot edit an order", async ({ page }) => {
+  test("cashier can edit a pending order", async ({ page }) => {
     await openOrders(page, "cashier");
-    await expect(page.getByRole("button", { name: "Edit order" })).toHaveCount(0);
+    await page.getByRole("button", { name: "Edit order" }).click();
+    await expect(page.getByText("Edit order")).toBeVisible();
+    await expect(page.getByPlaceholder("e.g. Adaeze O.")).toHaveValue("Adaeze O.");
   });
 
   test("owner can edit a pending order", async ({ page }) => {
