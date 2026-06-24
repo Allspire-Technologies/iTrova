@@ -1,7 +1,8 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
+import { registerPlanLimits, type PlanLimits } from "@/lib/planLimits";
 
 export type AppRole = Database["public"]["Enums"]["app_role"];
 
@@ -21,12 +22,28 @@ type Business = {
   whatsapp_number: string | null;
 };
 
+export type Plan = {
+  id: string;
+  key: string;
+  name: string;
+  description: string | null;
+  price_amount: number;
+  price_currency: string;
+  billing_period: string | null;
+  features: string[];
+  limits: PlanLimits;
+  is_active: boolean;
+  sort_order: number;
+};
+
 type AuthContextValue = {
   user: User | null;
   session: Session | null;
   profile: Profile | null;
   business: Business | null;
   role: AppRole | null;
+  plans: Plan[];
+  plan: Plan | null;
   loading: boolean;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -42,6 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [business, setBusiness] = useState<Business | null>(null);
   const [role, setRole] = useState<AppRole | null>(null);
+  const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadProfile = async (uid: string) => {
@@ -91,6 +109,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => sub.subscription.unsubscribe();
   }, []);
 
+  useEffect(() => {
+    if (!user) { setPlans([]); return; }
+    (supabase as unknown as { from: (t: string) => any })
+      .from("plans")
+      .select("*")
+      .eq("is_active", true)
+      .order("sort_order")
+      .then(({ data }: { data: Plan[] | null }) => {
+        const rows = data ?? [];
+        setPlans(rows);
+        registerPlanLimits(rows);
+      });
+  }, [user]);
+
+  const plan = useMemo(
+    () => plans.find(p => p.key === (business?.subscription_tier || "free")) ?? null,
+    [plans, business?.subscription_tier]
+  );
+
   const signOut = async () => {
     await supabase.auth.signOut();
   };
@@ -100,7 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, profile, business, role, loading, signOut, refresh }}>
+    <AuthContext.Provider value={{ user, session, profile, business, role, plans, plan, loading, signOut, refresh }}>
       {children}
     </AuthContext.Provider>
   );
