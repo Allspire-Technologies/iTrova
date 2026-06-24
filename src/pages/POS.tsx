@@ -319,7 +319,7 @@ export default function POS() {
                           {p.name.charAt(0).toUpperCase()}
                         </div>
                         <div className="font-medium text-sm text-brand-dark line-clamp-2 min-h-[2.5em]">{p.name}</div>
-                        <div className="flex items-end justify-between mt-2">
+                        <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 mt-2">
                           <div className="font-display font-bold text-brand">{fmt(p.selling_price)}</div>
                           <Badge
                             variant="outline"
