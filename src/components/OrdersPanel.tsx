@@ -151,11 +151,21 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
     if (error) return toast.error(error.message);
     toast.success(newStatus === "cancelled" ? "Order cancelled" : `Order marked ${newStatus}`);
     load();
-    if (["shipped", "delivered", "cancelled"].includes(newStatus)) onStockChanged();
+    if (["pending", "shipped", "delivered", "cancelled"].includes(newStatus)) onStockChanged();
   };
 
   const requestStatusChange = (order: Order, newStatus: string) => {
     if (newStatus === order.status) return;
+    if (newStatus === "pending" && order.stock_deducted) {
+      setPending({
+        title: "Move this order back to pending?",
+        description: "The items will be returned to stock.",
+        confirmLabel: "Move to pending",
+        variant: "default",
+        onConfirm: () => updateStatus(order, "pending"),
+      });
+      return;
+    }
     if (newStatus === "shipped") {
       setPending({
         title: "Mark this order shipped?",
