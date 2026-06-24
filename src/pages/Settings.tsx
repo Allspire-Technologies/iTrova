@@ -12,6 +12,7 @@ import SearchableSelect from "@/components/SearchableSelect";
 import { CURRENCY_OPTIONS } from "@/lib/format";
 import { SETTINGS_PAGE_CLASS, SETTINGS_FIELD_GRID, SETTINGS_PLANS_GRID } from "@/lib/settingsLayout";
 import { highestCataloguePlan, previousCataloguePlan, includesAll, featuresBeyond, planChangeAction, type PlanChange } from "@/lib/planFeatures";
+import { isDirty, isPasswordFormReady } from "@/lib/settingsForms";
 import { toast } from "sonner";
 import { Eye, EyeOff, Building2, Globe, Bell, Link2, CreditCard, Shield, CheckCircle2 } from "lucide-react";
 
@@ -326,6 +327,11 @@ export default function Settings() {
     toast.success("Password updated");
   };
 
+  const profileDirty = isDirty([bizName, ownerName], [business?.name || "", profile?.owner_name || ""]);
+  const regionalDirty = isDirty([currency, timezone], [business?.currency || "NGN", business?.timezone || "Africa/Lagos"]);
+  const integrationsDirty = isDirty([whatsapp], [business?.whatsapp_number || ""]);
+  const securityReady = isPasswordFormReady(newPassword, confirmPassword);
+
   return (
     <div className={SETTINGS_PAGE_CLASS}>
       <div>
@@ -363,7 +369,7 @@ export default function Settings() {
               </div>
             </div>
             <div className="flex justify-end">
-              <Button variant="brand" onClick={saveProfile} disabled={profileBusy}>
+              <Button variant="brand" onClick={saveProfile} disabled={profileBusy || !profileDirty}>
                 {profileBusy ? "Saving..." : "Save profile"}
               </Button>
             </div>
@@ -407,7 +413,7 @@ export default function Settings() {
               </div>
             </div>
             <div className="flex justify-end">
-              <Button variant="brand" onClick={saveRegional} disabled={regionalBusy}>
+              <Button variant="brand" onClick={saveRegional} disabled={regionalBusy || !regionalDirty}>
                 {regionalBusy ? "Saving..." : "Save"}
               </Button>
             </div>
@@ -504,7 +510,7 @@ export default function Settings() {
                   placeholder="+234 801 234 5678"
                   className="w-full sm:max-w-xs"
                 />
-                <Button variant="brand" onClick={saveIntegrations} disabled={integrationsBusy} className="w-full sm:w-auto">
+                <Button variant="brand" onClick={saveIntegrations} disabled={integrationsBusy || !integrationsDirty} className="w-full sm:w-auto">
                   {integrationsBusy ? "Saving..." : "Save"}
                 </Button>
               </div>
@@ -626,7 +632,7 @@ export default function Settings() {
               </div>
             </div>
             <div className="flex justify-end">
-              <Button type="submit" variant="brand" disabled={securityBusy}>
+              <Button type="submit" variant="brand" disabled={securityBusy || !securityReady}>
                 {securityBusy ? "Updating..." : "Update password"}
               </Button>
             </div>
