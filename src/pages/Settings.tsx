@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth, type Plan } from "@/contexts/AuthContext";
-import { CYCLE_ORDER, CYCLE_LABEL, CYCLE_PERIOD, isPromoActive, effectivePrice, type BillingCycle } from "@/lib/planPricing";
+import { CYCLE_ORDER, CYCLE_LABEL, CYCLE_PERIOD, isPromoActive, cyclePrice, type BillingCycle } from "@/lib/planPricing";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -59,8 +59,9 @@ function PlanCard({ plan, currentPlan, businessName }: { plan: Plan; currentPlan
   const [cycle, setCycle] = useState<BillingCycle>(cycles[0]?.cycle ?? "monthly");
   const selected = cycles.find(p => p.cycle === cycle) ?? cycles[0];
   const base = selected ? Number(selected.price_amount) : Number(plan.price_amount);
+  const cycleDiscount = selected ? Number(selected.discount_percent) : 0;
   const promoOn = isPromoActive(plan.promo_percent, plan.promo_until);
-  const effective = effectivePrice(base, plan.promo_percent, plan.promo_until);
+  const effective = cyclePrice(base, cycleDiscount, plan.promo_percent, plan.promo_until);
   const money = (n: number) =>
     n === 0
       ? "Free"
@@ -92,7 +93,7 @@ function PlanCard({ plan, currentPlan, businessName }: { plan: Plan; currentPlan
 
       <div>
         <div className="flex items-baseline gap-1.5 flex-wrap">
-          {promoOn && effective !== base && <span className="text-sm text-muted-foreground line-through">{money(base)}</span>}
+          {effective < base && <span className="text-sm text-muted-foreground line-through">{money(base)}</span>}
           <span className="text-2xl font-display font-bold text-brand-dark">{money(effective)}</span>
           {base > 0 && <span className="text-xs text-muted-foreground">/{CYCLE_PERIOD[cycle]}</span>}
         </div>
