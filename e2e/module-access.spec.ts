@@ -24,9 +24,9 @@ test.describe("Plan module gating", () => {
     await expect(page.getByRole("link", { name: "Team" })).toHaveCount(0);
   });
 
-  test("a feature entitlement gates its button (CSV Import)", async ({ page }) => {
+  test("feature entitlements gate their buttons (CSV import/export)", async ({ page }) => {
     await authenticate(page, { role: "owner" });
-    await stubRows(page, "plans", [limitedPlan]); // modules omit csv_import
+    await stubRows(page, "plans", [limitedPlan]); // modules omit csv_import + csv_export
     await stubRows(page, "products", [
       { id: "p1", business_id: "biz-1", name: "Garri", category: "Food", sku: "G", unit: "bag", selling_price: 8500, cost_price: 6000, stock_quantity: 20, reorder_level: 5, created_at: "2026-06-01T00:00:00Z" },
     ]);
@@ -34,5 +34,6 @@ test.describe("Plan module gating", () => {
     await expect(page.getByRole("heading", { name: "Inventory" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Add product" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Import CSV" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Export", exact: true })).toHaveCount(0);
   });
 });

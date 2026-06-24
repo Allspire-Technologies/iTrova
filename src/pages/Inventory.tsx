@@ -195,7 +195,7 @@ export default function Inventory() {
           <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => e.target.files?.[0] && importCsv(e.target.files[0])} />
           <Button variant="outline" onClick={downloadTemplate}><Download className="size-4" /> CSV Template</Button>
           {hasModule("csv_import") && <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={atProductLimit} title={atProductLimit ? limitMessage("products") : undefined}><Upload className="size-4" /> Import CSV</Button>}
-          <Button variant="outline" onClick={exportCsv} disabled={items.length === 0}><Download className="size-4" /> Export</Button>
+          {hasModule("csv_export") && <Button variant="outline" onClick={exportCsv} disabled={items.length === 0}><Download className="size-4" /> Export</Button>}
           {productLimit !== null && items.length >= Math.floor(productLimit * 0.8) && (
             <span className={`self-center text-xs font-medium ${atProductLimit ? "text-destructive" : "text-amber-600"}`}>
               {items.length} / {productLimit}

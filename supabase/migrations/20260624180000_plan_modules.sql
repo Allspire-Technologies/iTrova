@@ -28,7 +28,8 @@ insert into public.app_modules (key, label, path, sort_order) values
   ('priority_support', 'Priority support',   null,                11),
   ('api_access',       'API access',         null,                12),
   ('csv_import',       'CSV Import',          null,               13),
-  ('dedicated_support','Dedicated support',  null,                14)
+  ('csv_export',       'CSV Export',          null,               14),
+  ('dedicated_support','Dedicated support',  null,                15)
 on conflict (key) do nothing;
 
 -- plans.modules: array of app_modules keys the plan includes.
@@ -53,9 +54,9 @@ create trigger plans_sync_features
   for each row execute function public.sync_plan_features();
 
 -- Seed modules for the catalogue plans (this regenerates their features via the trigger).
-update public.plans set modules = '["inventory","pos","suppliers","raw_materials","invoices","purchase_orders","reports","team","csv_import"]'::jsonb where key = 'free';
-update public.plans set modules = '["inventory","pos","suppliers","raw_materials","invoices","purchase_orders","reports","team","csv_import","insights","advanced_analytics","priority_support"]'::jsonb where key = 'pro';
-update public.plans set modules = '["inventory","pos","suppliers","raw_materials","invoices","purchase_orders","reports","team","csv_import","insights","advanced_analytics","priority_support","api_access","dedicated_support"]'::jsonb where key = 'business';
+update public.plans set modules = '["inventory","pos","suppliers","raw_materials","invoices","purchase_orders","reports","team","csv_import","csv_export"]'::jsonb where key = 'free';
+update public.plans set modules = '["inventory","pos","suppliers","raw_materials","invoices","purchase_orders","reports","team","csv_import","csv_export","insights","advanced_analytics","priority_support"]'::jsonb where key = 'pro';
+update public.plans set modules = '["inventory","pos","suppliers","raw_materials","invoices","purchase_orders","reports","team","csv_import","csv_export","insights","advanced_analytics","priority_support","api_access","dedicated_support"]'::jsonb where key = 'business';
 
 -- Re-key plan limits by module name so a limit can be set per module (inventory caps
 -- products, team caps staff, etc.). The app also accepts the legacy resource keys.

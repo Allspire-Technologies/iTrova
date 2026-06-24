@@ -33,7 +33,7 @@ const STATUSES = ["draft", "sent", "received", "cancelled"];
 type SortCol = "po_number" | "created_at" | "supplier" | "expected_date" | "total_amount" | "status";
 
 export default function PurchaseOrders() {
-  const { business } = useAuth();
+  const { business, hasModule } = useAuth();
   const { fmt } = useCurrency();
   const { fmtDate } = useDateFormat();
   const [items, setItems] = useState<PO[]>([]);
@@ -330,7 +330,7 @@ export default function PurchaseOrders() {
           <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => e.target.files?.[0] && importCsv(e.target.files[0])} />
           <Button variant="outline" disabled onClick={downloadTemplate}><Download className="size-4" /> CSV Template</Button>
           <Button variant="outline" disabled onClick={() => fileRef.current?.click()}><Upload className="size-4" /> Import CSV</Button>
-          <Button variant="outline" onClick={exportCsv} disabled={filtered.length === 0}><Download className="size-4" /> Export CSV</Button>
+          {hasModule("csv_export") && <Button variant="outline" onClick={exportCsv} disabled={filtered.length === 0}><Download className="size-4" /> Export CSV</Button>}
           {poLimit !== null && items.length >= Math.floor(poLimit * 0.8) && (
             <span className={`self-center text-xs font-medium ${atPoLimit ? "text-destructive" : "text-amber-600"}`}>
               {items.length} / {poLimit}
