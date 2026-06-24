@@ -49,4 +49,16 @@ test.describe("POS orders", () => {
     await openOrders(page, "owner");
     await expect(page.getByRole("button", { name: "Delete order" })).toBeVisible();
   });
+
+  test("cashier cannot edit an order", async ({ page }) => {
+    await openOrders(page, "cashier");
+    await expect(page.getByRole("button", { name: "Edit order" })).toHaveCount(0);
+  });
+
+  test("owner can edit a pending order", async ({ page }) => {
+    await openOrders(page, "owner");
+    await page.getByRole("button", { name: "Edit order" }).click();
+    await expect(page.getByText("Edit order")).toBeVisible();
+    await expect(page.getByPlaceholder("e.g. Adaeze O.")).toHaveValue("Adaeze O.");
+  });
 });

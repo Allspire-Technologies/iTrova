@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Minus, Trash2, Phone, Globe, Package, Truck, CheckCircle2, XCircle, Clock } from "lucide-react";
+import { Plus, Minus, Trash2, Pencil, Phone, Globe, Package, Truck, CheckCircle2, XCircle, Clock } from "lucide-react";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { toast } from "sonner";
@@ -60,6 +60,7 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<OrderItem[]>([]);
   const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState<Order | null>(null);
   const [pending, setPending] = useState<{ title: string; description: string; confirmLabel?: string; variant?: "destructive" | "default"; onConfirm: () => void } | null>(null);
 
   const load = async () => {
@@ -109,11 +110,51 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
     setCustomer(""); setPhone(""); setChannel("online"); setPayment("cash"); setNotes(""); setItems([]);
   };
 
-  const createOrder = async () => {
+  const openEdit = (order: Order) => {
+    setEditing(order);
+    setCustomer(order.customer_name);
+    setPhone(order.customer_phone || "");
+    setChannel(order.channel);
+    setPayment(order.payment_method);
+    setNotes(order.notes || "");
+    setItems((order.order_items || []).map(it => ({
+      product_id: it.product_id,
+      product_name: productMap[it.product_id]?.name,
+      quantity: it.quantity,
+      unit_price: it.unit_price,
+    })));
+    setOpen(true);
+  };
+
+  const closeForm = () => { setOpen(false); resetForm(); setEditing(null); };
+
+  const saveOrder = async () => {
     if (!business || !customer.trim() || items.length === 0) {
       return toast.error("Add a customer and at least one item");
     }
+    const itemRows = (orderId: string) =>
+      items.map(i => ({ order_id: orderId, product_id: i.product_id, quantity: i.quantity, unit_price: i.unit_price }));
     setSaving(true);
+
+    if (editing) {
+      const { error: e1 } = await supabase.from("orders").update({
+        customer_name: customer.trim(),
+        customer_phone: phone.trim() || null,
+        channel, payment_method: payment,
+        notes: notes.trim() || null,
+        total_amount: itemsTotal,
+      }).eq("id", editing.id);
+      if (e1) { setSaving(false); return toast.error(e1.message); }
+      await supabase.from("order_items").delete().eq("order_id", editing.id);
+      const { error: e2 } = await supabase.from("order_items").insert(itemRows(editing.id));
+      if (e2) { setSaving(false); return toast.error(e2.message); }
+      setSaving(false);
+      closeForm();
+      toast.success("Order updated");
+      load();
+      return;
+    }
+
     const { data: order, error: e1 } = await supabase.from("orders").insert({
       business_id: business.id,
       staff_id: user?.id,
@@ -126,13 +167,11 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
     }).select().single();
     if (e1 || !order) { setSaving(false); return toast.error(e1?.message || "Failed"); }
 
-    const rows = items.map(i => ({ order_id: order.id, product_id: i.product_id, quantity: i.quantity, unit_price: i.unit_price }));
-    const { error: e2 } = await supabase.from("order_items").insert(rows);
+    const { error: e2 } = await supabase.from("order_items").insert(itemRows(order.id));
     if (e2) { setSaving(false); return toast.error(e2.message); }
 
     setSaving(false);
-    setOpen(false);
-    resetForm();
+    closeForm();
     toast.success("Order created");
     load();
   };
@@ -235,12 +274,12 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
             </button>
           ))}
         </div>
-        <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) resetForm(); }}>
+        <Dialog open={open} onOpenChange={(o) => (o ? setOpen(true) : closeForm())}>
           <DialogTrigger asChild>
             <Button variant="brand"><Plus className="size-4" /> New order</Button>
           </DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader><DialogTitle className="font-display">Create order</DialogTitle></DialogHeader>
+            <DialogHeader><DialogTitle className="font-display">{editing ? "Edit order" : "Create order"}</DialogTitle></DialogHeader>
             <div className="space-y-4">
               <div className="grid sm:grid-cols-2 gap-3">
                 <div>
@@ -317,8 +356,8 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
               </div>
             </div>
             <DialogFooter>
-              <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
-              <Button variant="brand" onClick={createOrder} disabled={saving}>{saving ? "Saving..." : "Create order"}</Button>
+              <Button variant="ghost" onClick={closeForm}>Cancel</Button>
+              <Button variant="brand" onClick={saveOrder} disabled={saving}>{saving ? "Saving..." : editing ? "Save changes" : "Create order"}</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -376,6 +415,11 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
                     className="h-9 w-[140px]"
                     options={orderStatusOptions(o.status).map(s => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) }))}
                   />
+                  {canManage && (
+                    <Button variant="ghost" size="icon" aria-label="Edit order" disabled={o.status !== "pending"} title={o.status !== "pending" ? "Only pending orders can be edited" : undefined} onClick={() => openEdit(o)}>
+                      <Pencil className="size-4" />
+                    </Button>
+                  )}
                   {canManage && (
                     <Button variant="ghost" size="icon" aria-label="Delete order" className="text-muted-foreground hover:text-destructive" onClick={() => deleteOrder(o)}>
                       <Trash2 className="size-4" />
