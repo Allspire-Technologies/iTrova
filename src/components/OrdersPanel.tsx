@@ -8,13 +8,14 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Minus, Trash2, Phone, Globe, Package, Truck, CheckCircle2, XCircle, Clock } from "lucide-react";
+import { Plus, Minus, Trash2, Pencil, Phone, Globe, Package, Truck, CheckCircle2, XCircle, Clock } from "lucide-react";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { toast } from "sonner";
 import Paginator, { usePagination } from "@/components/Paginator";
 import SearchableSelect from "@/components/SearchableSelect";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import { orderStatusOptions, isOrderLocked } from "@/lib/orderStatus";
 
 type Product = { id: string; name: string; selling_price: number; stock_quantity: number; category: string | null };
 type OrderItem = { id?: string; product_id: string; product_name?: string; quantity: number; unit_price: number };
@@ -42,9 +43,10 @@ const statusMeta: Record<string, { icon: any; cls: string; label: string }> = {
 };
 
 export default function OrdersPanel({ products, onStockChanged }: { products: Product[]; onStockChanged: () => void }) {
-  const { business, user } = useAuth();
+  const { business, user, role } = useAuth();
   const { fmt } = useCurrency();
   const { fmtDateTime } = useDateFormat();
+  const canManage = role === "owner" || role === "manager";
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>("all");
@@ -58,7 +60,8 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<OrderItem[]>([]);
   const [saving, setSaving] = useState(false);
-  const [pending, setPending] = useState<{ title: string; description: string; onConfirm: () => void } | null>(null);
+  const [editing, setEditing] = useState<Order | null>(null);
+  const [pending, setPending] = useState<{ title: string; description: string; confirmLabel?: string; variant?: "destructive" | "default"; onConfirm: () => void } | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -107,11 +110,51 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
     setCustomer(""); setPhone(""); setChannel("online"); setPayment("cash"); setNotes(""); setItems([]);
   };
 
-  const createOrder = async () => {
+  const openEdit = (order: Order) => {
+    setEditing(order);
+    setCustomer(order.customer_name);
+    setPhone(order.customer_phone || "");
+    setChannel(order.channel);
+    setPayment(order.payment_method);
+    setNotes(order.notes || "");
+    setItems((order.order_items || []).map(it => ({
+      product_id: it.product_id,
+      product_name: productMap[it.product_id]?.name,
+      quantity: it.quantity,
+      unit_price: it.unit_price,
+    })));
+    setOpen(true);
+  };
+
+  const closeForm = () => { setOpen(false); resetForm(); setEditing(null); };
+
+  const saveOrder = async () => {
     if (!business || !customer.trim() || items.length === 0) {
       return toast.error("Add a customer and at least one item");
     }
+    const itemRows = (orderId: string) =>
+      items.map(i => ({ order_id: orderId, product_id: i.product_id, quantity: i.quantity, unit_price: i.unit_price }));
     setSaving(true);
+
+    if (editing) {
+      const { error: e1 } = await supabase.from("orders").update({
+        customer_name: customer.trim(),
+        customer_phone: phone.trim() || null,
+        channel, payment_method: payment,
+        notes: notes.trim() || null,
+        total_amount: itemsTotal,
+      }).eq("id", editing.id);
+      if (e1) { setSaving(false); return toast.error(e1.message); }
+      await supabase.from("order_items").delete().eq("order_id", editing.id);
+      const { error: e2 } = await supabase.from("order_items").insert(itemRows(editing.id));
+      if (e2) { setSaving(false); return toast.error(e2.message); }
+      setSaving(false);
+      closeForm();
+      toast.success("Order updated");
+      load();
+      return;
+    }
+
     const { data: order, error: e1 } = await supabase.from("orders").insert({
       business_id: business.id,
       staff_id: user?.id,
@@ -124,21 +167,19 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
     }).select().single();
     if (e1 || !order) { setSaving(false); return toast.error(e1?.message || "Failed"); }
 
-    const rows = items.map(i => ({ order_id: order.id, product_id: i.product_id, quantity: i.quantity, unit_price: i.unit_price }));
-    const { error: e2 } = await supabase.from("order_items").insert(rows);
+    const { error: e2 } = await supabase.from("order_items").insert(itemRows(order.id));
     if (e2) { setSaving(false); return toast.error(e2.message); }
 
     setSaving(false);
-    setOpen(false);
-    resetForm();
+    closeForm();
     toast.success("Order created");
     load();
   };
 
   const updateStatus = async (order: Order, newStatus: string) => {
     if (newStatus === order.status) return;
-    // Guard: shipping requires stock
-    if (newStatus === "shipped" && !order.stock_deducted) {
+    // Guard: fulfilling (ship or deliver) deducts stock, so it must be available
+    if ((newStatus === "shipped" || newStatus === "delivered") && !order.stock_deducted) {
       for (const it of order.order_items || []) {
         const p = productMap[it.product_id];
         if (p && Number(p.stock_quantity) < Number(it.quantity)) {
@@ -148,9 +189,60 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
     }
     const { error } = await supabase.from("orders").update({ status: newStatus }).eq("id", order.id);
     if (error) return toast.error(error.message);
-    toast.success(`Order marked ${newStatus}`);
+    toast.success(newStatus === "cancelled" ? "Order cancelled" : `Order marked ${newStatus}`);
     load();
-    if (newStatus === "shipped") onStockChanged();
+    if (["pending", "shipped", "delivered", "cancelled"].includes(newStatus)) onStockChanged();
+  };
+
+  const requestStatusChange = (order: Order, newStatus: string) => {
+    if (newStatus === order.status) return;
+    if (newStatus === "pending" && order.stock_deducted) {
+      setPending({
+        title: "Move this order back to pending?",
+        description: "The items will be returned to stock.",
+        confirmLabel: "Move to pending",
+        variant: "default",
+        onConfirm: () => updateStatus(order, "pending"),
+      });
+      return;
+    }
+    if (newStatus === "shipped") {
+      setPending({
+        title: "Mark this order shipped?",
+        description: order.stock_deducted
+          ? "The order will be marked as shipped."
+          : "This takes the items out of stock and marks the order shipped.",
+        confirmLabel: "Mark shipped",
+        variant: "default",
+        onConfirm: () => updateStatus(order, "shipped"),
+      });
+      return;
+    }
+    if (newStatus === "delivered") {
+      setPending({
+        title: "Mark this order delivered?",
+        description: order.stock_deducted
+          ? "Once delivered, the order can only be cancelled — you can't set it back to pending or shipped."
+          : "This takes the items out of stock. Once delivered, the order can only be cancelled.",
+        confirmLabel: "Mark delivered",
+        variant: "default",
+        onConfirm: () => updateStatus(order, "delivered"),
+      });
+      return;
+    }
+    if (newStatus === "cancelled") {
+      setPending({
+        title: `Cancel order for ${order.customer_name}?`,
+        description: order.stock_deducted
+          ? "The items will be returned to stock and the order can't be reopened."
+          : "This order will be cancelled and can't be reopened.",
+        confirmLabel: "Cancel order",
+        variant: "destructive",
+        onConfirm: () => updateStatus(order, "cancelled"),
+      });
+      return;
+    }
+    updateStatus(order, newStatus);
   };
 
   const deleteOrder = (o: Order) => {
@@ -182,12 +274,12 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
             </button>
           ))}
         </div>
-        <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) resetForm(); }}>
+        <Dialog open={open} onOpenChange={(o) => (o ? setOpen(true) : closeForm())}>
           <DialogTrigger asChild>
             <Button variant="brand"><Plus className="size-4" /> New order</Button>
           </DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader><DialogTitle className="font-display">Create order</DialogTitle></DialogHeader>
+            <DialogHeader><DialogTitle className="font-display">{editing ? "Edit order" : "Create order"}</DialogTitle></DialogHeader>
             <div className="space-y-4">
               <div className="grid sm:grid-cols-2 gap-3">
                 <div>
@@ -264,8 +356,8 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
               </div>
             </div>
             <DialogFooter>
-              <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
-              <Button variant="brand" onClick={createOrder} disabled={saving}>{saving ? "Saving..." : "Create order"}</Button>
+              <Button variant="ghost" onClick={closeForm}>Cancel</Button>
+              <Button variant="brand" onClick={saveOrder} disabled={saving}>{saving ? "Saving..." : editing ? "Save changes" : "Create order"}</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -318,13 +410,19 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
                   </div>
                   <SearchableSelect
                     value={o.status}
-                    onValueChange={(v) => updateStatus(o, v)}
+                    onValueChange={(v) => requestStatusChange(o, v)}
+                    disabled={isOrderLocked(o.status)}
                     className="h-9 w-[140px]"
-                    options={STATUSES.map(s => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) }))}
+                    options={orderStatusOptions(o.status).map(s => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) }))}
                   />
-                  <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive" onClick={() => deleteOrder(o)}>
-                    <Trash2 className="size-4" />
+                  <Button variant="ghost" size="icon" aria-label="Edit order" disabled={o.status !== "pending"} title={o.status !== "pending" ? "Only pending orders can be edited" : undefined} onClick={() => openEdit(o)}>
+                    <Pencil className="size-4" />
                   </Button>
+                  {canManage && (
+                    <Button variant="ghost" size="icon" aria-label="Delete order" className="text-muted-foreground hover:text-destructive" onClick={() => deleteOrder(o)}>
+                      <Trash2 className="size-4" />
+                    </Button>
+                  )}
                 </div>
               </Card>
             );
@@ -341,6 +439,8 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
         onOpenChange={(open) => !open && setPending(null)}
         title={pending?.title ?? ""}
         description={pending?.description}
+        confirmLabel={pending?.confirmLabel}
+        variant={pending?.variant}
         onConfirm={pending?.onConfirm ?? (() => {})}
       />
     </div>
