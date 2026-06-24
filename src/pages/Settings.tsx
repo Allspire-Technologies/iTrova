@@ -125,7 +125,7 @@ function PlanCard({ plan, currentPlan, businessName }: { plan: Plan; currentPlan
             onClick={() => {
               const priceText = base > 0 ? `${money(effective)}/${CYCLE_PERIOD[cycle]}` : money(effective);
               const msg = `Hi, I'd like to upgrade ${businessName || "my business"} to the ${plan.name} plan (${CYCLE_LABEL[cycle]}) — ${priceText}.`;
-              window.open(`https://wa.me/message/GRFLVW4UJNIGB1?text=${encodeURIComponent(msg)}`, "_blank");
+              window.open(`https://wa.me/2348137000305?text=${encodeURIComponent(msg)}`, "_blank");
             }}
           >
             Request upgrade
