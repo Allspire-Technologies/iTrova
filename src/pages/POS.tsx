@@ -366,18 +366,20 @@ export default function POS() {
                     </div>
                   </div>
                 ) : cart.map(i => (
-                  <div key={i.product.id} className="p-3 rounded-lg bg-secondary/50 flex items-center gap-3">
-                    <div className="flex-1 min-w-0">
+                  <div key={i.product.id} className="p-3 rounded-lg bg-secondary/50 flex flex-wrap items-center gap-x-3 gap-y-2">
+                    <div className="flex-1 min-w-[96px]">
                       <div className="font-medium text-sm truncate text-brand-dark">{i.product.name}</div>
                       <div className="text-xs text-muted-foreground">{fmt(i.product.selling_price)} each</div>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <Button variant="ghost" size="icon" className="size-7" onClick={() => updateQty(i.product.id, -1)}><Minus className="size-3" /></Button>
-                      <Input type="number" min={1} max={Number(i.product.stock_quantity)} value={i.qty} onChange={e => setQty(i.product.id, Number(e.target.value))} className="w-12 h-7 px-1 text-center text-sm font-medium" />
-                      <Button variant="ghost" size="icon" className="size-7" onClick={() => updateQty(i.product.id, 1)}><Plus className="size-3" /></Button>
+                    <div className="flex items-center gap-2 ml-auto">
+                      <div className="flex items-center gap-1">
+                        <Button variant="ghost" size="icon" className="size-7" onClick={() => updateQty(i.product.id, -1)}><Minus className="size-3" /></Button>
+                        <Input type="number" min={1} max={Number(i.product.stock_quantity)} value={i.qty} onChange={e => setQty(i.product.id, Number(e.target.value))} className="w-12 h-7 px-1 text-center text-sm font-medium" />
+                        <Button variant="ghost" size="icon" className="size-7" onClick={() => updateQty(i.product.id, 1)}><Plus className="size-3" /></Button>
+                      </div>
+                      <div className="font-display font-semibold text-sm text-brand-dark text-right whitespace-nowrap">{fmt(i.qty * Number(i.product.selling_price))}</div>
+                      <Button variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-destructive" onClick={() => remove(i.product.id)}><Trash2 className="size-3" /></Button>
                     </div>
-                    <div className="font-display font-semibold text-sm text-brand-dark w-20 text-right">{fmt(i.qty * Number(i.product.selling_price))}</div>
-                    <Button variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-destructive" onClick={() => remove(i.product.id)}><Trash2 className="size-3" /></Button>
                   </div>
                 ))}
               </div>
