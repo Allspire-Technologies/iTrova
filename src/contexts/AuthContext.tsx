@@ -3,6 +3,7 @@ import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { registerPlanLimits, type PlanLimits } from "@/lib/planLimits";
+import type { BillingCycle } from "@/lib/planPricing";
 
 export type AppRole = Database["public"]["Enums"]["app_role"];
 
@@ -22,6 +23,15 @@ type Business = {
   whatsapp_number: string | null;
 };
 
+export type PlanPrice = {
+  id: string;
+  cycle: BillingCycle;
+  price_amount: number;
+  discount_percent: number;
+  is_active: boolean;
+  sort_order: number;
+};
+
 export type Plan = {
   id: string;
   key: string;
@@ -34,6 +44,11 @@ export type Plan = {
   limits: PlanLimits;
   is_active: boolean;
   sort_order: number;
+  business_id: string | null;
+  promo_percent: number;
+  promo_label: string | null;
+  promo_until: string | null;
+  prices: PlanPrice[];
 };
 
 type AuthContextValue = {
@@ -113,11 +128,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!user) { setPlans([]); return; }
     (supabase as unknown as { from: (t: string) => any })
       .from("plans")
-      .select("*")
+      .select("*, prices:plan_prices(*)")
       .eq("is_active", true)
       .order("sort_order")
       .then(({ data }: { data: Plan[] | null }) => {
-        const rows = data ?? [];
+        const rows = (data ?? []).map((p) => ({ ...p, prices: p.prices ?? [] }));
         setPlans(rows);
         registerPlanLimits(rows);
       });
