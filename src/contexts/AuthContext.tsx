@@ -5,6 +5,7 @@ import type { Database } from "@/integrations/supabase/types";
 import { registerPlanLimits, type PlanLimits } from "@/lib/planLimits";
 import type { BillingCycle } from "@/lib/planPricing";
 import { canAccessModule, planModules } from "@/lib/moduleAccess";
+import { isExpired, daysRemaining } from "@/lib/subscription";
 
 export type AppRole = Database["public"]["Enums"]["app_role"];
 
@@ -21,7 +22,16 @@ type Business = {
   currency: string;
   timezone: string | null;
   subscription_tier: string | null;
+  subscription_renews_at: string | null;
   whatsapp_number: string | null;
+};
+
+/** Subscription view that keeps the raw paid tier (for display) even once expired. */
+export type SubscriptionStatus = {
+  tier: string;
+  renewsAt: string | null;
+  daysRemaining: number | null;
+  expired: boolean;
 };
 
 export type PlanPrice = {
@@ -59,6 +69,7 @@ type AuthContextValue = {
   profile: Profile | null;
   business: Business | null;
   role: AppRole | null;
+  subscription: SubscriptionStatus | null;
   plans: Plan[];
   plan: Plan | null;
   hasModule: (key: string) => boolean;
@@ -77,6 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [business, setBusiness] = useState<Business | null>(null);
   const [role, setRole] = useState<AppRole | null>(null);
+  const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -88,12 +100,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         supabase.from("businesses").select("*").eq("id", p.business_id).maybeSingle(),
         supabase.from("user_roles").select("role").eq("user_id", uid).eq("business_id", p.business_id),
       ]);
-      setBusiness(b as Business | null);
+      const biz = b as Business | null;
+      if (biz) {
+        const rawTier = biz.subscription_tier || "free";
+        const expired = isExpired(biz.subscription_renews_at);
+        // Enforce expiry at read time: an expired paid tier behaves as Free everywhere
+        // that reads business.subscription_tier (limits, modules, plan resolution).
+        setBusiness({ ...biz, subscription_tier: expired ? "free" : rawTier });
+        setSubscription({ tier: rawTier, renewsAt: biz.subscription_renews_at, daysRemaining: daysRemaining(biz.subscription_renews_at), expired });
+      } else {
+        setBusiness(null);
+        setSubscription(null);
+      }
       const list = ((roles as { role: AppRole }[] | null) || []).map(r => r.role);
       list.sort((a, b) => ROLE_RANK[a] - ROLE_RANK[b]);
       setRole(list[0] ?? null);
     } else {
       setBusiness(null);
+      setSubscription(null);
       setRole(null);
     }
   };
@@ -110,6 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         setProfile(null);
         setBusiness(null);
+        setSubscription(null);
         setRole(null);
       }
     });
@@ -157,7 +182,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, profile, business, role, plans, plan, hasModule, loading, signOut, refresh }}>
+    <AuthContext.Provider value={{ user, session, profile, business, role, subscription, plans, plan, hasModule, loading, signOut, refresh }}>
       {children}
     </AuthContext.Provider>
   );

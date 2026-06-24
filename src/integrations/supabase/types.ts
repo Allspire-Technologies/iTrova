@@ -105,6 +105,7 @@ export type Database = {
           id: string
           name: string
           owner_id: string
+          subscription_renews_at: string | null
           subscription_tier: string | null
           timezone: string | null
           whatsapp_number: string | null
@@ -115,6 +116,7 @@ export type Database = {
           id?: string
           name: string
           owner_id: string
+          subscription_renews_at?: string | null
           subscription_tier?: string | null
           timezone?: string | null
           whatsapp_number?: string | null
@@ -125,6 +127,7 @@ export type Database = {
           id?: string
           name?: string
           owner_id?: string
+          subscription_renews_at?: string | null
           subscription_tier?: string | null
           timezone?: string | null
           whatsapp_number?: string | null
