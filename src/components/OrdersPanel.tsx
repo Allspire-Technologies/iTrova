@@ -43,9 +43,10 @@ const statusMeta: Record<string, { icon: any; cls: string; label: string }> = {
 };
 
 export default function OrdersPanel({ products, onStockChanged }: { products: Product[]; onStockChanged: () => void }) {
-  const { business, user } = useAuth();
+  const { business, user, role } = useAuth();
   const { fmt } = useCurrency();
   const { fmtDateTime } = useDateFormat();
+  const canManage = role === "owner" || role === "manager";
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>("all");
@@ -375,9 +376,11 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
                     className="h-9 w-[140px]"
                     options={orderStatusOptions(o.status).map(s => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) }))}
                   />
-                  <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive" onClick={() => deleteOrder(o)}>
-                    <Trash2 className="size-4" />
-                  </Button>
+                  {canManage && (
+                    <Button variant="ghost" size="icon" aria-label="Delete order" className="text-muted-foreground hover:text-destructive" onClick={() => deleteOrder(o)}>
+                      <Trash2 className="size-4" />
+                    </Button>
+                  )}
                 </div>
               </Card>
             );
