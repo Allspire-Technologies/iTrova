@@ -138,8 +138,8 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
 
   const updateStatus = async (order: Order, newStatus: string) => {
     if (newStatus === order.status) return;
-    // Guard: shipping requires stock
-    if (newStatus === "shipped" && !order.stock_deducted) {
+    // Guard: fulfilling (ship or deliver) deducts stock, so it must be available
+    if ((newStatus === "shipped" || newStatus === "delivered") && !order.stock_deducted) {
       for (const it of order.order_items || []) {
         const p = productMap[it.product_id];
         if (p && Number(p.stock_quantity) < Number(it.quantity)) {
@@ -151,7 +151,7 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
     if (error) return toast.error(error.message);
     toast.success(newStatus === "cancelled" ? "Order cancelled" : `Order marked ${newStatus}`);
     load();
-    if (newStatus === "shipped" || newStatus === "cancelled") onStockChanged();
+    if (["shipped", "delivered", "cancelled"].includes(newStatus)) onStockChanged();
   };
 
   const requestStatusChange = (order: Order, newStatus: string) => {
@@ -159,7 +159,9 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
     if (newStatus === "delivered") {
       setPending({
         title: "Mark this order delivered?",
-        description: "Once delivered, the order can only be cancelled — you won't be able to set it back to pending or shipped.",
+        description: order.stock_deducted
+          ? "Once delivered, the order can only be cancelled — you can't set it back to pending or shipped."
+          : "This takes the items out of stock. Once delivered, the order can only be cancelled.",
         confirmLabel: "Mark delivered",
         variant: "default",
         onConfirm: () => updateStatus(order, "delivered"),
