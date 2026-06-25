@@ -1,6 +1,6 @@
-import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
+import { NavLink, Outlet, useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { LayoutDashboard, Package, ShoppingCart, Truck, FileText, ClipboardList, Users, BarChart3, Sparkles, Settings, LogOut, Store, Menu, Boxes, ChevronLeft, ChevronRight } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingCart, Truck, FileText, ClipboardList, Users, BarChart3, Sparkles, Settings, LogOut, Store, Menu, Boxes, ChevronLeft, ChevronRight, AlertTriangle, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
@@ -65,7 +65,7 @@ function NavList({ onNavigate, role, hasModule, collapsed }: { onNavigate?: () =
 }
 
 export default function AppShell() {
-  const { user, profile, business, role, hasModule, signOut, loading } = useAuth();
+  const { user, profile, business, role, subscription, hasModule, signOut, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -87,6 +87,15 @@ export default function AppShell() {
   if (loading || !user) return <AppShellSkeleton />;
 
   const initials = (profile?.owner_name || user.email || "U").slice(0, 2).toUpperCase();
+
+  // Owner-facing plan warning shown by the business name — expired or within 7 days of renewal.
+  const planAlert =
+    role === "owner" && subscription && subscription.tier !== "free" &&
+    (subscription.expired || (subscription.daysRemaining != null && subscription.daysRemaining <= 7))
+      ? subscription.expired
+        ? { text: "Plan expired", danger: true }
+        : { text: `Expires in ${subscription.daysRemaining}d`, danger: false }
+      : null;
 
   const MobileBrand = (
     <div className="p-6 flex items-center gap-2 font-display text-xl font-bold">
@@ -187,8 +196,20 @@ export default function AppShell() {
 
             <div className="min-w-0 flex-1">
               <div className="text-xs uppercase tracking-wider text-muted-foreground">Business</div>
-              <div className="font-display font-semibold text-brand-dark truncate">
-                {business?.name || "—"}
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="font-display font-semibold text-brand-dark truncate">
+                  {business?.name || "—"}
+                </span>
+                {planAlert && (
+                  <Link
+                    to="/settings"
+                    title={planAlert.danger ? "Your plan has expired — renew to restore features" : "Your plan is about to expire — renew to avoid losing features"}
+                    className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold transition-opacity hover:opacity-80 ${planAlert.danger ? "bg-danger/10 text-danger" : "bg-warning/10 text-warning"}`}
+                  >
+                    {planAlert.danger ? <AlertTriangle className="size-3" /> : <Clock className="size-3" />}
+                    {planAlert.text}
+                  </Link>
+                )}
               </div>
             </div>
             <div className="flex items-center gap-3">

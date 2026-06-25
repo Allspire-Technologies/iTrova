@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isExpired, daysRemaining, effectiveTier } from "./subscription";
+import { isExpired, daysRemaining, effectiveTier, nextRenewal } from "./subscription";
 
 const NOW = Date.parse("2026-06-24T12:00:00Z");
 const future = (days: number) => new Date(NOW + days * 86_400_000).toISOString();
@@ -28,6 +28,21 @@ describe("daysRemaining", () => {
   });
   it("is negative once past", () => {
     expect(daysRemaining(future(-3), NOW)).toBe(-3);
+  });
+});
+
+describe("nextRenewal", () => {
+  it("adds the cycle length to the start date", () => {
+    expect(nextRenewal("2026-06-15T00:00:00.000Z", "monthly")).toBe("2026-07-15T00:00:00.000Z");
+    expect(nextRenewal("2026-06-15T00:00:00.000Z", "quarterly")).toBe("2026-09-15T00:00:00.000Z");
+    expect(nextRenewal("2026-06-15T00:00:00.000Z", "biannual")).toBe("2026-12-15T00:00:00.000Z");
+    expect(nextRenewal("2026-06-15T00:00:00.000Z", "annual")).toBe("2027-06-15T00:00:00.000Z");
+  });
+  it("returns null for missing or invalid input", () => {
+    expect(nextRenewal(null, "monthly")).toBeNull();
+    expect(nextRenewal("2026-06-15T00:00:00.000Z", null)).toBeNull();
+    expect(nextRenewal("2026-06-15T00:00:00.000Z", "weekly")).toBeNull();
+    expect(nextRenewal("not-a-date", "monthly")).toBeNull();
   });
 });
 

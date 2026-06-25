@@ -5,7 +5,7 @@ import type { Database } from "@/integrations/supabase/types";
 import { registerPlanLimits, type PlanLimits } from "@/lib/planLimits";
 import type { BillingCycle } from "@/lib/planPricing";
 import { canAccessModule, planModules } from "@/lib/moduleAccess";
-import { isExpired, daysRemaining } from "@/lib/subscription";
+import { isExpired, daysRemaining, nextRenewal } from "@/lib/subscription";
 
 export type AppRole = Database["public"]["Enums"]["app_role"];
 
@@ -23,12 +23,15 @@ type Business = {
   timezone: string | null;
   subscription_tier: string | null;
   subscription_renews_at: string | null;
+  subscription_started_at: string | null;
+  subscription_cycle: string | null;
   whatsapp_number: string | null;
 };
 
 /** Subscription view that keeps the raw paid tier (for display) even once expired. */
 export type SubscriptionStatus = {
   tier: string;
+  cycle: string | null;
   renewsAt: string | null;
   daysRemaining: number | null;
   expired: boolean;
@@ -103,11 +106,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const biz = b as Business | null;
       if (biz) {
         const rawTier = biz.subscription_tier || "free";
-        const expired = isExpired(biz.subscription_renews_at);
+        const renewsAt = biz.subscription_renews_at ?? nextRenewal(biz.subscription_started_at, biz.subscription_cycle);
+        const expired = isExpired(renewsAt);
         // Enforce expiry at read time: an expired paid tier behaves as Free everywhere
         // that reads business.subscription_tier (limits, modules, plan resolution).
         setBusiness({ ...biz, subscription_tier: expired ? "free" : rawTier });
-        setSubscription({ tier: rawTier, renewsAt: biz.subscription_renews_at, daysRemaining: daysRemaining(biz.subscription_renews_at), expired });
+        setSubscription({ tier: rawTier, cycle: biz.subscription_cycle, renewsAt, daysRemaining: daysRemaining(renewsAt), expired });
       } else {
         setBusiness(null);
         setSubscription(null);
