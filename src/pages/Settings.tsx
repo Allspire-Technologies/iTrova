@@ -551,8 +551,8 @@ export default function Settings() {
                   )}
                   {!subscription?.expired && subscription?.daysRemaining != null && subscription.tier !== "free" && (
                     <span className="block mt-0.5">
-                      Renews in {subscription.daysRemaining} day{subscription.daysRemaining === 1 ? "" : "s"}
-                      {subscription.renewsAt ? ` (${fmtDate(subscription.renewsAt)})` : ""}.
+                      {subscription.cycle ? `${CYCLE_LABEL[subscription.cycle as BillingCycle] ?? subscription.cycle} · ` : ""}
+                      renews {subscription.renewsAt ? fmtDate(subscription.renewsAt) : "—"} (in {subscription.daysRemaining} day{subscription.daysRemaining === 1 ? "" : "s"}).
                     </span>
                   )}
                 </CardDescription>
