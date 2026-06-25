@@ -15,7 +15,8 @@ import { SETTINGS_PAGE_CLASS, SETTINGS_FIELD_GRID, SETTINGS_PLANS_GRID } from "@
 import { highestCataloguePlan, previousCataloguePlan, includesAll, featuresBeyond, planChangeAction, type PlanChange } from "@/lib/planFeatures";
 import { isDirty, isPasswordFormReady } from "@/lib/settingsForms";
 import { toast } from "sonner";
-import { Eye, EyeOff, Building2, Globe, Bell, Link2, CreditCard, Shield, CheckCircle2 } from "lucide-react";
+import { Eye, EyeOff, Building2, Globe, Bell, Link2, CreditCard, Shield, CheckCircle2, Scale, ExternalLink } from "lucide-react";
+import { LEGAL_LINKS } from "@/lib/legalLinks";
 
 const TIMEZONES = [
   // Africa
@@ -660,6 +661,38 @@ export default function Settings() {
             </div>
             <Badge variant="outline" className="text-[10px] uppercase tracking-wider shrink-0">Coming soon</Badge>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Legal & Compliance — all roles */}
+      <Card className="shadow-card border-border/60">
+        <CardHeader className="pb-4">
+          <div className="flex items-center gap-3">
+            <div className="size-9 rounded-lg bg-brand-light grid place-items-center text-brand">
+              <Scale className="size-4" />
+            </div>
+            <div>
+              <CardTitle className="font-display text-lg">Legal &amp; Compliance</CardTitle>
+              <CardDescription>Read the policies that govern your use of iTrova.</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="divide-y divide-border/50">
+          {LEGAL_LINKS.map(link => (
+            <a
+              key={link.href}
+              href={link.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group flex items-center justify-between gap-3 py-4 first:pt-0 last:pb-0"
+            >
+              <div>
+                <div className="text-sm font-medium text-foreground group-hover:text-brand transition-colors">{link.label}</div>
+                <p className="text-xs text-muted-foreground mt-0.5">{link.description}</p>
+              </div>
+              <ExternalLink className="size-4 text-muted-foreground group-hover:text-brand shrink-0 transition-colors" />
+            </a>
+          ))}
         </CardContent>
       </Card>
     </div>
