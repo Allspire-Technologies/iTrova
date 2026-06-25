@@ -15,7 +15,8 @@ import { SETTINGS_PAGE_CLASS, SETTINGS_FIELD_GRID, SETTINGS_PLANS_GRID } from "@
 import { highestCataloguePlan, previousCataloguePlan, includesAll, featuresBeyond, planChangeAction, type PlanChange } from "@/lib/planFeatures";
 import { isDirty, isPasswordFormReady } from "@/lib/settingsForms";
 import { toast } from "sonner";
-import { Eye, EyeOff, Building2, Globe, Bell, Link2, CreditCard, Shield, CheckCircle2, Scale, ExternalLink } from "lucide-react";
+import { Eye, EyeOff, Building2, Globe, Bell, Link2, CreditCard, Shield, CheckCircle2, Scale, ChevronRight } from "lucide-react";
+import { Link } from "react-router-dom";
 import { LEGAL_LINKS } from "@/lib/legalLinks";
 
 const TIMEZONES = [
@@ -679,19 +680,17 @@ export default function Settings() {
         </CardHeader>
         <CardContent className="divide-y divide-border/50">
           {LEGAL_LINKS.map(link => (
-            <a
-              key={link.href}
-              href={link.href}
-              target="_blank"
-              rel="noopener noreferrer"
+            <Link
+              key={link.slug}
+              to={`/legal/${link.slug}`}
               className="group flex items-center justify-between gap-3 py-4 first:pt-0 last:pb-0"
             >
               <div>
                 <div className="text-sm font-medium text-foreground group-hover:text-brand transition-colors">{link.label}</div>
                 <p className="text-xs text-muted-foreground mt-0.5">{link.description}</p>
               </div>
-              <ExternalLink className="size-4 text-muted-foreground group-hover:text-brand shrink-0 transition-colors" />
-            </a>
+              <ChevronRight className="size-4 text-muted-foreground group-hover:text-brand shrink-0 transition-colors" />
+            </Link>
           ))}
         </CardContent>
       </Card>

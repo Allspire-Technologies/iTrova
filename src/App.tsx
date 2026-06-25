@@ -19,6 +19,7 @@ import PurchaseOrders from "./pages/PurchaseOrders";
 import Reports from "./pages/Reports";
 import Team from "./pages/Team";
 import Settings from "./pages/Settings";
+import LegalDoc from "./pages/LegalDoc";
 import NotFound from "./pages/NotFound.tsx";
 import { RoleGate } from "@/components/RoleGate";
 import { ModuleGate } from "@/components/ModuleGate";
@@ -48,6 +49,7 @@ const App = () => (
               <Route path="/reports" element={<RoleGate allow={["owner","manager"]}><ModuleGate module="reports"><Reports /></ModuleGate></RoleGate>} />
               <Route path="/team" element={<RoleGate allow={["owner"]}><ModuleGate module="team"><Team /></ModuleGate></RoleGate>} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/legal/:slug" element={<LegalDoc />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
