@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { Eye, EyeOff, Building2, Globe, Bell, Link2, CreditCard, Shield, CheckCircle2, Scale, ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { LEGAL_LINKS } from "@/lib/legalLinks";
+import { isEmailConfirmed, isValidEmail, normalizeEmail, verifyAction } from "@/lib/emailVerification";
 
 const TIMEZONES = [
   // Africa
@@ -242,6 +243,12 @@ export default function Settings() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [securityBusy, setSecurityBusy] = useState(false);
 
+  // Email verification
+  const [email, setEmail] = useState(user?.email || "");
+  const [emailBusy, setEmailBusy] = useState(false);
+  const emailConfirmed = isEmailConfirmed(user);
+  useEffect(() => { setEmail(user?.email || ""); }, [user?.email]);
+
   useEffect(() => {
     if (business) {
       setBizName(business.name || "");
@@ -331,6 +338,22 @@ export default function Settings() {
     toast.success("Password updated");
   };
 
+  const verifyEmail = async () => {
+    const next = normalizeEmail(email);
+    if (!isValidEmail(next)) return toast.error("Enter a valid email address");
+    setEmailBusy(true);
+    const options = { emailRedirectTo: `${window.location.origin}/settings` };
+    const action = verifyAction(user?.email, next);
+    const { error } = action === "change"
+      ? await supabase.auth.updateUser({ email: next }, options)
+      : await supabase.auth.resend({ type: "signup", email: next, options });
+    setEmailBusy(false);
+    if (error) return toast.error(error.message);
+    toast.success(action === "change"
+      ? `Confirmation sent to ${next}. Click the link in the email to verify.`
+      : "Verification email sent. Check your inbox to confirm.");
+  };
+
   const profileDirty = isDirty([bizName, ownerName], [business?.name || "", profile?.owner_name || ""]);
   const regionalDirty = isDirty([currency, timezone], [business?.currency || "NGN", business?.timezone || "Africa/Lagos"]);
   const integrationsDirty = isDirty([whatsapp], [business?.whatsapp_number || ""]);
@@ -362,15 +385,9 @@ export default function Settings() {
               <Label>Business name</Label>
               <Input value={bizName} onChange={e => setBizName(e.target.value)} placeholder="Enter your business name" />
             </div>
-            <div className={SETTINGS_FIELD_GRID}>
-              <div className="space-y-2">
-                <Label>Owner name</Label>
-                <Input value={ownerName} onChange={e => setOwnerName(e.target.value)} placeholder="Enter your name" />
-              </div>
-              <div className="space-y-2">
-                <Label>Email address</Label>
-                <Input value={user?.email || ""} disabled className="bg-secondary/50 text-muted-foreground" />
-              </div>
+            <div className="space-y-2">
+              <Label>Owner name</Label>
+              <Input value={ownerName} onChange={e => setOwnerName(e.target.value)} placeholder="Enter your name" />
             </div>
             <div className="flex justify-end">
               <Button variant="brand" onClick={saveProfile} disabled={profileBusy || !profileDirty}>
@@ -596,6 +613,29 @@ export default function Settings() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="acct-email">Email address</Label>
+            {emailConfirmed ? (
+              <div className="flex items-center gap-2">
+                <Input id="acct-email" value={user?.email || ""} disabled className="bg-secondary/50 text-muted-foreground" />
+                <Badge variant="outline" className="shrink-0 gap-1 bg-success/10 text-success border-success/20">
+                  <CheckCircle2 className="size-3" /> Verified
+                </Badge>
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Input id="acct-email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@business.com" />
+                  <Button type="button" variant="brand" onClick={verifyEmail} disabled={emailBusy} className="shrink-0">
+                    {emailBusy ? "Sending…" : "Verify email"}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Your email isn't verified yet. Update it if it's wrong, then click Verify — we'll send a confirmation link.
+                </p>
+              </>
+            )}
+          </div>
           <form onSubmit={changePassword} className="space-y-4">
             <div className={SETTINGS_FIELD_GRID}>
               <div className="space-y-2">
