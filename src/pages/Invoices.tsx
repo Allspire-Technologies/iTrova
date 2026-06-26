@@ -19,6 +19,8 @@ import { downloadPdf } from "@/lib/pdf";
 import { buildReceiptHtml } from "@/lib/receipt";
 import { toCsv, downloadCsv } from "@/lib/csv";
 import { invoiceFallbackNumber } from "@/lib/invoiceNumber";
+import { buildInvoiceMessage, toWaNumber, isValidWaNumber, waLink } from "@/lib/whatsapp";
+import WhatsAppShareDialog from "@/components/WhatsAppShareDialog";
 import Paginator, { usePagination } from "@/components/Paginator";
 import { TablePageSkeleton } from "@/components/Skeletons";
 import { getLimit, isAtLimit, limitMessage } from "@/lib/planLimits";
@@ -59,6 +61,7 @@ export default function Invoices() {
   const [open, setOpen] = useState(false);
   const [viewing, setViewing] = useState<Invoice | null>(null);
   const [viewItems, setViewItems] = useState<Item[]>([]);
+  const [waShare, setWaShare] = useState<{ message: string } | null>(null);
   const [form, setForm] = useState({ customer_name: "", customer_phone: "", customer_email: "", due_date: "", notes: "" });
   const [lines, setLines] = useState<Item[]>([{ description: "", quantity: 1, unit_price: 0, line_total: 0 }]);
   const [busy, setBusy] = useState(false);
@@ -340,19 +343,23 @@ export default function Invoices() {
   const todayInTz = new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(new Date());
 
   const shareWa = (inv: Invoice) => {
-    const text = [
-      `*Invoice ${inv.invoice_number}*`,
-      `From: ${business?.name || ""}`,
-      `Date: ${inv.issue_date}`,
-      inv.due_date ? `Due: ${inv.due_date}` : null,
-      `Amount: ${fmt(inv.total)}`,
-      inv.notes || null,
-    ].filter(Boolean).join("\n");
-    const phone = inv.customer_phone?.replace(/[^\d+]/g, "").replace(/^\+/, "") || "";
-    const url = phone
-      ? `https://wa.me/${phone}?text=${encodeURIComponent(text)}`
-      : `https://wa.me/?text=${encodeURIComponent(text)}`;
-    window.open(url, "_blank");
+    const message = buildInvoiceMessage({
+      businessName: business?.name || "",
+      invoiceNumber: inv.invoice_number,
+      customerName: inv.customer_name,
+      issueDate: inv.issue_date,
+      dueDate: inv.due_date,
+      status: inv.status,
+      items: viewItems.map(it => ({ description: it.description, quantity: Number(it.quantity), lineTotal: Number(it.line_total) })),
+      subtotal: Number(inv.subtotal),
+      discount: Number(inv.discount_amount),
+      total: Number(inv.total),
+      notes: inv.notes,
+      fmt,
+    });
+    const phone = toWaNumber(inv.customer_phone || "");
+    if (isValidWaNumber(phone)) window.open(waLink(phone, message), "_blank");
+    else setWaShare({ message });
   };
 
   const statusColor = (s: string) =>
@@ -656,6 +663,13 @@ export default function Invoices() {
         confirmLabel={pending?.confirmLabel}
         variant={pending?.variant}
         onConfirm={pending?.onConfirm ?? (() => {})}
+      />
+
+      <WhatsAppShareDialog
+        open={!!waShare}
+        onOpenChange={(o) => !o && setWaShare(null)}
+        message={waShare?.message ?? ""}
+        recipientLabel="Customer"
       />
     </div>
   );
