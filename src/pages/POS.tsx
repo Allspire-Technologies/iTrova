@@ -14,6 +14,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import OrdersPanel from "@/components/OrdersPanel";
 import Paginator, { usePagination } from "@/components/Paginator";
 import { invoiceFallbackNumber } from "@/lib/invoiceNumber";
+import { buildReceiptMessage } from "@/lib/whatsapp";
+import WhatsAppShareDialog from "@/components/WhatsAppShareDialog";
 import { POSSkeleton } from "@/components/Skeletons";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { summarizeHeldSale, heldItemsPreview, parseHeldSales, serializeHeldSales, heldStorageKey, type HeldSale } from "@/lib/heldSales";
@@ -40,8 +42,9 @@ export default function POS() {
   const [method, setMethod] = useState("cash");
   const [discount, setDiscount] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [receipt, setReceipt] = useState<{ total: number; discount: number; items: CartItem[]; method: string } | null>(null);
+  const [receipt, setReceipt] = useState<{ total: number; discount: number; items: CartItem[]; method: string; number?: string | null } | null>(null);
   const [eod, setEod] = useState<EodData | null>(null);
+  const [waShare, setWaShare] = useState<{ message: string } | null>(null);
   const [held, setHeld] = useState<HeldSale[]>([]);
   const [heldOpen, setHeldOpen] = useState(false);
   const [clearConfirm, setClearConfirm] = useState(false);
@@ -211,7 +214,7 @@ export default function POS() {
     }
 
     setBusy(false);
-    setReceipt({ total, discount, items: [...cart], method });
+    setReceipt({ total, discount, items: [...cart], method, number: inv?.invoice_number ?? null });
     setCart([]);
     setDiscount(0);
     load();
@@ -543,19 +546,6 @@ export default function POS() {
             const date = fmtDateTime(new Date());
             const bizName = business?.name || "Receipt";
             const receiptSubtotal = receipt.items.reduce((a, i) => a + i.qty * Number(i.product.selling_price), 0);
-            const lines = [
-              `*${bizName}*`,
-              date,
-              "—",
-              ...receipt.items.map(i => `${i.qty} × ${i.product.name} — ${fmt(i.qty * Number(i.product.selling_price))}`),
-              "—",
-              ...(receipt.discount > 0 ? [`Subtotal: ${fmt(receiptSubtotal)}`, `Discount: -${fmt(receipt.discount)}`] : []),
-              `Total: ${fmt(receipt.total)}`,
-              `Paid via ${receipt.method}`,
-              profile?.owner_name ? `Served by ${profile.owner_name}` : "",
-              "Thank you!",
-            ].filter(Boolean).join("\n");
-
             const printReceipt = () => {
               const html = `<!doctype html><html><head><title>Receipt</title><style>
                 body{font-family:ui-monospace,Menlo,monospace;width:280px;margin:16px auto;color:#111}
@@ -578,12 +568,20 @@ export default function POS() {
               if (!w) return toast.error("Allow pop-ups to print");
               w.document.write(html); w.document.close();
             };
-            const shareWa = () => {
-              const phone = prompt("Customer's WhatsApp number (with country code, e.g. +234...):");
-              if (!phone) return;
-              const clean = phone.replace(/[^\d+]/g, "").replace(/^\+/, "");
-              window.open(`https://wa.me/${clean}?text=${encodeURIComponent(lines)}`, "_blank");
-            };
+            const shareWa = () => setWaShare({
+              message: buildReceiptMessage({
+                businessName: bizName,
+                date,
+                invoiceNumber: receipt.number,
+                items: receipt.items.map(i => ({ qty: i.qty, name: i.product.name, lineTotal: i.qty * Number(i.product.selling_price) })),
+                subtotal: receiptSubtotal,
+                discount: receipt.discount,
+                total: receipt.total,
+                method: receipt.method,
+                servedBy: profile?.owner_name,
+                fmt,
+              }),
+            });
 
             return (
               <div className="space-y-3">
@@ -614,6 +612,13 @@ export default function POS() {
           })()}
         </DialogContent>
       </Dialog>
+
+      <WhatsAppShareDialog
+        open={!!waShare}
+        onOpenChange={(o) => !o && setWaShare(null)}
+        message={waShare?.message ?? ""}
+        recipientLabel="Customer"
+      />
     </div>
   );
 }

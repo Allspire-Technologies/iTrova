@@ -15,6 +15,8 @@ import { toast } from "sonner";
 import { toCsv, downloadCsv, parseCsv, readFileText } from "@/lib/csv";
 import StockAdjustDialog from "@/components/StockAdjustDialog";
 import Paginator, { usePagination } from "@/components/Paginator";
+import { buildReorderMessage, toWaNumber, isValidWaNumber, waLink } from "@/lib/whatsapp";
+import WhatsAppShareDialog from "@/components/WhatsAppShareDialog";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { TablePageSkeleton } from "@/components/Skeletons";
 import { getLimit, isAtLimit, limitMessage } from "@/lib/planLimits";
@@ -38,6 +40,7 @@ export default function RawMaterials() {
   const { fmt, symbol } = useCurrency();
   const { fmtDate } = useDateFormat();
   const [items, setItems] = useState<Material[]>([]);
+  const [waShare, setWaShare] = useState<{ message: string; phone: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
@@ -172,11 +175,20 @@ export default function RawMaterials() {
 
   const reorder = (m: Material) => {
     const supp = suppliers.find(s => s.id === m.supplier_id);
-    if (!supp?.phone) return toast.error("Supplier has no phone number on file");
     const need = Math.max(Number(m.reorder_level) * 2 - Number(m.stock_quantity), Number(m.reorder_level));
-    const text = `Hello ${supp.contact_name || supp.name}, we'd like to reorder ${need} ${m.unit} of ${m.name}. Please confirm availability and price. Thanks!`;
-    const phone = supp.phone.replace(/[^\d+]/g, "").replace(/^\+/, "");
-    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, "_blank");
+    const message = buildReorderMessage({
+      businessName: business?.name || "",
+      contactName: supp?.contact_name || supp?.name || "there",
+      materialName: m.name,
+      sku: m.sku,
+      unit: m.unit,
+      quantity: need,
+      currentStock: Number(m.stock_quantity),
+      reorderLevel: Number(m.reorder_level),
+    });
+    const phone = toWaNumber(supp?.phone || "");
+    if (isValidWaNumber(phone)) window.open(waLink(phone, message), "_blank");
+    else setWaShare({ message, phone: supp?.phone || "" });
   };
 
   const filtered = items.filter(i => !q || i.name.toLowerCase().includes(q.toLowerCase()) || i.sku?.toLowerCase().includes(q.toLowerCase()));
@@ -403,6 +415,14 @@ export default function RawMaterials() {
         description={pending?.description}
         confirmLabel="Remove"
         onConfirm={pending?.onConfirm ?? (() => {})}
+      />
+
+      <WhatsAppShareDialog
+        open={!!waShare}
+        onOpenChange={(o) => !o && setWaShare(null)}
+        message={waShare?.message ?? ""}
+        defaultPhone={waShare?.phone}
+        recipientLabel="Supplier"
       />
     </div>
   );
