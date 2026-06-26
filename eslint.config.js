@@ -26,4 +26,8 @@ export default tseslint.config(
       "@typescript-eslint/no-require-imports": "warn",
     },
   },
+  {
+    files: ["scripts/**/*.ts"],
+    languageOptions: { globals: globals.node },
+  },
 );
