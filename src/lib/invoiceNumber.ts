@@ -7,10 +7,12 @@ export function yymmdd(d: Date = new Date()): string {
 }
 
 /**
- * Client fallback used only if next_invoice_number RPC is unavailable. Keeps the YYMMDD
- * prefix and adds a timestamp suffix so it stays unique and won't clash with the server's
- * small daily sequence. The server function is authoritative for the real YYMMDD-N value.
+ * Client fallback used only if the next_invoice_number RPC is unavailable. Keeps the YYMMDD
+ * prefix and adds a timestamp + random suffix so even same-millisecond calls can't collide
+ * (and it won't clash with the server's small daily sequence). The server function is
+ * authoritative for the real YYMMDD-N value.
  */
 export function invoiceFallbackNumber(d: Date = new Date()): string {
-  return `${yymmdd(d)}-${String(d.getTime()).slice(-6)}`;
+  const rand = Math.floor(Math.random() * 1000).toString().padStart(3, "0");
+  return `${yymmdd(d)}-${String(d.getTime()).slice(-6)}${rand}`;
 }

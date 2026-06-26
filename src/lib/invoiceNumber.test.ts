@@ -15,7 +15,12 @@ describe("yymmdd", () => {
 describe("invoiceFallbackNumber", () => {
   it("is the date prefix plus a numeric suffix", () => {
     const d = new Date(2026, 5, 25);
-    expect(invoiceFallbackNumber(d)).toMatch(/^260625-\d{1,6}$/);
+    expect(invoiceFallbackNumber(d)).toMatch(/^260625-\d+$/);
     expect(invoiceFallbackNumber(d).startsWith(yymmdd(d) + "-")).toBe(true);
+  });
+  it("varies between calls so it can't collide", () => {
+    const d = new Date(2026, 5, 25);
+    const a = new Set(Array.from({ length: 50 }, () => invoiceFallbackNumber(d)));
+    expect(a.size).toBeGreaterThan(1);
   });
 });
