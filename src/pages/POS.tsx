@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import OrdersPanel from "@/components/OrdersPanel";
 import Paginator, { usePagination } from "@/components/Paginator";
+import { invoiceFallbackNumber } from "@/lib/invoiceNumber";
 import { POSSkeleton } from "@/components/Skeletons";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { summarizeHeldSale, heldItemsPreview, parseHeldSales, serializeHeldSales, heldStorageKey, type HeldSale } from "@/lib/heldSales";
@@ -163,12 +164,10 @@ export default function POS() {
     }
 
     // Auto-create a paid invoice for this sale
-    const { data: numData } = await supabase.rpc("next_doc_number" as any, {
-      _business_id: business.id, _prefix: "INV", _table: "invoices", _col: "invoice_number",
-    });
+    const { data: numData } = await supabase.rpc("next_invoice_number" as any, { _business_id: business.id });
     const { data: inv, error: e3 } = await supabase.from("invoices").insert({
       business_id: business.id,
-      invoice_number: (numData as string) || `INV-${Date.now().toString().slice(-6)}`,
+      invoice_number: (numData as string) || invoiceFallbackNumber(),
       customer_name: "Walk-in Customer",
       status: "paid",
       subtotal,

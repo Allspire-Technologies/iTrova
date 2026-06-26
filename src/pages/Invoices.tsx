@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { downloadPdf } from "@/lib/pdf";
 import { buildReceiptHtml } from "@/lib/receipt";
 import { toCsv, downloadCsv } from "@/lib/csv";
+import { invoiceFallbackNumber } from "@/lib/invoiceNumber";
 import Paginator, { usePagination } from "@/components/Paginator";
 import { TablePageSkeleton } from "@/components/Skeletons";
 import { getLimit, isAtLimit, limitMessage } from "@/lib/planLimits";
@@ -190,10 +191,8 @@ export default function Invoices() {
       if (logErr) console.error("log_invoice_edit failed:", logErr);
       toast.success(`Invoice ${editing.invoice_number} updated`);
     } else {
-      const { data: numData } = await supabase.rpc("next_doc_number" as any, {
-        _business_id: business.id, _prefix: "INV", _table: "invoices", _col: "invoice_number",
-      });
-      const invoice_number: string = (numData as string) || `INV-${Date.now().toString().slice(-6)}`;
+      const { data: numData } = await supabase.rpc("next_invoice_number" as any, { _business_id: business.id });
+      const invoice_number: string = (numData as string) || invoiceFallbackNumber();
       const { data: inv, error } = await supabase.from("invoices").insert({
         business_id: business.id, invoice_number,
         customer_name: form.customer_name,
