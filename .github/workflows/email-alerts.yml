@@ -17,7 +17,8 @@ jobs:
       - run: npm ci
       - run: npx tsx scripts/email-alerts.ts
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          # Reuses the existing repo Variable (the URL is public, not a secret).
+          SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
