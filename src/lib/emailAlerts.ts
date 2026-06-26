@@ -43,11 +43,18 @@ export const RESOURCE_SPECS: { resource: PlanResource; column: string; label: st
   { resource: "staff",          column: "staff",           label: "team members" },
 ];
 
-function shell(title: string, body: string): string {
+/** Formats an ISO date as "25 Jul 2026" (UTC, to match the renewal date as stored). */
+export function formatAlertDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+}
+
+function shell(title: string, body: string, ctaLabel: string): string {
   return `<div style="font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:0 auto;color:#1a1a1a">
   <h2 style="color:#0f766e;margin:0 0 12px">${title}</h2>
   ${body}
-  <p style="margin:24px 0 8px"><a href="${APP_URL}/settings" style="background:#0f766e;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;display:inline-block">Open iTrova</a></p>
+  <p style="margin:24px 0 8px"><a href="${APP_URL}/settings" style="background:#0f766e;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;display:inline-block">${ctaLabel}</a></p>
   <p style="color:#999;font-size:12px;margin-top:16px">iTrova · ${APP_URL}</p>
 </div>`;
 }
@@ -55,22 +62,23 @@ function shell(title: string, body: string): string {
 export function renewalEmail(p: { businessName: string; planName: string; renewsOn: string; daysLeft: number }): { subject: string; html: string } {
   const plural = p.daysLeft === 1 ? "" : "s";
   return {
-    subject: `Your ${p.planName} plan renews in ${p.daysLeft} day${plural}`,
+    subject: `Your iTrova ${p.planName} plan renews in ${p.daysLeft} day${plural}`,
     html: shell("Subscription renewal coming up", `
     <p>Hi ${p.businessName},</p>
-    <p>Your <strong style="text-transform:capitalize">${p.planName}</strong> plan is due to renew on <strong>${p.renewsOn}</strong> — that's ${p.daysLeft} day${plural} away.</p>
-    <p>To keep your features without interruption, please renew before then.</p>`),
+    <p>A quick heads-up — your <strong>${p.planName}</strong> subscription renews on <strong>${p.renewsOn}</strong>, ${p.daysLeft} day${plural} from now.</p>
+    <p>To keep uninterrupted access to your features, renew from <strong>Settings &rarr; Subscription</strong> — just tap the button below.</p>`, "Renew now"),
   };
 }
 
 export function limitEmail(p: { businessName: string; label: string; count: number; limit: number; level: LimitLevel }): { subject: string; html: string } {
   const reached = p.level === "reached";
-  const subject = reached ? `You've reached your ${p.label} limit` : `You're close to your ${p.label} limit`;
-  return {
-    subject,
-    html: shell(subject, `
-    <p>Hi ${p.businessName},</p>
-    <p>You've used <strong>${p.count} of ${p.limit}</strong> ${p.label} on your current plan${reached ? "" : " (over 80%)"}.</p>
-    <p>${reached ? "You won't be able to add more until you upgrade." : "You're approaching your plan limit."} Upgrade to Pro for more headroom.</p>`),
-  };
+  const subject = reached ? `You've hit your ${p.label} limit` : `Heads-up: you're close to your ${p.label} limit`;
+  const body = reached
+    ? `<p>Hi ${p.businessName},</p>
+    <p>You've reached your plan's limit of <strong>${p.limit}</strong> ${p.label}, so you can't add more for now.</p>
+    <p>Upgrade to <strong>Pro</strong> to lift the cap and keep growing.</p>`
+    : `<p>Hi ${p.businessName},</p>
+    <p>You've used <strong>${p.count} of ${p.limit}</strong> ${p.label} on your current plan.</p>
+    <p>Upgrade to <strong>Pro</strong> for unlimited ${p.label} (and no caps across iTrova).</p>`;
+  return { subject, html: shell(subject, body, "Upgrade") };
 }

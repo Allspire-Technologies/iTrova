@@ -6,7 +6,7 @@ import nodemailer from "nodemailer";
 import { getLimit, registerPlanLimits, type PlanLimits } from "../src/lib/planLimits";
 import { effectiveTier } from "../src/lib/subscription";
 import {
-  isRenewalDueSoon, renewalAlertKey, daysUntil,
+  isRenewalDueSoon, renewalAlertKey, daysUntil, formatAlertDate,
   limitWarningLevel, limitAlertKey, RESOURCE_SPECS,
   renewalEmail, limitEmail,
 } from "../src/lib/emailAlerts";
@@ -38,9 +38,11 @@ async function main() {
   const from = env("EMAIL_FROM");
   const now = Date.now();
 
-  const { data: plans, error: planErr } = await supabase.from("plans").select("key, limits");
+  const { data: plans, error: planErr } = await supabase.from("plans").select("key, name, limits");
   if (planErr) throw planErr;
-  registerPlanLimits((plans ?? []).map((p: { key: string; limits: PlanLimits | null }) => ({ key: p.key, limits: p.limits })));
+  const planRows = (plans ?? []) as { key: string; name: string | null; limits: PlanLimits | null }[];
+  registerPlanLimits(planRows.map((p) => ({ key: p.key, limits: p.limits })));
+  const planNames = Object.fromEntries(planRows.map((p) => [p.key, p.name ?? p.key]));
 
   const { data: snap, error: snapErr } = await supabase.rpc("businesses_alert_snapshot");
   if (snapErr) throw snapErr;
@@ -62,8 +64,8 @@ async function main() {
     if (tier !== "free" && b.subscription_renews_at && isRenewalDueSoon(b.subscription_renews_at, now)) {
       const { subject, html } = renewalEmail({
         businessName: b.business_name,
-        planName: tier,
-        renewsOn: b.subscription_renews_at.slice(0, 10),
+        planName: planNames[tier] ?? tier,
+        renewsOn: formatAlertDate(b.subscription_renews_at),
         daysLeft: daysUntil(b.subscription_renews_at, now),
       });
       queue(b.business_id, renewalAlertKey(b.subscription_renews_at), b.owner_email, subject, html);

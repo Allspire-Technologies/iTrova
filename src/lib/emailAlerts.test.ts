@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  isRenewalDueSoon, daysUntil, renewalAlertKey,
+  isRenewalDueSoon, daysUntil, renewalAlertKey, formatAlertDate,
   limitWarningLevel, limitAlertKey, renewalEmail, limitEmail,
 } from "./emailAlerts";
 
@@ -54,18 +54,30 @@ describe("limitAlertKey", () => {
   });
 });
 
+describe("formatAlertDate", () => {
+  it("formats an ISO date as '25 Jul 2026'", () => {
+    expect(formatAlertDate("2026-07-25T12:00:00Z")).toBe("25 Jul 2026");
+  });
+  it("returns the input unchanged when unparseable", () => {
+    expect(formatAlertDate("nope")).toBe("nope");
+  });
+});
+
 describe("email builders", () => {
-  it("renewalEmail names the plan, date and days", () => {
-    const { subject, html } = renewalEmail({ businessName: "Acme", planName: "pro", renewsOn: "2026-07-25", daysLeft: 3 });
-    expect(subject).toBe("Your pro plan renews in 3 days");
+  it("renewalEmail uses the plan name, date, days and a Renew CTA", () => {
+    const { subject, html } = renewalEmail({ businessName: "Acme", planName: "Pro", renewsOn: "25 Jul 2026", daysLeft: 3 });
+    expect(subject).toBe("Your iTrova Pro plan renews in 3 days");
     expect(html).toContain("Acme");
-    expect(html).toContain("2026-07-25");
+    expect(html).toContain("25 Jul 2026");
+    expect(html).toContain("Renew now");
   });
   it("limitEmail differs for approaching vs reached", () => {
-    expect(limitEmail({ businessName: "Acme", label: "products", count: 80, limit: 100, level: "approaching" }).subject)
-      .toBe("You're close to your products limit");
+    const approaching = limitEmail({ businessName: "Acme", label: "products", count: 80, limit: 100, level: "approaching" });
+    expect(approaching.subject).toBe("Heads-up: you're close to your products limit");
+    expect(approaching.html).toContain("80 of 100");
+    expect(approaching.html).toContain("Upgrade");
     const reached = limitEmail({ businessName: "Acme", label: "products", count: 100, limit: 100, level: "reached" });
-    expect(reached.subject).toBe("You've reached your products limit");
-    expect(reached.html).toContain("100 of 100");
+    expect(reached.subject).toBe("You've hit your products limit");
+    expect(reached.html).toContain("100");
   });
 });
