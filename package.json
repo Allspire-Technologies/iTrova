@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "prebuild": "npm run typecheck && npm test",
-    "build": "vite build",
+    "build": "vite build && node scripts/stamp-sw.mjs",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "npm run build && wrangler dev",
