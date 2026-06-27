@@ -6,6 +6,7 @@ import {
   heldStorageKey,
   parseHeldSales,
   serializeHeldSales,
+  reconcileHeldItems,
   HeldSale,
 } from "./heldSales";
 
@@ -67,5 +68,44 @@ describe("parseHeldSales / serializeHeldSales", () => {
   it("drops malformed entries", () => {
     const raw = JSON.stringify([sale, { id: "x" }, { items: [] }, null]);
     expect(parseHeldSales(raw)).toEqual([sale]);
+  });
+});
+
+describe("reconcileHeldItems", () => {
+  const live = (entries: [string, number][]) =>
+    new Map(entries.map(([id, stock]) => [id, { id, stock_quantity: stock }]));
+
+  it("keeps items whose live stock covers the quantity", () => {
+    const r = reconcileHeldItems(sale.items, live([["a", 10], ["b", 10]]));
+    expect(r.items).toEqual([
+      { product: { id: "a", stock_quantity: 10 }, qty: 2 },
+      { product: { id: "b", stock_quantity: 10 }, qty: 1 },
+    ]);
+    expect(r.removed).toBe(0);
+    expect(r.capped).toBe(0);
+  });
+
+  it("drops items that are no longer in stock (missing or zero)", () => {
+    // 'a' sold out to 0, 'b' missing from the live map entirely
+    const r = reconcileHeldItems(sale.items, live([["a", 0]]));
+    expect(r.items).toEqual([]);
+    expect(r.removed).toBe(2);
+    expect(r.capped).toBe(0);
+  });
+
+  it("caps quantity to the available stock", () => {
+    const r = reconcileHeldItems(sale.items, live([["a", 1], ["b", 5]]));
+    expect(r.items).toEqual([
+      { product: { id: "a", stock_quantity: 1 }, qty: 1 },
+      { product: { id: "b", stock_quantity: 5 }, qty: 1 },
+    ]);
+    expect(r.removed).toBe(0);
+    expect(r.capped).toBe(1);
+  });
+
+  it("uses the live product, not the stale snapshot", () => {
+    // snapshot had stock 100; live says 3 — the resumed item should carry live stock
+    const r = reconcileHeldItems(sale.items, live([["a", 3], ["b", 3]]));
+    expect(r.items[0].product.stock_quantity).toBe(3);
   });
 });

@@ -18,7 +18,7 @@ import { buildReceiptMessage } from "@/lib/whatsapp";
 import WhatsAppShareDialog from "@/components/WhatsAppShareDialog";
 import { POSSkeleton } from "@/components/Skeletons";
 import ConfirmDialog from "@/components/ConfirmDialog";
-import { summarizeHeldSale, heldItemsPreview, parseHeldSales, serializeHeldSales, heldStorageKey, type HeldSale } from "@/lib/heldSales";
+import { summarizeHeldSale, heldItemsPreview, parseHeldSales, serializeHeldSales, heldStorageKey, reconcileHeldItems, type HeldSale } from "@/lib/heldSales";
 
 type Product = { id: string; name: string; sku: string | null; selling_price: number; stock_quantity: number; reorder_level: number; category: string | null };
 type CartItem = { product: Product; qty: number };
@@ -130,9 +130,22 @@ export default function POS() {
       toast.success("Current sale held");
     }
     persistHeld(next);
-    setCart(sale.items as CartItem[]);
-    setDiscount(sale.discount);
+
+    // The held cart captured stock at hold time, which may be stale now (the item could
+    // have sold in between). Reconcile against the live product list: drop items that are
+    // no longer in stock and cap quantities to what's actually available.
+    const live = new Map(products.map(p => [p.id, p]));
+    const { items: reconciled, removed, capped } = reconcileHeldItems(sale.items as CartItem[], live);
+    setCart(reconciled);
+    setDiscount(reconciled.length > 0 ? sale.discount : 0);
     setHeldOpen(false);
+    if (removed || capped) {
+      const parts = [
+        removed && `${removed} item${removed === 1 ? "" : "s"} now out of stock`,
+        capped && `${capped} reduced to available stock`,
+      ].filter(Boolean);
+      toast.warning(`Resumed with changes: ${parts.join(", ")}.`);
+    }
   };
 
   const discardHeld = (id: string) => persistHeld(held.filter(s => s.id !== id));
@@ -146,11 +159,34 @@ export default function POS() {
     if (!business || cart.length === 0) return;
     setBusy(true);
 
+    // Deduct stock first, atomically and guarded against overselling. This is the source
+    // of truth for availability — the cart's stock numbers can be stale (e.g. a held sale
+    // resumed after the same item sold elsewhere), so we never trust them to gate the sale.
+    const stockItems = cart.map(i => ({ product_id: i.product.id, qty: i.qty }));
+    const { error: eStock } = await supabase.rpc("deduct_sale_stock" as any, { _business_id: business.id, _items: stockItems });
+    if (eStock) {
+      setBusy(false);
+      if (eStock.message?.includes("INSUFFICIENT_STOCK")) {
+        const name = eStock.message.split("INSUFFICIENT_STOCK:")[1]?.trim() || "an item";
+        toast.error(`Not enough stock for ${name} — it may have just sold. Refreshing availability.`);
+      } else {
+        toast.error(eStock.message || "Could not reserve stock");
+      }
+      load();
+      return;
+    }
+
     const { data: sale, error: e1 } = await supabase
       .from("sales")
       .insert({ business_id: business.id, staff_id: user?.id, total_amount: total, discount_amount: discount, payment_method: method })
       .select().single();
-    if (e1 || !sale) { setBusy(false); return toast.error(e1?.message || "Sale failed"); }
+    if (e1 || !sale) {
+      // Roll back the stock we already took, since no sale was recorded.
+      await supabase.rpc("restock_sale_stock" as any, { _business_id: business.id, _items: stockItems });
+      setBusy(false);
+      load();
+      return toast.error(e1?.message || "Sale failed");
+    }
 
     const items = cart.map(i => ({
       sale_id: sale.id,
@@ -159,11 +195,13 @@ export default function POS() {
       unit_price: Number(i.product.selling_price),
     }));
     const { error: e2 } = await supabase.from("sale_items").insert(items);
-    if (e2) { setBusy(false); return toast.error(e2.message); }
-
-    for (const i of cart) {
-      const newStock = Number(i.product.stock_quantity) - i.qty;
-      await supabase.from("products").update({ stock_quantity: newStock }).eq("id", i.product.id);
+    if (e2) {
+      // Undo: drop the sale (cascades sale_items) and return the stock.
+      await supabase.from("sales").delete().eq("id", sale.id);
+      await supabase.rpc("restock_sale_stock" as any, { _business_id: business.id, _items: stockItems });
+      setBusy(false);
+      load();
+      return toast.error(e2.message);
     }
 
     // Auto-create a paid invoice for this sale
