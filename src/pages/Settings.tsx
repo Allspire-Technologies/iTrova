@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import SearchableSelect from "@/components/SearchableSelect";
 import { CURRENCY_OPTIONS } from "@/lib/format";
+import { INDUSTRY_OPTIONS } from "@/lib/industries";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { SETTINGS_PAGE_CLASS, SETTINGS_FIELD_GRID, SETTINGS_PLANS_GRID } from "@/lib/settingsLayout";
 import { highestCataloguePlan, previousCataloguePlan, includesAll, featuresBeyond, planChangeAction, type PlanChange } from "@/lib/planFeatures";
@@ -217,6 +218,7 @@ export default function Settings() {
 
   // Business Profile
   const [bizName, setBizName] = useState("");
+  const [industry, setIndustry] = useState("");
   const [ownerName, setOwnerName] = useState("");
   const [profileBusy, setProfileBusy] = useState(false);
 
@@ -252,6 +254,7 @@ export default function Settings() {
   useEffect(() => {
     if (business) {
       setBizName(business.name || "");
+      setIndustry(business.industry || "");
       setCurrency(business.currency || "NGN");
       setTimezone(business.timezone || "Africa/Lagos");
       setCurrentPlan(business.subscription_tier || "free");
@@ -276,7 +279,7 @@ export default function Settings() {
     if (!business || !user) return;
     setProfileBusy(true);
     const [{ error: e1 }, { error: e2 }] = await Promise.all([
-      supabase.from("businesses").update({ name: bizName }).eq("id", business.id),
+      supabase.from("businesses").update({ name: bizName, industry: industry || null }).eq("id", business.id),
       supabase.from("profiles").update({ owner_name: ownerName }).eq("id", user.id),
     ]);
     setProfileBusy(false);
@@ -354,7 +357,7 @@ export default function Settings() {
       : "Verification email sent. Check your inbox to confirm.");
   };
 
-  const profileDirty = isDirty([bizName, ownerName], [business?.name || "", profile?.owner_name || ""]);
+  const profileDirty = isDirty([bizName, industry, ownerName], [business?.name || "", business?.industry || "", profile?.owner_name || ""]);
   const regionalDirty = isDirty([currency, timezone], [business?.currency || "NGN", business?.timezone || "Africa/Lagos"]);
   const integrationsDirty = isDirty([whatsapp], [business?.whatsapp_number || ""]);
   const securityReady = isPasswordFormReady(newPassword, confirmPassword);
@@ -384,6 +387,15 @@ export default function Settings() {
             <div className="space-y-2">
               <Label>Business name</Label>
               <Input value={bizName} onChange={e => setBizName(e.target.value)} placeholder="Enter your business name" />
+            </div>
+            <div className="space-y-2">
+              <Label>Industry</Label>
+              <SearchableSelect
+                value={industry}
+                onValueChange={setIndustry}
+                options={INDUSTRY_OPTIONS}
+                placeholder="Select your industry"
+              />
             </div>
             <div className="space-y-2">
               <Label>Owner name</Label>

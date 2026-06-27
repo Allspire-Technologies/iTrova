@@ -103,6 +103,7 @@ export type Database = {
           created_at: string
           currency: string
           id: string
+          industry: string | null
           name: string
           owner_id: string
           subscription_cycle: string | null
@@ -116,6 +117,7 @@ export type Database = {
           created_at?: string
           currency?: string
           id?: string
+          industry?: string | null
           name: string
           owner_id: string
           subscription_cycle?: string | null
@@ -129,6 +131,7 @@ export type Database = {
           created_at?: string
           currency?: string
           id?: string
+          industry?: string | null
           name?: string
           owner_id?: string
           subscription_cycle?: string | null

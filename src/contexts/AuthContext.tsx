@@ -19,6 +19,7 @@ type Profile = {
 type Business = {
   id: string;
   name: string;
+  industry: string | null;
   currency: string;
   timezone: string | null;
   subscription_tier: string | null;
