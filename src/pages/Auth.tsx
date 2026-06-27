@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import SearchableSelect from "@/components/SearchableSelect";
+import { INDUSTRY_OPTIONS } from "@/lib/industries";
 import { toast } from "sonner";
 import { Eye, EyeOff, Sparkles, Store, MailCheck } from "lucide-react";
 
@@ -16,6 +18,7 @@ export default function Auth() {
 
   // signup
   const [businessName, setBusinessName] = useState("");
+  const [industry, setIndustry] = useState("");
   const [ownerName, setOwnerName] = useState("");
   const [phone, setPhone] = useState("");
   const [signupEmail, setSignupEmail] = useState("");
@@ -44,7 +47,7 @@ export default function Auth() {
       password: signupPassword,
       options: {
         emailRedirectTo: `${window.location.origin}/`,
-        data: { business_name: businessName, owner_name: ownerName, phone },
+        data: { business_name: businessName, owner_name: ownerName, phone, industry },
       },
     });
     setBusy(false);
@@ -193,6 +196,15 @@ export default function Auth() {
                 <div className="space-y-2">
                   <Label htmlFor="bn">Business name</Label>
                   <Input id="bn" required value={businessName} onChange={e => setBusinessName(e.target.value)} placeholder="Enter your business name" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Industry</Label>
+                  <SearchableSelect
+                    value={industry}
+                    onValueChange={setIndustry}
+                    options={INDUSTRY_OPTIONS}
+                    placeholder="Select your industry"
+                  />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
