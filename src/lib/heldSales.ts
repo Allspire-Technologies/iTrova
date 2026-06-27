@@ -42,6 +42,39 @@ export function heldItemsPreview(items: HeldCartItem[], max = 3): string {
   return extra > 0 ? `${shown.join(", ")} +${extra} more` : shown.join(", ");
 }
 
+export interface ReconcileResult<P> {
+  items: { product: P; qty: number }[];
+  removed: number;
+  capped: number;
+}
+
+/**
+ * Reconcile a held cart against live stock. A held sale snapshots stock at hold time,
+ * which goes stale if the item sells elsewhere before the sale is resumed. This drops
+ * items that are no longer in stock and caps each quantity to what's actually available.
+ * Returns the cleaned items plus how many were removed / capped, so the UI can explain.
+ */
+export function reconcileHeldItems<P extends { id: string; stock_quantity: number }>(
+  items: { product: { id: string }; qty: number }[],
+  live: Map<string, P>,
+): ReconcileResult<P> {
+  let removed = 0;
+  let capped = 0;
+  const out: { product: P; qty: number }[] = [];
+  for (const it of items) {
+    const p = live.get(it.product.id);
+    const avail = p ? Number(p.stock_quantity) : 0;
+    if (!p || avail <= 0) {
+      removed += 1;
+      continue;
+    }
+    const qty = Math.min(it.qty, avail);
+    if (qty < it.qty) capped += 1;
+    out.push({ product: p, qty });
+  }
+  return { items: out, removed, capped };
+}
+
 export function heldStorageKey(businessId: string): string {
   return `itrova:held-sales:${businessId}`;
 }
