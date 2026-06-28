@@ -54,15 +54,22 @@ export async function syncOne(sale: QueuedSale): Promise<SyncOutcome> {
 
 let draining = false;
 
-export async function drainQueue(businessId: string, onOutcome?: (o: SyncOutcome) => void): Promise<SyncOutcome[]> {
+export interface DrainOpts {
+  /** Skip sales that have already failed this many times (auto-drain only; "Sync now" omits it). */
+  maxAttempts?: number;
+  onOutcome?: (o: SyncOutcome) => void;
+}
+
+export async function drainQueue(businessId: string, opts: DrainOpts = {}): Promise<SyncOutcome[]> {
   if (draining) return [];
   draining = true;
   const outcomes: SyncOutcome[] = [];
   try {
     for (const sale of await listQueuedSales(businessId)) {
+      if (opts.maxAttempts != null && sale.attempts >= opts.maxAttempts) continue; // give up auto-retrying
       const outcome = await syncOne(sale);
       outcomes.push(outcome);
-      onOutcome?.(outcome);
+      opts.onOutcome?.(outcome);
       if (outcome.result === "transient") break; // connection likely dropped — resume on next trigger
     }
   } finally {
