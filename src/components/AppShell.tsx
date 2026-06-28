@@ -10,6 +10,7 @@ import ConfirmDialog from "@/components/ConfirmDialog";
 import NotificationsBell from "@/components/NotificationsBell";
 import HeaderClock from "@/components/HeaderClock";
 import IdleTimeout from "@/components/IdleTimeout";
+import { OfflineBanner } from "@/components/OfflineBanner";
 
 import type { AppRole } from "@/contexts/AuthContext";
 
@@ -231,6 +232,7 @@ export default function AppShell() {
             </div>
           </div>
         </header>
+        <OfflineBanner />
         <main className="flex-1 p-4 lg:p-8 animate-fade-in">
           <div key={location.key} className="w-full">
             <Outlet />

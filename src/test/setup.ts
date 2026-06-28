@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom";
+import "fake-indexeddb/auto"; // in-memory IndexedDB for offlineStore tests
 
 Object.defineProperty(window, "matchMedia", {
   writable: true,
