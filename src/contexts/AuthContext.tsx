@@ -6,6 +6,7 @@ import { registerPlanLimits, type PlanLimits } from "@/lib/planLimits";
 import type { BillingCycle } from "@/lib/planPricing";
 import { canAccessModule, planModules } from "@/lib/moduleAccess";
 import { isExpired, daysRemaining, nextRenewal } from "@/lib/subscription";
+import { cacheSession, readCachedSession } from "@/lib/offlineStore";
 
 export type AppRole = Database["public"]["Enums"]["app_role"];
 
@@ -96,23 +97,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const applyBusiness = (biz: Business) => {
+    const rawTier = biz.subscription_tier || "free";
+    const renewsAt = biz.subscription_renews_at ?? nextRenewal(biz.subscription_started_at, biz.subscription_cycle);
+    const expired = isExpired(renewsAt);
+    // Enforce expiry at read time: an expired paid tier behaves as Free everywhere
+    // that reads business.subscription_tier (limits, modules, plan resolution).
+    setBusiness({ ...biz, subscription_tier: expired ? "free" : rawTier });
+    setSubscription({ tier: rawTier, cycle: biz.subscription_cycle, renewsAt, daysRemaining: daysRemaining(renewsAt), expired });
+  };
+
+  // Offline fallback: rehydrate business/profile/role from the last cached session so the app
+  // (POS + read-only views) still works with no network. Returns true if anything was restored.
+  const hydrateFromCache = async (): Promise<boolean> => {
+    try {
+      const cached = await readCachedSession();
+      if (!cached?.business) return false;
+      setProfile((cached.profile as Profile | null) ?? null);
+      setRole((cached.role as AppRole | null) ?? null);
+      applyBusiness(cached.business as Business);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const loadProfile = async (uid: string) => {
-    const { data: p } = await supabase.from("profiles").select("*").eq("id", uid).maybeSingle();
+    const { data: p, error: pErr } = await supabase.from("profiles").select("*").eq("id", uid).maybeSingle();
+    if (pErr) { await hydrateFromCache(); return; } // offline / unreachable
     setProfile(p as Profile | null);
     if (p?.business_id) {
-      const [{ data: b }, { data: roles }] = await Promise.all([
+      const [{ data: b, error: bErr }, { data: roles, error: rErr }] = await Promise.all([
         supabase.from("businesses").select("*").eq("id", p.business_id).maybeSingle(),
         supabase.from("user_roles").select("role").eq("user_id", uid).eq("business_id", p.business_id),
       ]);
+      if (bErr || rErr) { await hydrateFromCache(); return; } // offline mid-load
       const biz = b as Business | null;
       if (biz) {
-        const rawTier = biz.subscription_tier || "free";
-        const renewsAt = biz.subscription_renews_at ?? nextRenewal(biz.subscription_started_at, biz.subscription_cycle);
-        const expired = isExpired(renewsAt);
-        // Enforce expiry at read time: an expired paid tier behaves as Free everywhere
-        // that reads business.subscription_tier (limits, modules, plan resolution).
-        setBusiness({ ...biz, subscription_tier: expired ? "free" : rawTier });
-        setSubscription({ tier: rawTier, cycle: biz.subscription_cycle, renewsAt, daysRemaining: daysRemaining(renewsAt), expired });
+        applyBusiness(biz);
       } else {
         setBusiness(null);
         setSubscription(null);
@@ -177,6 +199,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const hasModule = (key: string) => canAccessModule(planModules(plan), key);
+
+  // Persist a minimal session snapshot whenever we have live data, so the next offline load can
+  // rehydrate business/profile/role + plan modules without the network.
+  useEffect(() => {
+    if (!user || !business) return;
+    cacheSession({
+      businessId: business.id,
+      business,
+      profile,
+      staffId: user.id,
+      role,
+      planModules: plan?.modules ?? null,
+      cachedAt: Date.now(),
+    }).catch(() => {});
+  }, [user, business, profile, role, plan]);
 
   const signOut = async () => {
     await supabase.auth.signOut();

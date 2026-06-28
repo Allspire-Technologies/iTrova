@@ -18,6 +18,8 @@ import { TablePageSkeleton } from "@/components/Skeletons";
 import { getLimit, isAtLimit, limitMessage } from "@/lib/planLimits";
 import { findSkuConflict, buildImportPlan } from "@/lib/inventoryRules";
 import { useCurrency } from "@/hooks/useCurrency";
+import { useOnline } from "@/contexts/OnlineContext";
+import { cacheProducts, readCachedProducts } from "@/lib/offlineStore";
 
 type Product = {
   id: string;
@@ -35,6 +37,7 @@ const empty = { name: "", category: "", sku: "", unit: "pcs", selling_price: "",
 
 export default function Inventory() {
   const { business, hasModule } = useAuth();
+  const { online } = useOnline();
   const { fmt, symbol } = useCurrency();
   const [searchParams] = useSearchParams();
   const [items, setItems] = useState<Product[]>([]);
@@ -50,13 +53,26 @@ export default function Inventory() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = async () => {
+    if (!business) return;
+    if (!online) {
+      // Offline: read-only list from the last-synced cache.
+      const cached = await readCachedProducts(business.id);
+      setItems(cached.map((c) => ({ ...c, unit: null, cost_price: 0 })) as Product[]);
+      setLoading(false);
+      return;
+    }
     const { data, error } = await supabase.from("products").select("*").order("created_at", { ascending: false });
     if (error) return toast.error(error.message);
-    setItems((data as Product[]) || []);
+    const rows = (data as Product[]) || [];
+    setItems(rows);
     setLoading(false);
+    void cacheProducts(
+      business.id,
+      rows.map((r) => ({ id: r.id, business_id: business.id, name: r.name, sku: r.sku, selling_price: r.selling_price, stock_quantity: r.stock_quantity, reorder_level: r.reorder_level, category: r.category })),
+    );
   };
 
-  useEffect(() => { if (business) load(); }, [business]);
+  useEffect(() => { if (business) load(); }, [business, online]);
 
   const openAdd = () => { setEditing(null); setForm(empty); setOpen(true); };
   const openEdit = (p: Product) => { setEditing(p); setForm(p); setOpen(true); };
@@ -194,13 +210,14 @@ export default function Inventory() {
         <div className="flex gap-2 flex-wrap">
           <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => e.target.files?.[0] && importCsv(e.target.files[0])} />
           <Button variant="outline" onClick={downloadTemplate}><Download className="size-4" /> CSV Template</Button>
-          {hasModule("csv_import") && <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={atProductLimit} title={atProductLimit ? limitMessage("products") : undefined}><Upload className="size-4" /> Import CSV</Button>}
+          {online && hasModule("csv_import") && <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={atProductLimit} title={atProductLimit ? limitMessage("products") : undefined}><Upload className="size-4" /> Import CSV</Button>}
           {hasModule("csv_export") && <Button variant="outline" onClick={exportCsv} disabled={items.length === 0}><Download className="size-4" /> Export</Button>}
           {productLimit !== null && items.length >= Math.floor(productLimit * 0.8) && (
             <span className={`self-center text-xs font-medium ${atProductLimit ? "text-destructive" : "text-amber-600"}`}>
               {items.length} / {productLimit}
             </span>
           )}
+          {online && (
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <Button variant="hero" onClick={openAdd} disabled={atProductLimit} title={atProductLimit ? limitMessage("products") : undefined}><Plus className="size-4" /> Add product</Button>
@@ -252,6 +269,7 @@ export default function Inventory() {
               </form>
             </DialogContent>
           </Dialog>
+          )}
         </div>
       </div>
 
@@ -292,8 +310,8 @@ export default function Inventory() {
               <Package className="size-6" />
             </div>
             <h3 className="font-display text-lg font-semibold text-brand-dark">No products yet</h3>
-            <p className="text-muted-foreground text-sm mt-1 mb-4">Add your first product or import a CSV.</p>
-            <Button variant="brand" onClick={openAdd} disabled={atProductLimit}><Plus className="size-4" /> Add product</Button>
+            <p className="text-muted-foreground text-sm mt-1 mb-4">{online ? "Add your first product or import a CSV." : "No cached products to show offline."}</p>
+            {online && <Button variant="brand" onClick={openAdd} disabled={atProductLimit}><Plus className="size-4" /> Add product</Button>}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -322,8 +340,14 @@ export default function Inventory() {
                       <td className="px-4 py-3 text-right font-display font-semibold text-brand-dark">{fmt(p.selling_price)}</td>
                       <td className="px-4 py-3"><Badge variant="outline" className={s.className}>{s.label}</Badge></td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
-                        <Button variant="ghost" size="icon" title="Adjust stock" onClick={() => setAdjustTarget(p)}><SlidersHorizontal className="size-4" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => openEdit(p)}><Pencil className="size-4" /></Button>
+                        {online ? (
+                          <>
+                            <Button variant="ghost" size="icon" title="Adjust stock" onClick={() => setAdjustTarget(p)}><SlidersHorizontal className="size-4" /></Button>
+                            <Button variant="ghost" size="icon" onClick={() => openEdit(p)}><Pencil className="size-4" /></Button>
+                          </>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
                       </td>
                     </tr>
                   );

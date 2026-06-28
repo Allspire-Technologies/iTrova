@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { LayoutDashboard, Package, ShoppingCart, Truck, FileText, ClipboardList, Users, BarChart3, Sparkles, Settings, LogOut, Store, Menu, Boxes, ChevronLeft, ChevronRight, AlertTriangle, Clock } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingCart, Truck, FileText, ClipboardList, Users, BarChart3, Sparkles, Settings, LogOut, Store, Menu, Boxes, ChevronLeft, ChevronRight, AlertTriangle, Clock, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
@@ -11,6 +11,7 @@ import NotificationsBell from "@/components/NotificationsBell";
 import HeaderClock from "@/components/HeaderClock";
 import IdleTimeout from "@/components/IdleTimeout";
 import { OfflineBanner } from "@/components/OfflineBanner";
+import { useOnline } from "@/contexts/OnlineContext";
 
 import type { AppRole } from "@/contexts/AuthContext";
 
@@ -30,25 +31,32 @@ const nav: NavItem[] = [
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 
-function NavList({ onNavigate, role, hasModule, collapsed }: { onNavigate?: () => void; role: AppRole | null; hasModule: (key: string) => boolean; collapsed?: boolean }) {
+// Modules usable with no internet (POS + the read-only cached views). Everything else is dimmed
+// and non-navigable while offline.
+const OFFLINE_OK = new Set(["/", "/pos", "/inventory"]);
+
+function NavList({ onNavigate, role, hasModule, collapsed, online = true }: { onNavigate?: () => void; role: AppRole | null; hasModule: (key: string) => boolean; collapsed?: boolean; online?: boolean }) {
   const visible = nav.filter(item =>
     (!item.allow || (role && item.allow.includes(role))) &&
     (!item.module || hasModule(item.module))
   );
   return (
     <nav className="flex-1 px-2 space-y-1 overflow-y-auto">
-      {visible.map((item) => (
+      {visible.map((item) => {
+        const offlineBlocked = !online && !OFFLINE_OK.has(item.to);
+        const disabled = item.soon || offlineBlocked;
+        return (
         <NavLink
           key={item.to}
           to={item.to}
           end={item.end}
-          title={collapsed ? item.label : undefined}
-          onClick={(e) => { if (item.soon) { e.preventDefault(); return; } onNavigate?.(); }}
+          title={collapsed ? item.label : offlineBlocked ? "Unavailable offline" : undefined}
+          onClick={(e) => { if (disabled) { e.preventDefault(); return; } onNavigate?.(); }}
           className={({ isActive }) =>
             `group flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors ${
               collapsed ? "justify-center" : ""
             } ${
-              item.soon
+              disabled
                 ? "text-sidebar-foreground/40 cursor-not-allowed"
                 : isActive
                 ? "bg-sidebar-accent text-sidebar-accent-foreground"
@@ -59,14 +67,17 @@ function NavList({ onNavigate, role, hasModule, collapsed }: { onNavigate?: () =
           <item.icon className="size-5 shrink-0" />
           {!collapsed && <span className="flex-1">{item.label}</span>}
           {!collapsed && item.soon && <span className="text-[10px] uppercase tracking-wider opacity-60">Soon</span>}
+          {!collapsed && offlineBlocked && <WifiOff className="size-3.5 opacity-60" />}
         </NavLink>
-      ))}
+        );
+      })}
     </nav>
   );
 }
 
 export default function AppShell() {
   const { user, profile, business, role, subscription, hasModule, signOut, loading } = useAuth();
+  const { online } = useOnline();
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -148,7 +159,7 @@ export default function AppShell() {
           )}
         </div>
 
-        <NavList role={role} hasModule={hasModule} collapsed={collapsed} />
+        <NavList role={role} hasModule={hasModule} collapsed={collapsed} online={online} />
 
         {/* Sign out */}
         <div className={`p-3 border-t border-sidebar-border shrink-0`}>
@@ -190,7 +201,7 @@ export default function AppShell() {
               <SheetContent side="left" className="p-0 w-72 bg-sidebar text-sidebar-foreground border-sidebar-border flex flex-col">
                 <SheetTitle className="sr-only">Navigation</SheetTitle>
                 {MobileBrand}
-                <NavList role={role} hasModule={hasModule} onNavigate={() => setMobileOpen(false)} />
+                <NavList role={role} hasModule={hasModule} onNavigate={() => setMobileOpen(false)} online={online} />
                 {MobileSignOut}
               </SheetContent>
             </Sheet>
