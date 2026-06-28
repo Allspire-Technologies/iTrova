@@ -7,6 +7,27 @@ async function goOffline(page: Page) {
   await page.evaluate(() => window.dispatchEvent(new Event("offline")));
 }
 
+// Restore connectivity and route the offline-sale commit RPC.
+async function goOnline(page: Page, commit: (route: import("@playwright/test").Route) => unknown) {
+  await page.route("**/auth/v1/health**", (r) => r.fulfill({ status: 200, contentType: "application/json", body: "{}" }));
+  await page.route("**/rest/v1/rpc/commit_offline_sale**", commit);
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+}
+
+const PRODUCT = { id: "prod-1", business_id: "biz-1", name: "Garri 50kg", category: "Foodstuff", sku: "GAR-50", unit: "bag", selling_price: 8500, cost_price: 6000, stock_quantity: 20, reorder_level: 5, created_at: "2026-06-01T00:00:00Z" };
+
+// Authenticate (owner), capture one sale while offline, end with "Pending sync (1)" showing.
+async function captureOfflineSale(page: Page) {
+  await authenticate(page);
+  await stubRows(page, "products", [PRODUCT]);
+  await page.goto("/pos");
+  await page.getByRole("button", { name: /Garri 50kg/ }).click();
+  await goOffline(page);
+  await page.getByRole("button", { name: "Complete sale" }).click();
+  await page.getByRole("button", { name: "New sale" }).click(); // close receipt
+  await expect(page.getByText(/Pending sync \(1\)/)).toBeVisible();
+}
+
 test.describe("Offline gating (P1)", () => {
   test("shows the offline banner once disconnected", async ({ page }) => {
     await authenticate(page);
@@ -52,5 +73,22 @@ test.describe("Offline gating (P1)", () => {
     await page.getByRole("button", { name: "New sale" }).click(); // close receipt
     await expect(page.getByText(/Pending sync \(1\)/)).toBeVisible();
     await expect(page.getByText("Cart is empty")).toBeVisible();
+  });
+
+  test("syncs queued offline sales on reconnect", async ({ page }) => {
+    await captureOfflineSale(page);
+    await goOnline(page, (r) =>
+      r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "committed", invoice_number: "260628-1" }) }),
+    );
+    await expect(page.getByText(/Pending sync/)).toHaveCount(0); // drained
+  });
+
+  test("flags a sale for review when the server can't satisfy stock", async ({ page }) => {
+    await captureOfflineSale(page);
+    await goOnline(page, (r) =>
+      r.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ message: "NEEDS_REVIEW:Garri 50kg", code: "23514" }) }),
+    );
+    await expect(page.getByRole("button", { name: /Needs review \(1\)/ })).toBeVisible();
+    await expect(page.getByText(/Pending sync/)).toHaveCount(0); // moved out of the pending queue
   });
 });

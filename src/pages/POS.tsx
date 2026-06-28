@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,9 @@ import { POSSkeleton } from "@/components/Skeletons";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { summarizeHeldSale, heldItemsPreview, parseHeldSales, serializeHeldSales, heldStorageKey, reconcileHeldItems, type HeldSale } from "@/lib/heldSales";
 import { useOnline } from "@/contexts/OnlineContext";
-import { cacheProducts, readCachedProducts, applyLocalStockDelta, enqueueSale, countPending } from "@/lib/offlineStore";
+import { cacheProducts, readCachedProducts, applyLocalStockDelta, enqueueSale, countPending, listReviewSales, retryReviewSale, discardReviewSale } from "@/lib/offlineStore";
+import { drainQueue } from "@/lib/offlineSync";
+import type { ReviewSale } from "@/lib/offlineTypes";
 
 type Product = { id: string; name: string; sku: string | null; selling_price: number; stock_quantity: number; reorder_level: number; category: string | null };
 type CartItem = { product: Product; qty: number };
@@ -52,8 +54,32 @@ export default function POS() {
   const [heldOpen, setHeldOpen] = useState(false);
   const [clearConfirm, setClearConfirm] = useState(false);
   const [pending, setPending] = useState(0); // offline sales awaiting sync
+  const [review, setReview] = useState<ReviewSale[]>([]); // sales the server rejected on sync
+  const [reviewOpen, setReviewOpen] = useState(false);
 
-  useEffect(() => { if (business) countPending(business.id).then(setPending).catch(() => {}); }, [business]);
+  const refreshQueues = useCallback(async () => {
+    if (!business) return;
+    setPending(await countPending(business.id));
+    setReview(await listReviewSales(business.id));
+  }, [business]);
+
+  const runSync = useCallback(async () => {
+    if (!business) return;
+    if ((await countPending(business.id)) === 0) return;
+    const outcomes = await drainQueue(business.id);
+    const synced = outcomes.filter((o) => o.result === "committed" || o.result === "duplicate").length;
+    const flagged = outcomes.filter((o) => o.result === "review").length;
+    if (synced) toast.success(`Synced ${synced} offline sale${synced === 1 ? "" : "s"}.`);
+    if (flagged) toast.warning(`${flagged} sale${flagged === 1 ? "" : "s"} need review — stock changed.`);
+    await refreshQueues();
+    if (synced) load(); // refresh catalogue stock after server-side deductions
+  }, [business, refreshQueues]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Refresh queue badges on mount; drain to the server whenever we're online.
+  useEffect(() => {
+    refreshQueues();
+    if (online) void runSync();
+  }, [online, refreshQueues, runSync]);
 
   const heldKey = business ? heldStorageKey(business.id) : null;
 
@@ -174,6 +200,18 @@ export default function POS() {
 
   const clearCart = () => { setCart([]); setDiscount(0); setClearConfirm(false); };
 
+  const retryReview = async (r: ReviewSale) => {
+    await retryReviewSale(r.saleId); // back to the pending queue
+    await refreshQueues();
+    if (online) await runSync();
+    else toast.message("Queued to retry when you're back online.");
+  };
+  const discardReview = async (r: ReviewSale) => {
+    await discardReviewSale(r.saleId);
+    await refreshQueues();
+    toast.success("Discarded.");
+  };
+
   const subtotal = cart.reduce((a, i) => a + i.qty * Number(i.product.selling_price), 0);
   const total = Math.max(0, subtotal - discount);
 
@@ -198,7 +236,7 @@ export default function POS() {
         setReceipt({ total, discount, items: [...cart], method, number: invoiceNumber });
         setCart([]);
         setDiscount(0);
-        await countPending(business.id).then(setPending);
+        await refreshQueues();
         toast.success("Sale saved offline — it will sync when you're back online.");
       } catch {
         toast.error("Couldn't save the sale on this device.");
@@ -359,6 +397,11 @@ export default function POS() {
               <Badge variant="outline" className="gap-1 border-amber-300 bg-amber-50 text-amber-700" title="Offline sales waiting to sync">
                 <CloudOff className="size-3.5" /> Pending sync ({pending})
               </Badge>
+            )}
+            {review.length > 0 && (role === "owner" || role === "manager") && (
+              <Button variant="outline" size="sm" className="border-red-300 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800" onClick={() => setReviewOpen(true)}>
+                <AlertTriangle className="size-4 mr-1" /> Needs review ({review.length})
+              </Button>
             )}
             {(role === "owner" || role === "manager") && (
               <Button variant="outline" size="sm" onClick={openEod}>
@@ -544,6 +587,33 @@ export default function POS() {
           <OrdersPanel products={products} onStockChanged={load} />
         </TabsContent>
       </Tabs>
+
+      {/* Offline sales needing review (server couldn't satisfy stock on sync) */}
+      <Dialog open={reviewOpen} onOpenChange={setReviewOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="font-display">Sales needing review</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            These offline sales couldn't sync because stock had changed. Restock the item then retry, or discard if the sale didn't happen.
+          </p>
+          <div className="space-y-2 max-h-80 overflow-y-auto">
+            {review.length === 0 && <div className="text-sm text-muted-foreground py-6 text-center">Nothing to review.</div>}
+            {review.map(r => (
+              <div key={r.saleId} className="flex items-center justify-between gap-2 rounded-lg border border-border p-3">
+                <div className="min-w-0">
+                  <div className="font-medium text-brand-dark">{fmt(r.total)} · {r.items.length} item{r.items.length === 1 ? "" : "s"}</div>
+                  <div className="text-xs text-muted-foreground truncate">{r.reviewReason} · {fmtDateTime(r.createdAt, { dateStyle: "short", timeStyle: "short" })}</div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Button size="sm" onClick={() => retryReview(r)}>Retry</Button>
+                  <Button size="icon" variant="ghost" className="size-8 text-muted-foreground hover:text-destructive" aria-label="Discard sale" onClick={() => discardReview(r)}><Trash2 className="size-4" /></Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Held sales */}
       <Dialog open={heldOpen} onOpenChange={setHeldOpen}>
