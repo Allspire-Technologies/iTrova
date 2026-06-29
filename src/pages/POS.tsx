@@ -104,8 +104,8 @@ export default function POS() {
   const load = async () => {
     if (!business) return;
     if (!online) {
-      // Offline: sell from the cached catalogue (all of it — physical stock may differ from the
-      // last-synced snapshot, so we never hide products offline).
+      // Offline: sell from the cached catalogue. Out-of-stock items are filtered out at display
+      // (see `filtered`), the same as online; cached stock is last-synced guidance and may differ.
       const cached = await readCachedProducts(business.id);
       setProducts(cached as Product[]);
       setLoading(false);
@@ -121,7 +121,9 @@ export default function POS() {
   useEffect(() => { if (business) load(); }, [business, online]);
 
   const filtered = useMemo(
-    () => products.filter(p => !q || p.name.toLowerCase().includes(q.toLowerCase())),
+    // Never surface out-of-stock items in POS (online or offline) — they can't be sold. Online the
+    // query already excludes them; offline this also hides any out-of-stock rows from the cache.
+    () => products.filter(p => Number(p.stock_quantity) > 0 && (!q || p.name.toLowerCase().includes(q.toLowerCase()))),
     [products, q]
   );
   const { paged, page, setPage, pageSize, setPageSize, pageCount, total: productCount } = usePagination(filtered, 20);
