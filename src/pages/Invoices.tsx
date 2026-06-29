@@ -730,7 +730,7 @@ export default function Invoices() {
                           <span className="text-muted-foreground"> · {p.method} · {p.created_at.slice(0, 10)}</span>
                           {p.note && <span className="text-muted-foreground"> · {p.note}</span>}
                         </div>
-                        {canManage && viewing.status !== "void" && (
+                        {canManage && viewing.status === "partial" && (
                           <Button variant="ghost" size="icon" className="size-7 shrink-0" aria-label="Remove payment" onClick={() => removePayment(p)}>
                             <Trash2 className="size-3.5" />
                           </Button>

@@ -121,6 +121,11 @@ BEGIN
   IF inv.status = 'void' THEN
     RAISE EXCEPTION 'cannot adjust payments on a void invoice';
   END IF;
+  -- Once the balance is settled the invoice is closed: payments can no longer be
+  -- removed (void the invoice instead). This keeps a paid invoice's ledger immutable.
+  IF inv.status = 'paid' THEN
+    RAISE EXCEPTION 'cannot remove payments from a fully paid invoice';
+  END IF;
 
   DELETE FROM public.invoice_payments WHERE id = _payment_id;
 

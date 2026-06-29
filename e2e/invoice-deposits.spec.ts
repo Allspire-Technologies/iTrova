@@ -68,6 +68,11 @@ test.describe("Invoice deposits", () => {
     await dialog.getByRole("button", { name: "Record payment" }).click();
     await expect(page.getByText(/left/)).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Print" })).toBeVisible();
+
+    // Paid invoices are closed: the payment history shows but can't be removed.
+    await page.getByRole("button", { name: "View" }).click();
+    await expect(page.getByText("Payments")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Remove payment" })).toHaveCount(0);
   });
 
   test("rejects a deposit larger than the balance", async ({ page }) => {
