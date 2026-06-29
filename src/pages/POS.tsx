@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, Plus, Minus, Trash2, ShoppingCart, Banknote, Smartphone, CreditCard, CheckCircle2, ClipboardList, ScanLine, Printer, MessageCircle, BarChart2, AlertTriangle, PauseCircle } from "lucide-react";
+import { Search, Plus, Minus, Trash2, ShoppingCart, Banknote, Smartphone, CreditCard, CheckCircle2, ClipboardList, ScanLine, Printer, MessageCircle, BarChart2, AlertTriangle, PauseCircle, CloudOff } from "lucide-react";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { toast } from "sonner";
@@ -19,6 +19,8 @@ import WhatsAppShareDialog from "@/components/WhatsAppShareDialog";
 import { POSSkeleton } from "@/components/Skeletons";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { summarizeHeldSale, heldItemsPreview, parseHeldSales, serializeHeldSales, heldStorageKey, reconcileHeldItems, type HeldSale } from "@/lib/heldSales";
+import { useOnline } from "@/contexts/OnlineContext";
+import { cacheProducts, readCachedProducts, applyLocalStockDelta, enqueueSale, countPending } from "@/lib/offlineStore";
 
 type Product = { id: string; name: string; sku: string | null; selling_price: number; stock_quantity: number; reorder_level: number; category: string | null };
 type CartItem = { product: Product; qty: number };
@@ -33,6 +35,7 @@ type EodData = { total: number; count: number; byMethod: Record<string, number>;
 
 export default function POS() {
   const { business, user, profile, role } = useAuth();
+  const { online } = useOnline();
   const { fmt, symbol } = useCurrency();
   const { fmtDateTime } = useDateFormat();
   const [products, setProducts] = useState<Product[]>([]);
@@ -48,6 +51,9 @@ export default function POS() {
   const [held, setHeld] = useState<HeldSale[]>([]);
   const [heldOpen, setHeldOpen] = useState(false);
   const [clearConfirm, setClearConfirm] = useState(false);
+  const [pending, setPending] = useState(0); // offline sales awaiting sync
+
+  useEffect(() => { if (business) countPending(business.id).then(setPending).catch(() => {}); }, [business]);
 
   const heldKey = business ? heldStorageKey(business.id) : null;
 
@@ -61,12 +67,23 @@ export default function POS() {
   };
 
   const load = async () => {
+    if (!business) return;
+    if (!online) {
+      // Offline: sell from the cached catalogue (all of it — physical stock may differ from the
+      // last-synced snapshot, so we never hide products offline).
+      const cached = await readCachedProducts(business.id);
+      setProducts(cached as Product[]);
+      setLoading(false);
+      return;
+    }
     const { data } = await supabase.from("products").select("id,name,sku,selling_price,stock_quantity,reorder_level,category").gt("stock_quantity", 0).order("name");
-    setProducts((data as Product[]) || []);
+    const rows = (data as Product[]) || [];
+    setProducts(rows);
     setLoading(false);
+    void cacheProducts(business.id, rows.map(r => ({ id: r.id, business_id: business.id, name: r.name, sku: r.sku, selling_price: r.selling_price, stock_quantity: r.stock_quantity, reorder_level: r.reorder_level, category: r.category })));
   };
 
-  useEffect(() => { if (business) load(); }, [business]);
+  useEffect(() => { if (business) load(); }, [business, online]);
 
   const filtered = useMemo(
     () => products.filter(p => !q || p.name.toLowerCase().includes(q.toLowerCase())),
@@ -76,14 +93,19 @@ export default function POS() {
 
   if (loading) return <POSSkeleton />;
 
+  // Offline we can't verify live stock, so exceeding the cached snapshot only WARNS (the cashier
+  // can see the physical goods); online it still hard-blocks against the live snapshot.
+  const overStock = (name: string) => {
+    if (online) { toast.error("Not enough stock"); return false; } // blocked
+    toast.warning(`Selling beyond last-known stock for ${name} — allowed, verified on sync.`);
+    return true; // allowed
+  };
+
   const addToCart = (p: Product) => {
     setCart(prev => {
       const found = prev.find(i => i.product.id === p.id);
       if (found) {
-        if (found.qty + 1 > Number(p.stock_quantity)) {
-          toast.error("Not enough stock");
-          return prev;
-        }
+        if (found.qty + 1 > Number(p.stock_quantity) && !overStock(p.name)) return prev;
         return prev.map(i => i.product.id === p.id ? { ...i, qty: i.qty + 1 } : i);
       }
       return [...prev, { product: p, qty: 1 }];
@@ -95,7 +117,7 @@ export default function POS() {
       if (i.product.id !== id) return [i];
       const next = i.qty + delta;
       if (next <= 0) return [];
-      if (next > Number(i.product.stock_quantity)) { toast.error("Not enough stock"); return [i]; }
+      if (next > Number(i.product.stock_quantity) && !overStock(i.product.name)) return [i];
       return [{ ...i, qty: next }];
     }));
   };
@@ -106,7 +128,7 @@ export default function POS() {
       const max = Number(i.product.stock_quantity);
       let q = Math.floor(value);
       if (!q || q < 1) q = 1;
-      if (q > max) { toast.error("Not enough stock"); q = max; }
+      if (q > max && !overStock(i.product.name)) q = max;
       return { ...i, qty: q };
     }));
   };
@@ -158,6 +180,34 @@ export default function POS() {
   const checkout = async () => {
     if (!business || cart.length === 0) return;
     setBusy(true);
+
+    // Offline: capture the sale to the device queue (idempotent client UUID + collision-proof
+    // invoice number) and decrement the local snapshot. It syncs when the connection returns.
+    if (!online) {
+      const items = cart.map(i => ({ product_id: i.product.id, name: i.product.name, quantity: i.qty, unit_price: Number(i.product.selling_price) }));
+      const invoiceNumber = invoiceFallbackNumber();
+      try {
+        await enqueueSale({
+          saleId: newId(), invoiceId: newId(), invoiceNumber,
+          businessId: business.id, staffId: user?.id ?? null,
+          createdAt: new Date().toISOString(), paymentMethod: method,
+          discount, subtotal, total, customerName: "Walk-in Customer",
+          items, status: "pending", attempts: 0,
+        });
+        await applyLocalStockDelta(business.id, items);
+        setReceipt({ total, discount, items: [...cart], method, number: invoiceNumber });
+        setCart([]);
+        setDiscount(0);
+        await countPending(business.id).then(setPending);
+        toast.success("Sale saved offline — it will sync when you're back online.");
+      } catch {
+        toast.error("Couldn't save the sale on this device.");
+      } finally {
+        setBusy(false);
+        load();
+      }
+      return;
+    }
 
     // Deduct stock first, atomically and guarded against overselling. This is the source
     // of truth for availability — the cart's stock numbers can be stale (e.g. a held sale
@@ -304,6 +354,11 @@ export default function POS() {
               <Button variant="outline" size="sm" className="border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 hover:text-amber-800" onClick={() => setHeldOpen(true)}>
                 <ClipboardList className="size-4 mr-1" /> Held sales ({held.length})
               </Button>
+            )}
+            {pending > 0 && (
+              <Badge variant="outline" className="gap-1 border-amber-300 bg-amber-50 text-amber-700" title="Offline sales waiting to sync">
+                <CloudOff className="size-3.5" /> Pending sync ({pending})
+              </Badge>
             )}
             {(role === "owner" || role === "manager") && (
               <Button variant="outline" size="sm" onClick={openEod}>
