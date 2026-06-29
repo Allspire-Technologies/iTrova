@@ -20,7 +20,7 @@ import { POSSkeleton } from "@/components/Skeletons";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { summarizeHeldSale, heldItemsPreview, parseHeldSales, serializeHeldSales, heldStorageKey, reconcileHeldItems, type HeldSale } from "@/lib/heldSales";
 import { useOnline } from "@/contexts/OnlineContext";
-import { cacheProducts, readCachedProducts, applyLocalStockDelta, enqueueSale, countPending, listReviewSales, retryReviewSale, discardReviewSale } from "@/lib/offlineStore";
+import { cacheProducts, readCachedProducts, applyLocalStockDelta, enqueueSale, countPending, listReviewSales, retryReviewSale, discardReviewSale, getLastSync, setLastSync } from "@/lib/offlineStore";
 import { drainQueue } from "@/lib/offlineSync";
 import type { ReviewSale } from "@/lib/offlineTypes";
 
@@ -56,23 +56,32 @@ export default function POS() {
   const [pending, setPending] = useState(0); // offline sales awaiting sync
   const [review, setReview] = useState<ReviewSale[]>([]); // sales the server rejected on sync
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [lastSync, setLastSyncAt] = useState<number | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
   const refreshQueues = useCallback(async () => {
     if (!business) return;
     setPending(await countPending(business.id));
     setReview(await listReviewSales(business.id));
+    setLastSyncAt(await getLastSync(business.id));
   }, [business]);
 
-  const runSync = useCallback(async () => {
+  // force=true ("Sync now") ignores the auto-retry cap; auto-drain skips sales stuck after 8 tries.
+  const runSync = useCallback(async (force = false) => {
     if (!business) return;
     if ((await countPending(business.id)) === 0) return;
-    const outcomes = await drainQueue(business.id);
-    const synced = outcomes.filter((o) => o.result === "committed" || o.result === "duplicate").length;
-    const flagged = outcomes.filter((o) => o.result === "review").length;
-    if (synced) toast.success(`Synced ${synced} offline sale${synced === 1 ? "" : "s"}.`);
-    if (flagged) toast.warning(`${flagged} sale${flagged === 1 ? "" : "s"} need review — stock changed.`);
-    await refreshQueues();
-    if (synced) load(); // refresh catalogue stock after server-side deductions
+    setSyncing(true);
+    try {
+      const outcomes = await drainQueue(business.id, force ? {} : { maxAttempts: 8 });
+      const synced = outcomes.filter((o) => o.result === "committed" || o.result === "duplicate").length;
+      const flagged = outcomes.filter((o) => o.result === "review").length;
+      if (synced) { toast.success(`Synced ${synced} offline sale${synced === 1 ? "" : "s"}.`); await setLastSync(business.id, Date.now()); }
+      if (flagged) toast.warning(`${flagged} sale${flagged === 1 ? "" : "s"} need review — stock changed.`);
+      await refreshQueues();
+      if (synced) load(); // refresh catalogue stock after server-side deductions
+    } finally {
+      setSyncing(false);
+    }
   }, [business, refreshQueues]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Refresh queue badges on mount; drain to the server whenever we're online.
@@ -397,6 +406,14 @@ export default function POS() {
               <Badge variant="outline" className="gap-1 border-amber-300 bg-amber-50 text-amber-700" title="Offline sales waiting to sync">
                 <CloudOff className="size-3.5" /> Pending sync ({pending})
               </Badge>
+            )}
+            {online && pending > 0 && (
+              <Button variant="outline" size="sm" onClick={() => runSync(true)} disabled={syncing}>
+                {syncing ? "Syncing…" : "Sync now"}
+              </Button>
+            )}
+            {lastSync && pending > 0 && (
+              <span className="self-center text-xs text-muted-foreground">Last sync {fmtDateTime(new Date(lastSync).toISOString(), { hour: "2-digit", minute: "2-digit" })}</span>
             )}
             {review.length > 0 && (role === "owner" || role === "manager") && (
               <Button variant="outline" size="sm" className="border-red-300 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800" onClick={() => setReviewOpen(true)}>

@@ -11,6 +11,16 @@ export function newOfflineSaleId(): string {
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+// ---- meta: last successful sync timestamp (per business) --------------------
+export async function setLastSync(businessId: string, ts: number): Promise<void> {
+  const db = await getDb();
+  await db.put("meta", { key: `lastSync:${businessId}`, value: ts, updatedAt: Date.now() });
+}
+export async function getLastSync(businessId: string): Promise<number | null> {
+  const db = await getDb();
+  return ((await db.get("meta", `lastSync:${businessId}`))?.value as number | undefined) ?? null;
+}
+
 // ---- session (business + staff snapshot for offline render) -----------------
 export async function cacheSession(s: CachedSession): Promise<void> {
   const db = await getDb();
