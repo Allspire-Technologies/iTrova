@@ -31,6 +31,7 @@ GRANT SELECT ON public.invoice_payments TO authenticated;
 GRANT ALL    ON public.invoice_payments TO service_role;
 ALTER TABLE public.invoice_payments ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "invoice_payments_select" ON public.invoice_payments;
 CREATE POLICY "invoice_payments_select" ON public.invoice_payments FOR SELECT TO authenticated
   USING (business_id = public.current_business_id());
 
