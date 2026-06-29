@@ -1,5 +1,5 @@
 import { getDb } from "./offlineDb";
-import type { CachedProduct, CachedSession, DashboardSnapshot, QueuedSale, QueuedSaleItem, ReviewSale } from "./offlineTypes";
+import type { CachedInvoice, CachedProduct, CachedSession, DashboardSnapshot, QueuedInvoice, QueuedPayment, QueuedSale, QueuedSaleItem, ReviewPayment, ReviewSale } from "./offlineTypes";
 
 // Typed business-logic API over IndexedDB — the offline equivalent of heldSales.ts. POS, AuthContext
 // and the sync engine consume these; nothing else touches offlineDb directly.
@@ -157,5 +157,145 @@ export async function retryReviewSale(saleId: string): Promise<void> {
   const tx = db.transaction(["saleQueue", "reviewQueue"], "readwrite");
   await tx.objectStore("saleQueue").put({ ...sale, status: "pending", lastError: undefined });
   await tx.objectStore("reviewQueue").delete(saleId);
+  await tx.done;
+}
+
+// ============================================================================
+// Offline deposits (v2): cached server invoices + a queue of payments to replay
+// ============================================================================
+
+// ---- cached server invoices (so deposits can be recorded offline) -----------
+export async function cacheInvoices(businessId: string, invoices: CachedInvoice[]): Promise<void> {
+  const db = await getDb();
+  const tx = db.transaction("invoicesCache", "readwrite");
+  // Replace the server snapshot wholesale (paid/voided invoices drop out), but keep `local` rows —
+  // invoices created offline that haven't synced yet would otherwise be wiped before they commit.
+  for (const k of await tx.store.index("by-business").getAllKeys(businessId)) {
+    const row = await tx.store.get(k);
+    if (row && !row.local) await tx.store.delete(k);
+  }
+  for (const inv of invoices) await tx.store.put({ ...inv, business_id: businessId });
+  await tx.done;
+}
+
+/** Insert/replace a single cached invoice (used for invoices created offline). */
+export async function putCachedInvoice(invoice: CachedInvoice): Promise<void> {
+  const db = await getDb();
+  await db.put("invoicesCache", invoice);
+}
+
+export async function readCachedInvoices(businessId: string): Promise<CachedInvoice[]> {
+  const db = await getDb();
+  return db.getAllFromIndex("invoicesCache", "by-business", businessId);
+}
+
+/** Optimistically apply an offline deposit to the cached invoice (guidance until next sync). */
+export async function applyLocalPaymentDelta(invoiceId: string, amount: number): Promise<void> {
+  const db = await getDb();
+  const inv = await db.get("invoicesCache", invoiceId);
+  if (!inv) return;
+  const amount_paid = Number(inv.amount_paid) + Number(amount);
+  const status = amount_paid >= Number(inv.total) ? "paid" : "partial";
+  await db.put("invoicesCache", { ...inv, amount_paid, status });
+}
+
+// ---- payment queue ----------------------------------------------------------
+export async function enqueuePayment(payment: QueuedPayment): Promise<void> {
+  const db = await getDb();
+  await db.put("paymentQueue", payment);
+}
+
+export async function listQueuedPayments(businessId: string): Promise<QueuedPayment[]> {
+  const db = await getDb();
+  const rows = await db.getAllFromIndex("paymentQueue", "by-business", businessId);
+  return rows.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+export async function countPendingPayments(businessId: string): Promise<number> {
+  return (await listQueuedPayments(businessId)).length;
+}
+
+async function patchPayment(paymentId: string, patch: Partial<QueuedPayment>): Promise<void> {
+  const db = await getDb();
+  const existing = await db.get("paymentQueue", paymentId);
+  if (existing) await db.put("paymentQueue", { ...existing, ...patch });
+}
+
+export const markPaymentSyncing = (paymentId: string) => patchPayment(paymentId, { status: "syncing" });
+export const markPaymentFailed = (paymentId: string, error: string) =>
+  patchPayment(paymentId, { status: "failed", lastError: error });
+
+export async function bumpPaymentAttempt(paymentId: string): Promise<void> {
+  const db = await getDb();
+  const existing = await db.get("paymentQueue", paymentId);
+  if (existing) await db.put("paymentQueue", { ...existing, attempts: existing.attempts + 1 });
+}
+
+export async function removeQueuedPayment(paymentId: string): Promise<void> {
+  const db = await getDb();
+  await db.delete("paymentQueue", paymentId);
+}
+
+// ---- payment review queue (server rejected: balance shrank / overpay) --------
+export async function movePaymentToReview(paymentId: string, reason: string): Promise<void> {
+  const db = await getDb();
+  const payment = await db.get("paymentQueue", paymentId);
+  if (!payment) return;
+  const tx = db.transaction(["paymentQueue", "paymentReviewQueue"], "readwrite");
+  await tx.objectStore("paymentReviewQueue").put({ ...payment, reviewReason: reason, movedAt: new Date().toISOString() } as ReviewPayment);
+  await tx.objectStore("paymentQueue").delete(paymentId);
+  await tx.done;
+}
+
+export async function listPaymentReviews(businessId: string): Promise<ReviewPayment[]> {
+  const db = await getDb();
+  const rows = await db.getAllFromIndex("paymentReviewQueue", "by-business", businessId);
+  return rows.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+export async function discardPaymentReview(paymentId: string): Promise<void> {
+  const db = await getDb();
+  await db.delete("paymentReviewQueue", paymentId);
+}
+
+// ---- invoice queue (manual invoices created offline) ------------------------
+export async function enqueueInvoice(invoice: QueuedInvoice): Promise<void> {
+  const db = await getDb();
+  await db.put("invoiceQueue", invoice);
+}
+
+export async function listQueuedInvoices(businessId: string): Promise<QueuedInvoice[]> {
+  const db = await getDb();
+  const rows = await db.getAllFromIndex("invoiceQueue", "by-business", businessId);
+  return rows.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+export async function countPendingInvoices(businessId: string): Promise<number> {
+  return (await listQueuedInvoices(businessId)).length;
+}
+
+async function patchInvoice(invoiceId: string, patch: Partial<QueuedInvoice>): Promise<void> {
+  const db = await getDb();
+  const existing = await db.get("invoiceQueue", invoiceId);
+  if (existing) await db.put("invoiceQueue", { ...existing, ...patch });
+}
+
+export const markInvoiceSyncing = (invoiceId: string) => patchInvoice(invoiceId, { status: "syncing" });
+export const markInvoiceFailed = (invoiceId: string, error: string) =>
+  patchInvoice(invoiceId, { status: "failed", lastError: error });
+
+export async function bumpInvoiceAttempt(invoiceId: string): Promise<void> {
+  const db = await getDb();
+  const existing = await db.get("invoiceQueue", invoiceId);
+  if (existing) await db.put("invoiceQueue", { ...existing, attempts: existing.attempts + 1 });
+}
+
+/** Remove a synced offline invoice from both the queue and the local cache row. */
+export async function removeQueuedInvoice(invoiceId: string): Promise<void> {
+  const db = await getDb();
+  const tx = db.transaction(["invoiceQueue", "invoicesCache"], "readwrite");
+  await tx.objectStore("invoiceQueue").delete(invoiceId);
+  const cached = await tx.objectStore("invoicesCache").get(invoiceId);
+  if (cached?.local) await tx.objectStore("invoicesCache").delete(invoiceId); // server copy re-caches on next load
   await tx.done;
 }

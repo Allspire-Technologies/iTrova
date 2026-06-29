@@ -59,3 +59,66 @@ export interface CachedSession {
   planModules: string[] | null; // resolved plan modules, so hasModule() works offline
   cachedAt: number;
 }
+
+// ---- offline deposits against server invoices (v2) --------------------------
+
+/** Snapshot of a manual invoice that can take a deposit (issued/partial). `local` rows were
+ *  created offline and aren't on the server yet — they survive the wholesale cache replace. */
+export interface CachedInvoice {
+  id: string;
+  business_id: string;
+  invoice_number: string;
+  customer_name: string;
+  total: number;
+  amount_paid: number;
+  status: string; // issued | partial | paid (locally optimistic until next sync)
+  cachedAt: number;
+  local?: boolean; // created offline, awaiting commit_offline_invoice
+}
+
+export type QueuedPaymentStatus = "pending" | "syncing" | "failed";
+
+export interface QueuedInvoiceItem {
+  description: string;
+  quantity: number;
+  unit_price: number;
+}
+
+/** A manual invoice created offline, replayed through commit_offline_invoice on reconnect. */
+export interface QueuedInvoice {
+  invoiceId: string; // client-generated UUID — becomes invoices.id (idempotency key)
+  businessId: string;
+  invoiceNumber: string; // invoiceFallbackNumber() — collision-proof, kept verbatim on sync
+  customerName: string;
+  customerPhone: string | null;
+  customerEmail: string | null;
+  dueDate: string | null;
+  notes: string | null;
+  items: QueuedInvoiceItem[];
+  subtotal: number;
+  total: number;
+  createdAt: string; // ISO
+  status: QueuedPaymentStatus;
+  attempts: number;
+  lastError?: string;
+}
+
+/** A deposit captured offline, replayed through record_invoice_payment on reconnect. */
+export interface QueuedPayment {
+  paymentId: string; // client-generated UUID — idempotency key for record_invoice_payment
+  invoiceId: string;
+  invoiceNumber: string; // for display in the queue
+  businessId: string;
+  amount: number;
+  method: string;
+  note: string | null;
+  createdAt: string; // ISO
+  status: QueuedPaymentStatus;
+  attempts: number;
+  lastError?: string;
+}
+
+export interface ReviewPayment extends QueuedPayment {
+  reviewReason: string;
+  movedAt: string;
+}

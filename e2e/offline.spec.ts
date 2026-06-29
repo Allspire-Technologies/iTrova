@@ -107,6 +107,15 @@ test.describe("Offline gating (P1)", () => {
     await expect(page.getByText("Mrs. Bola")).toBeVisible(); // edited customer shows in the list
   });
 
+  test("signs out normally when nothing is queued (button isn't blocked by the offline check)", async ({ page }) => {
+    await authenticate(page);
+    await page.getByRole("button", { name: "Sign out" }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByText("Sign out?")).toBeVisible(); // normal confirm, not the sync gate
+    await dialog.getByRole("button", { name: "Sign out" }).click();
+    await page.waitForURL("**/auth");
+  });
+
   test("blocks sign-out while offline sales are unsynced", async ({ page }) => {
     await captureOfflineSale(page); // 1 pending sale, still offline
     await page.getByRole("button", { name: "Sign out" }).click();
