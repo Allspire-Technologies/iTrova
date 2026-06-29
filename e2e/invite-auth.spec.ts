@@ -54,4 +54,23 @@ test.describe("Invite auth", () => {
     await expect(page.getByRole("heading", { name: "Almost there!" })).toBeVisible();
     await expect(page.getByText(/Sunrise Stores/)).toBeVisible();
   });
+
+  test("nudges to sign in when the email already has an account", async ({ page }) => {
+    await stubDbReads(page);
+    await page.route("**/rest/v1/rpc/get_invite_state**", (r) =>
+      rpc(r, [{ status: "valid", business_name: "Sunrise Stores", email: "jane@biz.test", role: "cashier" }]));
+    // Enumeration protection: existing email -> user with an empty identities array, no session.
+    await stubSignup(page, { status: 200, body: { user: { id: "u1", email: "jane@biz.test", identities: [] }, session: null } });
+
+    await page.goto("/invite-auth?token=abc123");
+    await page.getByLabel("Your name").fill("Jane Doe");
+    await page.getByLabel("Password", { exact: true }).fill("password123");
+    await page.getByLabel("Confirm password").fill("password123");
+    await page.getByRole("button", { name: "Create account & join" }).click();
+
+    // Switches to the Sign in tab with a hint banner, instead of the "check your email" screen.
+    await expect(page.getByRole("button", { name: "Sign in & join" })).toBeVisible();
+    await expect(page.getByText(/Sign in to join/)).toBeVisible(); // the hint banner (capitalised; toast is lower-case)
+    await expect(page.getByRole("heading", { name: "Almost there!" })).toHaveCount(0);
+  });
 });

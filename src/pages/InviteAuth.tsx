@@ -24,6 +24,8 @@ export default function InviteAuth() {
   const [inviteStatus, setInviteStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [signupDone, setSignupDone] = useState(false);
+  const [tab, setTab] = useState<"signup" | "login">("signup");
+  const [existingHint, setExistingHint] = useState(false);
 
   const [fullName, setFullName] = useState("");
   const [signupEmail, setSignupEmail] = useState("");
@@ -72,7 +74,17 @@ export default function InviteAuth() {
     });
     setBusy(false);
     if (error) return toast.error(error.message);
-    // With email confirmation on, signUp returns no session — guide them to confirm first.
+    // Enumeration protection: signing up an email that already exists returns a user with an
+    // empty identities array (and no session, no email sent). Nudge them to sign in instead of
+    // showing a "check your email" screen for a mail that will never arrive.
+    if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+      setLoginEmail(signupEmail);
+      setExistingHint(true);
+      setTab("login");
+      toast.info("This email already has an account — sign in to join.");
+      return;
+    }
+    // With email confirmation on, a genuinely new signup returns no session — confirm first.
     if (data.session) {
       toast.success("Account created — joining the team…");
       navigate(`/accept-invite?token=${token}`, { replace: true });
@@ -195,7 +207,7 @@ export default function InviteAuth() {
             </div>
           )}
 
-          <Tabs defaultValue="signup" className="w-full">
+          <Tabs value={tab} onValueChange={(v) => setTab(v as "signup" | "login")} className="w-full">
             <TabsList className="grid grid-cols-2 w-full mb-8 bg-secondary">
               <TabsTrigger value="signup">Create account</TabsTrigger>
               <TabsTrigger value="login">Sign in</TabsTrigger>
@@ -294,6 +306,12 @@ export default function InviteAuth() {
                 <h2 className="font-display text-3xl font-bold text-brand-dark">Already have an account?</h2>
                 <p className="text-muted-foreground">Sign in to accept the invitation.</p>
               </div>
+              {existingHint && (
+                <div className="rounded-lg bg-brand/10 border border-brand/20 p-3 text-sm text-brand-dark">
+                  <span className="font-medium">{loginEmail}</span> already has an account. Sign in to join
+                  {preview ? <> <span className="font-medium">{preview.business_name}</span></> : " the team"} — or use “Forgot password?” on the main sign-in page if you don't remember it.
+                </div>
+              )}
               <form onSubmit={handleLogin} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="le">Email</Label>
