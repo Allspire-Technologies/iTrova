@@ -315,8 +315,57 @@ export type Database = {
           },
         ]
       }
+      invoice_payments: {
+        Row: {
+          amount: number
+          business_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          invoice_id: string
+          method: string
+          note: string | null
+        }
+        Insert: {
+          amount: number
+          business_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          invoice_id: string
+          method?: string
+          note?: string | null
+        }
+        Update: {
+          amount?: number
+          business_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          invoice_id?: string
+          method?: string
+          note?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_payments_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_payments_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invoices: {
         Row: {
+          amount_paid: number
           business_id: string
           created_at: string
           created_by: string | null
@@ -325,6 +374,7 @@ export type Database = {
           customer_phone: string | null
           discount_amount: number
           due_date: string | null
+          fully_paid_at: string | null
           id: string
           invoice_number: string
           issue_date: string
@@ -337,6 +387,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          amount_paid?: number
           business_id: string
           created_at?: string
           created_by?: string | null
@@ -345,6 +396,7 @@ export type Database = {
           customer_phone?: string | null
           discount_amount?: number
           due_date?: string | null
+          fully_paid_at?: string | null
           id?: string
           invoice_number: string
           issue_date?: string
@@ -357,6 +409,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          amount_paid?: number
           business_id?: string
           created_at?: string
           created_by?: string | null
@@ -365,6 +418,7 @@ export type Database = {
           customer_phone?: string | null
           discount_amount?: number
           due_date?: string | null
+          fully_paid_at?: string | null
           id?: string
           invoice_number?: string
           issue_date?: string

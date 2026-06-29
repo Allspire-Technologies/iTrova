@@ -12,6 +12,12 @@ describe("statusOptionsFor", () => {
   it("gives the full set to manual draft/issued invoices", () => {
     expect(statusOptionsFor({ sale_id: null, status: "issued" })).toEqual([...INVOICE_STATUSES]);
   });
+  it("limits a part-paid invoice to staying partial or voiding", () => {
+    expect(statusOptionsFor({ sale_id: null, status: "partial" })).toEqual(["partial", "void"]);
+  });
+  it("excludes the system-managed 'partial' from the manual set", () => {
+    expect(INVOICE_STATUSES).not.toContain("partial");
+  });
 });
 
 describe("isOverdue", () => {
