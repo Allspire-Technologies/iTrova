@@ -37,7 +37,7 @@ const nav: NavItem[] = [
 
 // Modules usable with no internet (POS + the read-only cached views). Everything else is dimmed
 // and non-navigable while offline.
-const OFFLINE_OK = new Set(["/", "/pos", "/inventory"]);
+const OFFLINE_OK = new Set(["/", "/pos", "/inventory", "/invoices"]);
 
 function NavList({ onNavigate, role, hasModule, collapsed, online = true }: { onNavigate?: () => void; role: AppRole | null; hasModule: (key: string) => boolean; collapsed?: boolean; online?: boolean }) {
   const visible = nav.filter(item =>

@@ -27,6 +27,8 @@ import { getLimit, isAtLimit, limitMessage } from "@/lib/planLimits";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { INVOICE_STATUSES as STATUSES, statusOptionsFor, isOverdue, overdueDays } from "@/lib/invoiceStatus";
+import { useOnline } from "@/contexts/OnlineContext";
+import { OfflineInvoices } from "@/components/OfflineInvoices";
 
 type Invoice = {
   id: string; invoice_number: string; customer_name: string; customer_phone: string | null;
@@ -50,6 +52,7 @@ function IconBtn({ label, onClick, disabled, children }: { label: string; onClic
 
 export default function Invoices() {
   const { business, user, role, hasModule } = useAuth();
+  const { online } = useOnline();
   const canManage = role === "owner" || role === "manager";
   const { fmt } = useCurrency();
   const { timezone } = useDateFormat();
@@ -89,7 +92,7 @@ export default function Invoices() {
     setCreators(map);
     setLoading(false);
   };
-  useEffect(() => { if (business) load(); }, [business]);
+  useEffect(() => { if (business && online) load(); }, [business, online]);
 
   const openAdd = () => {
     setEditing(null);
@@ -400,6 +403,7 @@ export default function Invoices() {
     ...(items.some(i => !i.created_by) ? [{ value: "none", label: "No creator" }] : []),
   ];
 
+  if (!online) return <OfflineInvoices />;
   if (loading) return <TablePageSkeleton />;
 
   return (

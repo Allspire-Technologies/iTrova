@@ -33,6 +33,9 @@ export interface QueuedSale {
   subtotal: number;
   total: number;
   customerName: string;
+  customerPhone?: string | null;
+  customerEmail?: string | null;
+  notes?: string | null;
   items: QueuedSaleItem[];
   status: QueuedSaleStatus;
   attempts: number;
