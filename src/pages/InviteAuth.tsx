@@ -6,10 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Eye, EyeOff, Store, Users } from "lucide-react";
+import { Eye, EyeOff, Store, Users, Loader2, XCircle, Clock, MailCheck } from "lucide-react";
 
 type Preview = { business_name: string; role: string; email: string };
+type InviteState = { status: string; business_name: string | null; email: string | null; role: string | null };
 
 export default function InviteAuth() {
   const [params] = useSearchParams();
@@ -19,7 +21,9 @@ export default function InviteAuth() {
 
   const [preview, setPreview] = useState<Preview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(true);
+  const [inviteStatus, setInviteStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [signupDone, setSignupDone] = useState(false);
 
   const [fullName, setFullName] = useState("");
   const [signupEmail, setSignupEmail] = useState("");
@@ -39,10 +43,11 @@ export default function InviteAuth() {
 
   useEffect(() => {
     if (!token) { setPreviewLoading(false); return; }
-    supabase.rpc("get_invite_preview", { _token: token }).then(({ data }) => {
-      if (data && (data as Preview[]).length > 0) {
-        const row = (data as Preview[])[0];
-        setPreview(row);
+    supabase.rpc("get_invite_state", { _token: token }).then(({ data }) => {
+      const row = (data as InviteState[] | null)?.[0];
+      setInviteStatus(row?.status ?? "not_found");
+      if (row?.status === "valid" && row.business_name && row.email && row.role) {
+        setPreview({ business_name: row.business_name, role: row.role, email: row.email });
         setSignupEmail(row.email);
         setLoginEmail(row.email);
       }
@@ -57,14 +62,24 @@ export default function InviteAuth() {
       return;
     }
     setBusy(true);
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email: signupEmail,
       password: signupPassword,
-      options: { data: { full_name: fullName, invite_token: token } },
+      options: {
+        emailRedirectTo: `${window.location.origin}/accept-invite?token=${encodeURIComponent(token)}`,
+        data: { full_name: fullName, invite_token: token },
+      },
     });
     setBusy(false);
     if (error) return toast.error(error.message);
-    navigate(`/accept-invite?token=${token}`, { replace: true });
+    // With email confirmation on, signUp returns no session — guide them to confirm first.
+    if (data.session) {
+      toast.success("Account created — joining the team…");
+      navigate(`/accept-invite?token=${token}`, { replace: true });
+    } else {
+      setSignupDone(true);
+      toast.success("Account created! Check your email to confirm and finish joining.");
+    }
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -73,15 +88,49 @@ export default function InviteAuth() {
     const { error } = await supabase.auth.signInWithPassword({ email: loginEmail, password: loginPassword });
     setBusy(false);
     if (error) return toast.error(error.message);
+    toast.success("Signed in — joining the team…");
     navigate(`/accept-invite?token=${token}`, { replace: true });
   };
 
-  if (!token) {
+  if (signupDone) {
     return (
-      <div className="min-h-screen grid place-items-center p-4">
-        <p className="text-muted-foreground">Invalid invitation link.</p>
+      <div className="min-h-screen grid place-items-center bg-gradient-soft p-4">
+        <Card className="max-w-md w-full shadow-card border-border/60">
+          <CardContent className="p-8 text-center space-y-4">
+            <MailCheck className="size-12 mx-auto text-brand" />
+            <h1 className="font-display text-2xl font-bold text-brand-dark">Almost there!</h1>
+            <p className="text-sm text-muted-foreground">
+              We've sent a confirmation link to <span className="font-medium text-foreground">{signupEmail}</span>.
+              Open it to finish joining{preview ? <> <span className="font-medium text-foreground">{preview.business_name}</span></> : " the team"} — it brings you straight back here to accept.
+            </p>
+            <p className="text-xs text-muted-foreground">Didn't get it? Check your spam folder.</p>
+          </CardContent>
+        </Card>
       </div>
     );
+  }
+  if (!token) {
+    return <InviteNotice tone="invalid" title="Invalid invitation link"
+      body="This invitation link isn't valid. Check the link in your email, or create an account to get started." />;
+  }
+  if (previewLoading) {
+    return (
+      <div className="min-h-screen grid place-items-center bg-gradient-soft p-4">
+        <Loader2 className="size-8 animate-spin text-brand" />
+      </div>
+    );
+  }
+  if (inviteStatus === "used") {
+    return <InviteNotice tone="used" title="Invitation already used" showReset
+      body="This invite has already been used, so it can't open the join screen again. If you already created your account, sign in below — or use “Forgot password?” to reset it if you don't remember it. New here? Create an account instead." />;
+  }
+  if (inviteStatus === "expired") {
+    return <InviteNotice tone="expired" title="Invitation expired"
+      body="This invitation is no longer valid. Ask the business owner to send you a new invite." />;
+  }
+  if (inviteStatus !== "valid") {
+    return <InviteNotice tone="invalid" title="Invalid invitation link"
+      body="This invitation link isn't valid. Check the link in your email, or create an account to get started." />;
   }
 
   return (
@@ -296,5 +345,31 @@ export default function InviteAuth() {
         </div>
       </section>
     </main>
+  );
+}
+
+// Shown when an invite link can't open the join screen (already used / expired / invalid). Points the
+// person to /auth, where they can sign in, create an account, or use "Forgot password?" to reset.
+function InviteNotice({ tone, title, body, showReset }: { tone: "used" | "expired" | "invalid"; title: string; body: string; showReset?: boolean }) {
+  const navigate = useNavigate();
+  const Icon = tone === "expired" ? Clock : XCircle;
+  return (
+    <div className="min-h-screen grid place-items-center bg-gradient-soft p-4">
+      <Card className="max-w-md w-full shadow-card border-border/60">
+        <CardContent className="p-8 text-center space-y-4">
+          <Icon className="size-10 mx-auto text-warning" />
+          <h1 className="font-display text-xl font-bold text-brand-dark">{title}</h1>
+          <p className="text-sm text-muted-foreground">{body}</p>
+          <div className="space-y-2 pt-2">
+            <Button className="w-full" onClick={() => navigate("/auth")}>Go to sign in / sign up</Button>
+            {showReset && (
+              <Button variant="outline" className="w-full" onClick={() => navigate("/auth")}>
+                Reset my password
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
