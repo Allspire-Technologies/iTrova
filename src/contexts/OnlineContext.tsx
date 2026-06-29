@@ -3,10 +3,11 @@ import { probeSupabase } from "@/lib/onlineProbe";
 import { isOfflineStorageAvailable } from "@/lib/offlineDb";
 
 // Connectivity state for the whole app. `online` reflects a CONFIRMED reachable internet (active
-// probe), not the browser's optimistic navigator.onLine. Components read `online`; the sync engine
-// watches for offline -> online transitions.
+// probe), not the browser's optimistic navigator.onLine. We start optimistic (online when the
+// browser says so) and only flip offline on a failed probe or an `offline` event — so there's no
+// "offline" flash on every load. The sync engine watches offline -> online transitions.
 
-type OnlineState = "online" | "offline" | "probing";
+type OnlineState = "online" | "offline";
 
 interface OnlineContextValue {
   online: boolean;
@@ -25,9 +26,8 @@ const OFFLINE_INTERVAL_MS = 5_000;
 
 export function OnlineProvider({ children }: { children: ReactNode }) {
   const initiallyOnline = typeof navigator === "undefined" ? true : navigator.onLine;
-  const [state, setState] = useState<OnlineState>(initiallyOnline ? "probing" : "offline");
-  const [lastOnlineAt, setLastOnlineAt] = useState<number | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [state, setState] = useState<OnlineState>(initiallyOnline ? "online" : "offline");
+  const [lastOnlineAt, setLastOnlineAt] = useState<number | null>(initiallyOnline ? Date.now() : null);
   const stateRef = useRef<OnlineState>(state);
   stateRef.current = state;
 
@@ -40,11 +40,11 @@ export function OnlineProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
 
     const schedule = () => {
-      if (timer.current) clearTimeout(timer.current);
-      const delay = stateRef.current === "online" ? ONLINE_INTERVAL_MS : OFFLINE_INTERVAL_MS;
-      timer.current = setTimeout(tick, delay);
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(tick, stateRef.current === "online" ? ONLINE_INTERVAL_MS : OFFLINE_INTERVAL_MS);
     };
     const tick = async () => {
       if (cancelled) return;
@@ -52,11 +52,8 @@ export function OnlineProvider({ children }: { children: ReactNode }) {
       if (!cancelled) schedule();
     };
 
-    const onOffline = () => setState("offline"); // trust the browser saying we're disconnected
-    const onOnline = () => {
-      setState("probing"); // the online event is optimistic — confirm before trusting it
-      void probeNow();
-    };
+    const onOffline = () => setState("offline"); // browser says disconnected — trust it
+    const onOnline = () => void probeNow(); // browser online is optimistic — confirm via probe
     const onVisible = () => {
       if (document.visibilityState === "visible") void probeNow();
     };
@@ -64,27 +61,16 @@ export function OnlineProvider({ children }: { children: ReactNode }) {
     window.addEventListener("offline", onOffline);
     window.addEventListener("online", onOnline);
     document.addEventListener("visibilitychange", onVisible);
-
-    void tick(); // initial probe
+    void tick(); // confirm promptly; UI starts optimistic so there's no offline flash
 
     return () => {
       cancelled = true;
-      if (timer.current) clearTimeout(timer.current);
+      if (timer) clearTimeout(timer);
       window.removeEventListener("offline", onOffline);
       window.removeEventListener("online", onOnline);
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [probeNow]);
-
-  // Re-schedule when state changes so we poll faster while offline.
-  useEffect(() => {
-    if (timer.current) clearTimeout(timer.current);
-    const delay = state === "online" ? ONLINE_INTERVAL_MS : OFFLINE_INTERVAL_MS;
-    timer.current = setTimeout(() => void probeNow(), delay);
-    return () => {
-      if (timer.current) clearTimeout(timer.current);
-    };
-  }, [state, probeNow]);
 
   return (
     <OnlineContext.Provider

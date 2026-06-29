@@ -42,6 +42,7 @@ export async function authenticate(page: Page, opts: AuthOptions = {}) {
 
   await page.route("**/auth/v1/token**", (r) => fulfillJson(r, SESSION_BODY));
   await page.route("**/auth/v1/user**", (r) => fulfillJson(r, FAKE_USER));
+  await page.route("**/auth/v1/health**", (r) => fulfillJson(r, {})); // connectivity probe -> online
   await page.route("**/rest/v1/**", (r) => fulfillJson(r, []));
   await page.route("**/rest/v1/profiles**", (r) => singleOrArray(r, profile));
   await page.route("**/rest/v1/businesses**", (r) => singleOrArray(r, business));

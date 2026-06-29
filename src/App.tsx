@@ -24,6 +24,7 @@ import LegalDoc from "./pages/LegalDoc";
 import NotFound from "./pages/NotFound.tsx";
 import { RoleGate } from "@/components/RoleGate";
 import { ModuleGate } from "@/components/ModuleGate";
+import { OfflineGate } from "@/components/OfflineGate";
 
 const queryClient = new QueryClient();
 
@@ -44,13 +45,13 @@ const App = () => (
               <Route path="/" element={<Dashboard />} />
               <Route path="/pos" element={<POS />} />
               <Route path="/inventory" element={<RoleGate allow={["owner","manager"]}><ModuleGate module="inventory"><Inventory /></ModuleGate></RoleGate>} />
-              <Route path="/suppliers" element={<RoleGate allow={["owner","manager"]}><ModuleGate module="suppliers"><Suppliers /></ModuleGate></RoleGate>} />
-              <Route path="/raw-materials" element={<RoleGate allow={["owner","manager"]}><ModuleGate module="raw_materials"><RawMaterials /></ModuleGate></RoleGate>} />
-              <Route path="/invoices" element={<ModuleGate module="invoices"><Invoices /></ModuleGate>} />
-              <Route path="/purchase-orders" element={<RoleGate allow={["owner","manager"]}><ModuleGate module="purchase_orders"><PurchaseOrders /></ModuleGate></RoleGate>} />
-              <Route path="/reports" element={<RoleGate allow={["owner","manager"]}><ModuleGate module="reports"><Reports /></ModuleGate></RoleGate>} />
-              <Route path="/team" element={<RoleGate allow={["owner"]}><ModuleGate module="team"><Team /></ModuleGate></RoleGate>} />
-              <Route path="/settings" element={<Settings />} />
+              <Route path="/suppliers" element={<OfflineGate><RoleGate allow={["owner","manager"]}><ModuleGate module="suppliers"><Suppliers /></ModuleGate></RoleGate></OfflineGate>} />
+              <Route path="/raw-materials" element={<OfflineGate><RoleGate allow={["owner","manager"]}><ModuleGate module="raw_materials"><RawMaterials /></ModuleGate></RoleGate></OfflineGate>} />
+              <Route path="/invoices" element={<OfflineGate><ModuleGate module="invoices"><Invoices /></ModuleGate></OfflineGate>} />
+              <Route path="/purchase-orders" element={<OfflineGate><RoleGate allow={["owner","manager"]}><ModuleGate module="purchase_orders"><PurchaseOrders /></ModuleGate></RoleGate></OfflineGate>} />
+              <Route path="/reports" element={<OfflineGate><RoleGate allow={["owner","manager"]}><ModuleGate module="reports"><Reports /></ModuleGate></RoleGate></OfflineGate>} />
+              <Route path="/team" element={<OfflineGate><RoleGate allow={["owner"]}><ModuleGate module="team"><Team /></ModuleGate></RoleGate></OfflineGate>} />
+              <Route path="/settings" element={<OfflineGate><Settings /></OfflineGate>} />
               <Route path="/legal/:slug" element={<LegalDoc />} />
             </Route>
             <Route path="*" element={<NotFound />} />

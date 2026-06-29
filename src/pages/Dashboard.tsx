@@ -13,6 +13,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import Paginator, { usePagination } from "@/components/Paginator";
 import OnboardingDialog from "@/components/OnboardingDialog";
 import { salesRevenue, outOfStockProducts, lowStockProducts, totalStockUnits as sumStockUnits } from "@/lib/reportMetrics";
+import { useOnline } from "@/contexts/OnlineContext";
+import { cacheDashboard, readCachedDashboard } from "@/lib/offlineStore";
+
+type DashSnap = {
+  todaySales: number; salesCount: number; products: Product[]; openInvoices: number;
+  trend: { day: string; total: number }[]; topProducts: TopProduct[]; activity: ActivityEntry[];
+};
 
 type Sale = { id: string; total_amount: number; created_at: string };
 type Product = { id: string; name: string; stock_quantity: number; reorder_level: number; selling_price: number };
@@ -21,6 +28,7 @@ type ActivityEntry = { id: string; ts: string; label: string; sub: string; by?: 
 
 export default function Dashboard() {
   const { business, profile, role, user } = useAuth();
+  const { online } = useOnline();
   const { fmt } = useCurrency();
   const { fmtDateTime } = useDateFormat();
   const [loading, setLoading] = useState(true);
@@ -43,6 +51,16 @@ export default function Dashboard() {
 
   const loadDashboard = useCallback(async () => {
     if (!business) return;
+    if (!online) {
+      // Offline: render the last-synced snapshot (read-only).
+      const snap = (await readCachedDashboard(business.id)) as DashSnap | null;
+      if (snap) {
+        setTodaySales(snap.todaySales); setSalesCount(snap.salesCount); setProducts(snap.products);
+        setOpenInvoices(snap.openInvoices); setTrend(snap.trend); setTopProducts(snap.topProducts); setActivity(snap.activity);
+      }
+      setLoading(false);
+      return;
+    }
     {
       const since = new Date(); since.setDate(since.getDate() - 6); since.setHours(0, 0, 0, 0);
       const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
@@ -91,6 +109,7 @@ export default function Dashboard() {
       setTrend(days);
 
       // Top products today from sale_items — filter by today's sale IDs
+      let topProductsSnap: TopProduct[] = [];
       if (saleItems) {
         const todaySaleIds = new Set(todays.map(s => s.id));
         const map: Record<string, TopProduct> = {};
@@ -101,8 +120,8 @@ export default function Dashboard() {
           map[pid].qty += Number(si.quantity);
           map[pid].revenue += Number(si.quantity) * Number(si.unit_price);
         }
-        const sorted = Object.values(map).sort((a, b) => b.qty - a.qty).slice(0, 5);
-        setTopProducts(sorted);
+        topProductsSnap = Object.values(map).sort((a, b) => b.qty - a.qty).slice(0, 5);
+        setTopProducts(topProductsSnap);
       }
 
       const adjEntries: ActivityEntry[] = (adjustments as any[] | null ?? []).map(a => {
@@ -126,10 +145,22 @@ export default function Dashboard() {
         by: a.actor_name ?? undefined,
         sign: "neu",
       }));
-      setActivity([...adjEntries, ...logEntries].sort((x, y) => y.ts.localeCompare(x.ts)));
+      const activityAll = [...adjEntries, ...logEntries].sort((x, y) => y.ts.localeCompare(x.ts));
+      setActivity(activityAll);
       setLoading(false);
+
+      // Cache a read-only snapshot for offline.
+      void cacheDashboard(business.id, {
+        todaySales: salesRevenue(todays),
+        salesCount: todays.length,
+        products: (prods as Product[]) || [],
+        openInvoices: openInvCount ?? 0,
+        trend: days,
+        topProducts: topProductsSnap,
+        activity: activityAll,
+      } satisfies DashSnap);
     }
-  }, [business]);
+  }, [business, online]);
 
   useEffect(() => {
     loadDashboard();
