@@ -38,7 +38,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
-          name: playwright-report
+          name: playwright-report-${{ github.sha }}
           path: playwright-report/
           retention-days: 7
 
@@ -57,8 +57,8 @@ jobs:
       # vite build (not npm run build) — `needs` already proved tests green, so skip the prebuild rerun
       - run: npx vite build
         env:
-          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
       # Stamp the service worker with this commit's SHA so the deploy busts the old PWA cache.
       # (npm run build does this automatically; the bare `vite build` above doesn't, so run it here.)
       - run: node scripts/stamp-sw.mjs
