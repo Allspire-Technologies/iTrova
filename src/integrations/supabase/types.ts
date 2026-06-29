@@ -1128,6 +1128,15 @@ export type Database = {
           role: Database["public"]["Enums"]["app_role"]
         }[]
       }
+      get_invite_state: {
+        Args: { _token: string }
+        Returns: {
+          status: string
+          business_name: string | null
+          email: string | null
+          role: Database["public"]["Enums"]["app_role"] | null
+        }[]
+      }
       get_member_emails: {
         Args: { p_business_id: string }
         Returns: {
