@@ -12,6 +12,10 @@ import HeaderClock from "@/components/HeaderClock";
 import IdleTimeout from "@/components/IdleTimeout";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { useOnline } from "@/contexts/OnlineContext";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { countPending } from "@/lib/offlineStore";
+import { drainQueue } from "@/lib/offlineSync";
+import { toast } from "sonner";
 
 import type { AppRole } from "@/contexts/AuthContext";
 
@@ -82,9 +86,39 @@ export default function AppShell() {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [signOutOpen, setSignOutOpen] = useState(false);
+  const [syncGateOpen, setSyncGateOpen] = useState(false);
+  const [gatePending, setGatePending] = useState(0);
+  const [gateBusy, setGateBusy] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem("sidebar-collapsed") === "true");
 
   const confirmSignOut = () => { signOut(); navigate("/auth"); };
+
+  // Don't let anyone sign out while offline sales are still queued on this device — they'd be left
+  // behind. Block sign-out until the queue is synced (manually).
+  const requestSignOut = async () => {
+    setMobileOpen(false);
+    if (business) {
+      const n = await countPending(business.id);
+      if (n > 0) { setGatePending(n); setSyncGateOpen(true); return; }
+    }
+    setSignOutOpen(true);
+  };
+
+  const syncFromGate = async () => {
+    if (!business) return;
+    setGateBusy(true);
+    try {
+      await drainQueue(business.id);
+      const remaining = await countPending(business.id);
+      setGatePending(remaining);
+      if (remaining === 0) { setSyncGateOpen(false); setSignOutOpen(true); }
+      else toast.warning("Some sales still need attention — open Point of Sale to review them.");
+    } catch {
+      toast.error("Sync failed — please try again.");
+    } finally {
+      setGateBusy(false);
+    }
+  };
 
   const toggleCollapsed = () => setCollapsed(prev => {
     const next = !prev;
@@ -120,7 +154,7 @@ export default function AppShell() {
 
   const MobileSignOut = (
     <div className="p-4 border-t border-sidebar-border">
-      <button onClick={() => { setMobileOpen(false); setSignOutOpen(true); }} className="flex items-center gap-3 px-3 py-2 w-full rounded-lg text-sm text-sidebar-foreground/80 hover:bg-sidebar-accent/50 transition-colors">
+      <button onClick={requestSignOut} className="flex items-center gap-3 px-3 py-2 w-full rounded-lg text-sm text-sidebar-foreground/80 hover:bg-sidebar-accent/50 transition-colors">
         <LogOut className="size-4" /> Sign out
       </button>
     </div>
@@ -164,7 +198,7 @@ export default function AppShell() {
         {/* Sign out */}
         <div className={`p-3 border-t border-sidebar-border shrink-0`}>
           <button
-            onClick={() => setSignOutOpen(true)}
+            onClick={requestSignOut}
             title={collapsed ? "Sign out" : undefined}
             className={`flex items-center gap-3 px-3 py-2 w-full rounded-lg text-sm text-sidebar-foreground/80 hover:bg-sidebar-accent/50 transition-colors ${collapsed ? "justify-center" : ""}`}
           >
@@ -259,6 +293,25 @@ export default function AppShell() {
         confirmLabel="Sign out"
         onConfirm={confirmSignOut}
       />
+
+      {/* Sign-out gate: unsynced offline sales must be synced first */}
+      <Dialog open={syncGateOpen} onOpenChange={(o) => !gateBusy && setSyncGateOpen(o)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="font-display">Sync before signing out</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            You have <span className="font-semibold text-foreground">{gatePending}</span> sale{gatePending === 1 ? "" : "s"} saved on this device that haven{"’"}t synced yet.{" "}
+            {online ? "Sync them now so they aren’t left behind." : "Connect to the internet, then sync, before signing out."}
+          </p>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setSyncGateOpen(false)} disabled={gateBusy}>Stay signed in</Button>
+            <Button variant="brand" onClick={syncFromGate} disabled={!online || gateBusy}>
+              {gateBusy ? "Syncing…" : "Sync now"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <IdleTimeout />
     </div>
