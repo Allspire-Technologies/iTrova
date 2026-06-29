@@ -75,11 +75,12 @@ test.describe("Offline gating (P1)", () => {
     await expect(page.getByText("Cart is empty")).toBeVisible();
   });
 
-  test("syncs queued offline sales on reconnect", async ({ page }) => {
+  test("syncs queued offline sales when the user taps Sync now", async ({ page }) => {
     await captureOfflineSale(page);
     await goOnline(page, (r) =>
       r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "committed", invoice_number: "260628-1" }) }),
     );
+    await page.getByRole("button", { name: "Sync now" }).click(); // manual sync
     await expect(page.getByText(/Pending sync/)).toHaveCount(0); // drained
   });
 
@@ -88,7 +89,17 @@ test.describe("Offline gating (P1)", () => {
     await goOnline(page, (r) =>
       r.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ message: "NEEDS_REVIEW:Garri 50kg", code: "23514" }) }),
     );
+    await page.getByRole("button", { name: "Sync now" }).click();
     await expect(page.getByRole("button", { name: /Needs review \(1\)/ })).toBeVisible();
     await expect(page.getByText(/Pending sync/)).toHaveCount(0); // moved out of the pending queue
+  });
+
+  test("blocks sign-out while offline sales are unsynced", async ({ page }) => {
+    await captureOfflineSale(page); // 1 pending sale, still offline
+    await page.getByRole("button", { name: "Sign out" }).click();
+    await expect(page.getByText("Sync before signing out")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Stay signed in" })).toBeVisible();
+    // Offline -> Sync now is disabled (can't upload without internet).
+    await expect(page.getByRole("button", { name: "Sync now" })).toBeDisabled();
   });
 });

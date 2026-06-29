@@ -1,6 +1,12 @@
 import { test, expect } from "@playwright/test";
 import { FAKE_USER, SESSION_BODY, stubDbReads, stubSignup, stubPasswordLogin } from "./support/supabase";
 
+// The Auth page disables its buttons when offline; make the connectivity probe succeed so the
+// suite runs "online".
+test.beforeEach(async ({ page }) => {
+  await page.route("**/auth/v1/health**", (r) => r.fulfill({ status: 200, contentType: "application/json", body: "{}" }));
+});
+
 test.describe("Auth — login", () => {
   test("shows the login form by default", async ({ page }) => {
     await page.goto("/auth");

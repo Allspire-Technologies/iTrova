@@ -9,10 +9,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import SearchableSelect from "@/components/SearchableSelect";
 import { INDUSTRY_OPTIONS } from "@/lib/industries";
 import { toast } from "sonner";
-import { Eye, EyeOff, Sparkles, Store, MailCheck } from "lucide-react";
+import { Eye, EyeOff, Sparkles, Store, MailCheck, WifiOff } from "lucide-react";
+import { useOnline } from "@/contexts/OnlineContext";
 
 export default function Auth() {
   const { user, loading } = useAuth();
+  const { online } = useOnline();
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
 
@@ -110,6 +112,15 @@ export default function Auth() {
             </div>
             iTrova
           </div>
+          {!online && (
+            <div className="mb-6 flex items-start gap-3 rounded-xl border border-warning/40 bg-warning/10 p-4">
+              <WifiOff className="size-5 shrink-0 text-warning" />
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-brand-dark">You're offline</p>
+                <p className="text-xs text-muted-foreground">Signing in and creating an account need an internet connection. Reconnect to continue. (If you were already signed in, your saved offline sales are safe on this device.)</p>
+              </div>
+            </div>
+          )}
           {signupComplete ? (
             <div className="animate-fade-in text-center space-y-6">
               <div className="size-16 rounded-2xl bg-brand-light text-brand grid place-items-center mx-auto">
@@ -180,7 +191,7 @@ export default function Auth() {
                     </button>
                   </div>
                 </div>
-                <Button type="submit" variant="hero" size="lg" className="w-full" disabled={busy}>
+                <Button type="submit" variant="hero" size="lg" className="w-full" disabled={busy || !online}>
                   {busy ? "Signing in..." : "Sign in"}
                 </Button>
               </form>
@@ -238,7 +249,7 @@ export default function Auth() {
                     </button>
                   </div>
                 </div>
-                <Button type="submit" variant="hero" size="lg" className="w-full" disabled={busy}>
+                <Button type="submit" variant="hero" size="lg" className="w-full" disabled={busy || !online}>
                   {busy ? "Creating..." : "Create my business"}
                 </Button>
               </form>

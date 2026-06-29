@@ -84,11 +84,11 @@ export default function POS() {
     }
   }, [business, refreshQueues]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Refresh queue badges on mount; drain to the server whenever we're online.
+  // Refresh queue badges on mount / connectivity change. Syncing is MANUAL ("Sync now") — we never
+  // upload automatically, so the cashier stays in control and the sign-out gate stays meaningful.
   useEffect(() => {
     refreshQueues();
-    if (online) void runSync();
-  }, [online, refreshQueues, runSync]);
+  }, [online, refreshQueues]);
 
   const heldKey = business ? heldStorageKey(business.id) : null;
 
