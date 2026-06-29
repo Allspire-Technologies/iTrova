@@ -13,7 +13,7 @@ import SearchableSelect from "@/components/SearchableSelect";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { Plus, Search, FileText, Trash2, Download, Eye, MessageCircle, Pencil, Mail, ArrowUp, ArrowDown, ArrowUpDown, Printer, MoreHorizontal } from "lucide-react";
+import { Plus, Search, FileText, Trash2, Download, Eye, MessageCircle, Pencil, Mail, ArrowUp, ArrowDown, ArrowUpDown, Printer, MoreHorizontal, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { downloadPdf } from "@/lib/pdf";
 import { buildReceiptHtml } from "@/lib/receipt";
@@ -26,18 +26,26 @@ import { TablePageSkeleton } from "@/components/Skeletons";
 import { getLimit, isAtLimit, limitMessage } from "@/lib/planLimits";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useDateFormat } from "@/hooks/useDateFormat";
-import { INVOICE_STATUSES as STATUSES, statusOptionsFor, isOverdue, overdueDays } from "@/lib/invoiceStatus";
+import { INVOICE_STATUS_FILTERS as STATUS_FILTERS, statusOptionsFor, isOverdue, overdueDays } from "@/lib/invoiceStatus";
 import { useOnline } from "@/contexts/OnlineContext";
 import { OfflineInvoices } from "@/components/OfflineInvoices";
 
 type Invoice = {
   id: string; invoice_number: string; customer_name: string; customer_phone: string | null;
   customer_email: string | null; status: string; subtotal: number; tax: number; total: number;
-  discount_amount: number;
+  discount_amount: number; amount_paid: number;
   issue_date: string; due_date: string | null; notes: string | null; sale_id: string | null;
   created_by: string | null;
 };
 type Item = { id?: string; description: string; quantity: number; unit_price: number; line_total: number };
+type Payment = { id: string; amount: number; method: string; note: string | null; created_at: string; created_by: string | null };
+
+const PAYMENT_METHODS = ["cash", "bank transfer", "card", "mobile money", "other"];
+
+/** A manual invoice still owing money — eligible for a deposit. POS invoices are paid at sale time. */
+function canTakePayment(i: { sale_id: string | null; status: string }): boolean {
+  return !i.sale_id && (i.status === "issued" || i.status === "partial");
+}
 
 function IconBtn({ label, onClick, disabled, children }: { label: string; onClick: () => void; disabled?: boolean; children: ReactNode }) {
   return (
@@ -64,6 +72,9 @@ export default function Invoices() {
   const [open, setOpen] = useState(false);
   const [viewing, setViewing] = useState<Invoice | null>(null);
   const [viewItems, setViewItems] = useState<Item[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [paying, setPaying] = useState<Invoice | null>(null);
+  const [payForm, setPayForm] = useState({ amount: "", method: "cash", note: "" });
   const [waShare, setWaShare] = useState<{ message: string } | null>(null);
   const [form, setForm] = useState({ customer_name: "", customer_phone: "", customer_email: "", due_date: "", notes: "" });
   const [lines, setLines] = useState<Item[]>([{ description: "", quantity: 1, unit_price: 0, line_total: 0 }]);
@@ -271,8 +282,67 @@ export default function Invoices() {
     changeStatus(i, status);
   };
 
+  const loadPayments = async (invoiceId: string) => {
+    const { data } = await supabase
+      .from("invoice_payments")
+      .select("*")
+      .eq("invoice_id", invoiceId)
+      .order("created_at", { ascending: true });
+    setPayments((data as Payment[]) || []);
+  };
+
+  const openPay = (i: Invoice) => {
+    setPaying(i);
+    const balance = Number(i.total) - Number(i.amount_paid);
+    setPayForm({ amount: balance > 0 ? String(balance) : "", method: "cash", note: "" });
+    loadPayments(i.id);
+  };
+
+  const recordPayment = async () => {
+    if (!paying) return;
+    const amt = Number(payForm.amount);
+    const balance = Number(paying.total) - Number(paying.amount_paid);
+    if (!amt || amt <= 0) return toast.error("Enter a valid amount");
+    if (amt > balance + 0.001) return toast.error(`Amount exceeds the balance of ${fmt(balance)}`);
+    setBusy(true);
+    const { data, error } = await supabase.rpc("record_invoice_payment" as any, {
+      _payment_id: crypto.randomUUID(),
+      _invoice_id: paying.id,
+      _amount: amt,
+      _method: payForm.method,
+      _note: payForm.note || null,
+    });
+    setBusy(false);
+    if (error) {
+      if (error.message?.includes("NEEDS_REVIEW")) return toast.error("The balance changed — reopen the invoice and try again");
+      return toast.error(error.message);
+    }
+    const res = (data as { invoice_status?: string }) || {};
+    toast.success(res.invoice_status === "paid" ? `${paying.invoice_number} fully paid` : "Payment recorded");
+    setPaying(null);
+    load();
+  };
+
+  const removePayment = (p: Payment) => {
+    setPending({
+      title: "Remove this payment?",
+      description: `${fmt(p.amount)} will be removed and the balance recalculated.`,
+      confirmLabel: "Remove payment",
+      variant: "destructive",
+      onConfirm: async () => {
+        const { error } = await supabase.rpc("delete_invoice_payment" as any, { _payment_id: p.id });
+        if (error) return toast.error(error.message);
+        toast.success("Payment removed");
+        const inv = paying ?? viewing;
+        if (inv) loadPayments(inv.id);
+        load();
+      },
+    });
+  };
+
   const openView = async (i: Invoice) => {
     setViewing(i);
+    loadPayments(i.id);
     const { data } = await supabase.from("invoice_items").select("*").eq("invoice_id", i.id);
     let resolved = (data as Item[]) || [];
 
@@ -368,6 +438,13 @@ export default function Invoices() {
   const statusColor = (s: string) =>
     s === "paid" ? "default" : s === "issued" ? "secondary" : s === "void" ? "destructive" : "outline";
 
+  const StatusBadge = ({ s }: { s: string }) =>
+    s === "partial"
+      ? <Badge className="bg-amber-500 hover:bg-amber-500 text-white">Partial</Badge>
+      : <Badge variant={statusColor(s) as any}>{s}</Badge>;
+
+  const balanceOf = (i: Invoice) => Number(i.total) - Number(i.amount_paid);
+
   const exportCsv = () => {
     const rows = filtered.map(i => ({
       invoice_number: i.invoice_number,
@@ -439,7 +516,7 @@ export default function Invoices() {
           className="w-40"
           options={[
             { value: "all", label: "All statuses" },
-            ...STATUSES.map(s => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) })),
+            ...STATUS_FILTERS.map(s => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) })),
           ]}
         />
         <SearchableSelect
@@ -507,24 +584,30 @@ export default function Invoices() {
                     </td>
                     <td className="px-4 py-3 text-right font-medium">{fmt(i.total)}</td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        {canManage ? (
-                          <SearchableSelect
-                            value={i.status}
-                            onValueChange={(v) => requestStatusChange(i, v)}
-                            disabled={i.status === "void"}
-                            className="w-28 h-8"
-                            options={statusOptionsFor(i).map(s => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) }))}
-                          />
-                        ) : (
-                          <Badge variant={statusColor(i.status) as any}>{i.status}</Badge>
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-2">
+                          {canManage ? (
+                            <SearchableSelect
+                              value={i.status}
+                              onValueChange={(v) => requestStatusChange(i, v)}
+                              disabled={i.status === "void"}
+                              className="w-28 h-8"
+                              options={statusOptionsFor(i).map(s => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) }))}
+                            />
+                          ) : (
+                            <StatusBadge s={i.status} />
+                          )}
+                          {isOverdue(i, todayInTz) && <Badge variant="destructive" className="text-xs shrink-0">Overdue</Badge>}
+                        </div>
+                        {i.status === "partial" && (
+                          <span className="text-xs text-muted-foreground">{fmt(balanceOf(i))} left</span>
                         )}
-                        {isOverdue(i, todayInTz) && <Badge variant="destructive" className="text-xs shrink-0">Overdue</Badge>}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex gap-1 justify-end">
                         <IconBtn label="View" onClick={() => openView(i)}><Eye className="size-4" /></IconBtn>
+                        {canManage && canTakePayment(i) && <IconBtn label="Record payment" onClick={() => openPay(i)}><Wallet className="size-4" /></IconBtn>}
                         {canManage && <IconBtn label={i.status === "void" ? "Voided invoices can't be edited" : "Edit"} disabled={i.status === "void"} onClick={() => openEdit(i)}><Pencil className="size-4" /></IconBtn>}
                         {i.status === "paid" && <IconBtn label="Print" onClick={() => printReceipt(i)}><Printer className="size-4" /></IconBtn>}
                         <DropdownMenu>
@@ -603,7 +686,7 @@ export default function Invoices() {
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2 flex-wrap">
                   {viewing.invoice_number}
-                  <Badge variant={statusColor(viewing.status) as any}>{viewing.status}</Badge>
+                  <StatusBadge s={viewing.status} />
                   {isOverdue(viewing, todayInTz) && (
                     <Badge variant="destructive">{overdueDays(viewing.due_date!, todayInTz)} day{overdueDays(viewing.due_date!, todayInTz) === 1 ? "" : "s"} overdue</Badge>
                   )}
@@ -630,10 +713,40 @@ export default function Invoices() {
                     Discount: {Number(viewing.discount_amount) > 0 ? `-${fmt(viewing.discount_amount)}` : "—"}
                   </div>
                   <div className="font-semibold">Total: {fmt(viewing.total)}</div>
+                  {Number(viewing.amount_paid) > 0 && (
+                    <>
+                      <div className="text-sm text-emerald-600">Paid: {fmt(viewing.amount_paid)}</div>
+                      {balanceOf(viewing) > 0 && <div className="text-sm font-medium">Balance: {fmt(balanceOf(viewing))}</div>}
+                    </>
+                  )}
                 </div>
+                {payments.length > 0 && (
+                  <div className="space-y-1">
+                    <div className="text-xs uppercase tracking-wider text-muted-foreground">Payments</div>
+                    {payments.map(p => (
+                      <div key={p.id} className="flex items-center justify-between gap-2 text-sm border-b py-1 last:border-0">
+                        <div className="min-w-0">
+                          <span className="font-medium">{fmt(p.amount)}</span>
+                          <span className="text-muted-foreground"> · {p.method} · {p.created_at.slice(0, 10)}</span>
+                          {p.note && <span className="text-muted-foreground"> · {p.note}</span>}
+                        </div>
+                        {canManage && viewing.status !== "void" && (
+                          <Button variant="ghost" size="icon" className="size-7 shrink-0" aria-label="Remove payment" onClick={() => removePayment(p)}>
+                            <Trash2 className="size-3.5" />
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {viewing.notes && <div className="text-muted-foreground">{viewing.notes}</div>}
               </div>
               <DialogFooter className="flex-wrap gap-2">
+                {canManage && canTakePayment(viewing) && (
+                  <Button variant="outline" className="mr-auto" onClick={() => { const inv = viewing; setViewing(null); openPay(inv); }}>
+                    <Wallet className="size-4 mr-1" /> Record payment
+                  </Button>
+                )}
                 <Button variant="outline" disabled={!viewing.customer_email} onClick={() => {
                   const subject = encodeURIComponent(`Invoice ${viewing.invoice_number} from ${business?.name || ""}`);
                   const body = encodeURIComponent([
@@ -653,6 +766,55 @@ export default function Invoices() {
                 <Button variant="outline" onClick={() => shareWa(viewing)}><MessageCircle className="size-4 mr-1" /> WhatsApp</Button>
                 {viewing.status === "paid" && <Button variant="outline" onClick={() => printReceipt(viewing)}><Printer className="size-4 mr-1" /> Print</Button>}
                 <Button onClick={() => exportPdf(viewing)}><Download className="size-4 mr-1" /> Download</Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Record payment dialog */}
+      <Dialog open={!!paying} onOpenChange={(o) => !o && setPaying(null)}>
+        <DialogContent className="max-w-md">
+          {paying && (
+            <>
+              <DialogHeader><DialogTitle>Record payment · {paying.invoice_number}</DialogTitle></DialogHeader>
+              <div className="space-y-4">
+                <div className="rounded-lg border p-3 text-sm space-y-1">
+                  <div className="flex justify-between"><span className="text-muted-foreground">Total</span><span>{fmt(paying.total)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Paid so far</span><span>{fmt(paying.amount_paid)}</span></div>
+                  <div className="flex justify-between font-medium"><span>Balance</span><span>{fmt(balanceOf(paying))}</span></div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Amount *</Label>
+                    <Input type="number" min={0} value={payForm.amount} onChange={e => setPayForm({ ...payForm, amount: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label>Method</Label>
+                    <SearchableSelect
+                      value={payForm.method}
+                      onValueChange={(v) => setPayForm({ ...payForm, method: v })}
+                      className="w-full"
+                      options={PAYMENT_METHODS.map(m => ({ value: m, label: m.charAt(0).toUpperCase() + m.slice(1) }))}
+                    />
+                  </div>
+                </div>
+                <div><Label>Note</Label><Input value={payForm.note} onChange={e => setPayForm({ ...payForm, note: e.target.value })} placeholder="Optional" /></div>
+                {payments.length > 0 && (
+                  <div className="space-y-1">
+                    <div className="text-xs uppercase tracking-wider text-muted-foreground">Previous payments</div>
+                    {payments.map(p => (
+                      <div key={p.id} className="flex items-center justify-between gap-2 text-sm border-b py-1 last:border-0">
+                        <div className="min-w-0"><span className="font-medium">{fmt(p.amount)}</span><span className="text-muted-foreground"> · {p.method} · {p.created_at.slice(0, 10)}</span></div>
+                        <Button variant="ghost" size="icon" className="size-7 shrink-0" aria-label="Remove payment" onClick={() => removePayment(p)}><Trash2 className="size-3.5" /></Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setPaying(null)}>Cancel</Button>
+                <Button onClick={recordPayment} disabled={busy}>{busy ? "Saving…" : "Record payment"}</Button>
               </DialogFooter>
             </>
           )}
