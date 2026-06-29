@@ -1,5 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { runPrewarm } from "./offlinePrewarm";
+
+// offlinePrewarm imports the Supabase client transitively; stub it so importing the module doesn't
+// require env (these tests inject fake tasks and never hit the real warmers). vitest hoists this
+// above the imports above.
+vi.mock("@/integrations/supabase/client", () => ({ supabase: { from: vi.fn(), rpc: vi.fn() } }));
 
 // Inject fake tasks so the orchestration is tested without hitting Supabase/IndexedDB.
 const task = (key: string, run: () => Promise<void>) => ({ key, label: key.toUpperCase(), run });
