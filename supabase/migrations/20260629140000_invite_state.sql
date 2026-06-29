@@ -88,3 +88,32 @@ begin
   return inv.business_id;
 end;
 $$;
+
+-- Remove a teammate. Deleting only their user_roles row (the old client behaviour) did NOT revoke
+-- access: data RLS is gated on profiles.business_id (current_business_id()), not user_roles — and an
+-- owner can't clear another user's profile under RLS. This owner-gated SECURITY DEFINER function
+-- deletes the role AND nulls the member's active business, so removal actually takes effect.
+create or replace function public.remove_member(_user_id uuid)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  biz uuid := public.current_business_id();
+begin
+  if biz is null then raise exception 'No active business'; end if;
+  if not public.has_business_role(biz, auth.uid(), 'owner') then
+    raise exception 'Only an owner can remove members';
+  end if;
+  if _user_id = auth.uid() then raise exception 'You cannot remove yourself'; end if;
+  if public.has_business_role(biz, _user_id, 'owner') then
+    raise exception 'You cannot remove another owner';
+  end if;
+
+  delete from public.user_roles where user_id = _user_id and business_id = biz;
+  -- Only detach them from THIS business (don't touch a profile that has since moved elsewhere).
+  update public.profiles set business_id = null where id = _user_id and business_id = biz;
+end;
+$$;
+
+revoke all on function public.remove_member(uuid) from public, anon;
+grant execute on function public.remove_member(uuid) to authenticated;

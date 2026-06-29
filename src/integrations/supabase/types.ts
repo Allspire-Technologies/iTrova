@@ -1177,6 +1177,10 @@ export type Database = {
         }
         Returns: string
       }
+      remove_member: {
+        Args: { _user_id: string }
+        Returns: undefined
+      }
       read_email_batch: {
         Args: { batch_size: number; queue_name: string; vt: number }
         Returns: {

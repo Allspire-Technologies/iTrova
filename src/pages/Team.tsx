@@ -157,13 +157,14 @@ export default function Team() {
     if (!business) return;
     if (m.user_id === user?.id) { toast.error("You can't deactivate yourself"); return; }
     setPending({
-      title: `Deactivate ${m.owner_name || "this member"}?`,
+      title: `Remove ${m.owner_name || "this member"}?`,
       description: "They will immediately lose access to this business. Their sales history and data are preserved.",
       onConfirm: async () => {
-        const { error } = await supabase.from("user_roles")
-          .delete().eq("user_id", m.user_id).eq("business_id", business.id);
+        // RPC (not a raw user_roles delete): also clears their profiles.business_id so access is
+        // actually revoked — data RLS is gated on that, not on the role row.
+        const { error } = await supabase.rpc("remove_member", { _user_id: m.user_id });
         if (error) { toast.error(error.message); return; }
-        toast.success("Member deactivated"); load();
+        toast.success("Member removed"); load();
       },
     });
   };
@@ -361,7 +362,7 @@ export default function Team() {
                         { value: "cashier", label: "Cashier" },
                       ]}
                     />
-                    <Button variant="ghost" size="icon" onClick={() => deactivateMember(m)} aria-label="Deactivate">
+                    <Button variant="ghost" size="icon" onClick={() => deactivateMember(m)} aria-label="Remove member">
                       <Trash2 className="size-4 text-destructive" />
                     </Button>
                   </>
