@@ -13,7 +13,7 @@ import SearchableSelect from "@/components/SearchableSelect";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { Plus, Search, FileText, Trash2, Download, Eye, MessageCircle, Pencil, Mail, ArrowUp, ArrowDown, ArrowUpDown, Printer, MoreHorizontal, Wallet } from "lucide-react";
+import { Plus, Search, FileText, Trash2, Download, Eye, MessageCircle, Pencil, Mail, ArrowUp, ArrowDown, ArrowUpDown, Printer, MoreHorizontal, Wallet, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { downloadPdf } from "@/lib/pdf";
 import { buildReceiptHtml } from "@/lib/receipt";
@@ -29,6 +29,9 @@ import { useDateFormat } from "@/hooks/useDateFormat";
 import { INVOICE_STATUS_FILTERS as STATUS_FILTERS, statusOptionsFor, isOverdue, overdueDays } from "@/lib/invoiceStatus";
 import { useOnline } from "@/contexts/OnlineContext";
 import { OfflineInvoices } from "@/components/OfflineInvoices";
+import { cacheInvoices, countPendingInvoices, countPendingPayments } from "@/lib/offlineStore";
+import { drainInvoicing } from "@/lib/offlineSync";
+import type { CachedInvoice } from "@/lib/offlineTypes";
 
 type Invoice = {
   id: string; invoice_number: string; customer_name: string; customer_phone: string | null;
@@ -88,6 +91,10 @@ export default function Invoices() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [creators, setCreators] = useState<Record<string, string>>({});
   const [creatorFilter, setCreatorFilter] = useState("all");
+  const [offlinePending, setOfflinePending] = useState(0); // invoices + deposits captured offline, awaiting sync
+  const [syncingDeposits, setSyncingDeposits] = useState(false);
+  const countOfflineWork = (businessId: string) =>
+    Promise.all([countPendingInvoices(businessId), countPendingPayments(businessId)]).then(([a, b]) => a + b);
 
   const load = async () => {
     const [{ data, error }, { data: profs }] = await Promise.all([
@@ -95,15 +102,45 @@ export default function Invoices() {
       supabase.from("profiles").select("id, owner_name"),
     ]);
     if (error) return toast.error(error.message);
-    setItems((data as Invoice[]) || []);
+    const rows = (data as Invoice[]) || [];
+    setItems(rows);
     const map: Record<string, string> = {};
     for (const p of (profs as { id: string; owner_name: string | null }[] | null) ?? []) {
       if (p.owner_name) map[p.id] = p.owner_name;
     }
     setCreators(map);
     setLoading(false);
+    // Snapshot manual, still-owing invoices so deposits can be recorded offline.
+    if (business) {
+      const eligible: CachedInvoice[] = rows
+        .filter(i => !i.sale_id && (i.status === "issued" || i.status === "partial"))
+        .map(i => ({
+          id: i.id, business_id: business.id, invoice_number: i.invoice_number,
+          customer_name: i.customer_name, total: Number(i.total), amount_paid: Number(i.amount_paid),
+          status: i.status, cachedAt: Date.now(),
+        }));
+      cacheInvoices(business.id, eligible).catch(() => {/* offline storage optional */});
+      countOfflineWork(business.id).then(setOfflinePending).catch(() => {/* optional */});
+    }
   };
   useEffect(() => { if (business && online) load(); }, [business, online]);
+
+  // Sync offline-created invoices first, then the deposits that reference them.
+  const syncOfflineWork = async () => {
+    if (!business) return;
+    setSyncingDeposits(true);
+    try {
+      const outcomes = await drainInvoicing(business.id);
+      const review = outcomes.filter(o => o.result === "review").length;
+      const transient = outcomes.some(o => o.result === "transient");
+      if (review > 0) toast.warning(`${review} offline deposit${review === 1 ? "" : "s"} need review — the balance changed before they synced.`);
+      if (transient) toast.error("Some offline items couldn't sync — please try again.");
+      if (!review && !transient) toast.success("Offline invoices and deposits synced.");
+      await load();
+    } finally {
+      setSyncingDeposits(false);
+    }
+  };
 
   const openAdd = () => {
     setEditing(null);
@@ -491,6 +528,11 @@ export default function Invoices() {
           <p className="text-muted-foreground mt-1">Sales receipts and customer invoices</p>
         </div>
         <div className="flex gap-2 flex-wrap">
+          {offlinePending > 0 && (
+            <Button variant="outline" onClick={syncOfflineWork} disabled={syncingDeposits} title="Sync invoices and deposits saved while offline">
+              <RefreshCw className={`size-4 mr-1 ${syncingDeposits ? "animate-spin" : ""}`} /> {syncingDeposits ? "Syncing…" : `Sync now (${offlinePending})`}
+            </Button>
+          )}
           {canManage && hasModule("csv_export") && (
             <Button variant="outline" onClick={exportCsv} disabled={filtered.length === 0}>
               <Download className="size-4 mr-1" /> Export CSV
@@ -504,6 +546,14 @@ export default function Invoices() {
           <Button onClick={openAdd} disabled={atInvoiceLimit} title={atInvoiceLimit ? limitMessage("invoices") : undefined}><Plus className="size-4 mr-1" /> New invoice</Button>
         </div>
       </div>
+
+      {offlinePending > 0 && (
+        <Card className="p-4 border-amber-300 bg-amber-50">
+          <div className="text-sm text-amber-800">
+            {offlinePending} offline {offlinePending === 1 ? "item is" : "items are"} waiting to sync (invoices and deposits saved on this device). Use <span className="font-medium">Sync now</span> above.
+          </div>
+        </Card>
+      )}
 
       <Card className="p-4 flex flex-wrap gap-3 items-center">
         <div className="relative flex-1 min-w-[200px]">

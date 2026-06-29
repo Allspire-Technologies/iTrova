@@ -13,8 +13,8 @@ import IdleTimeout from "@/components/IdleTimeout";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { useOnline } from "@/contexts/OnlineContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { countPending } from "@/lib/offlineStore";
-import { drainQueue } from "@/lib/offlineSync";
+import { countPending, countPendingInvoices, countPendingPayments } from "@/lib/offlineStore";
+import { drainQueue, drainInvoicing } from "@/lib/offlineSync";
 import { toast } from "sonner";
 
 import type { AppRole } from "@/contexts/AuthContext";
@@ -94,11 +94,20 @@ export default function AppShell() {
   const confirmSignOut = () => { signOut(); navigate("/auth"); };
 
   // Don't let anyone sign out while offline sales are still queued on this device — they'd be left
-  // behind. Block sign-out until the queue is synced (manually).
+  // behind. Block sign-out until the queue is synced (manually). Counting offline work is best-effort:
+  // if IndexedDB errors/is unavailable, fail OPEN (treat as nothing pending) so sign-out is never stuck.
+  const countUnsynced = async (businessId: string): Promise<number> => {
+    try {
+      return (await countPending(businessId)) + (await countPendingInvoices(businessId)) + (await countPendingPayments(businessId));
+    } catch {
+      return 0;
+    }
+  };
+
   const requestSignOut = async () => {
     setMobileOpen(false);
     if (business) {
-      const n = await countPending(business.id);
+      const n = await countUnsynced(business.id);
       if (n > 0) { setGatePending(n); setSyncGateOpen(true); return; }
     }
     setSignOutOpen(true);
@@ -109,10 +118,11 @@ export default function AppShell() {
     setGateBusy(true);
     try {
       await drainQueue(business.id);
-      const remaining = await countPending(business.id);
+      await drainInvoicing(business.id);
+      const remaining = await countUnsynced(business.id);
       setGatePending(remaining);
       if (remaining === 0) { setSyncGateOpen(false); setSignOutOpen(true); }
-      else toast.warning("Some sales still need attention — open Point of Sale to review them.");
+      else toast.warning("Some items still need attention — open Point of Sale or Invoices to review them.");
     } catch {
       toast.error("Sync failed — please try again.");
     } finally {
