@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { OnlineProvider } from "@/contexts/OnlineContext";
+import { PrewarmProvider } from "@/contexts/PrewarmContext";
 import AppShell from "@/components/AppShell";
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
@@ -36,6 +37,7 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
           <OnlineProvider>
+          <PrewarmProvider>
           <Routes>
             <Route path="/auth" element={<Auth />} />
             <Route path="/reset-password" element={<ResetPassword />} />
@@ -56,6 +58,7 @@ const App = () => (
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
+          </PrewarmProvider>
           </OnlineProvider>
         </AuthProvider>
       </BrowserRouter>

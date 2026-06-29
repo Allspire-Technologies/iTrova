@@ -12,6 +12,7 @@ import HeaderClock from "@/components/HeaderClock";
 import IdleTimeout from "@/components/IdleTimeout";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { useOnline } from "@/contexts/OnlineContext";
+import { usePrewarm } from "@/contexts/PrewarmContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { countPending, countPendingInvoices, countPendingPayments } from "@/lib/offlineStore";
 import { drainQueue, drainInvoicing } from "@/lib/offlineSync";
@@ -82,6 +83,7 @@ function NavList({ onNavigate, role, hasModule, collapsed, online = true }: { on
 export default function AppShell() {
   const { user, profile, business, role, subscription, hasModule, signOut, loading } = useAuth();
   const { online } = useOnline();
+  const prewarm = usePrewarm();
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -89,6 +91,7 @@ export default function AppShell() {
   const [syncGateOpen, setSyncGateOpen] = useState(false);
   const [gatePending, setGatePending] = useState(0);
   const [gateBusy, setGateBusy] = useState(false);
+  const [prewarmGateOpen, setPrewarmGateOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem("sidebar-collapsed") === "true");
 
   const confirmSignOut = () => { signOut(); navigate("/auth"); };
@@ -106,6 +109,9 @@ export default function AppShell() {
 
   const requestSignOut = async () => {
     setMobileOpen(false);
+    // Block sign-out while the offline caches are still being prepared, so they aren't left partial.
+    // (On error the pre-warm finishes as 'error', which unblocks — we don't trap the user.)
+    if (prewarm.status === "running") { setPrewarmGateOpen(true); return; }
     if (business) {
       const n = await countUnsynced(business.id);
       if (n > 0) { setGatePending(n); setSyncGateOpen(true); return; }
@@ -139,6 +145,16 @@ export default function AppShell() {
   useEffect(() => {
     if (!loading && !user) navigate("/auth", { replace: true });
   }, [loading, user, navigate]);
+
+  // Once the pre-warm finishes while the "preparing offline data" gate is open, resume the
+  // sign-out the user asked for (re-checks unsynced work, then shows the confirm).
+  useEffect(() => {
+    if (prewarmGateOpen && prewarm.status !== "running") {
+      setPrewarmGateOpen(false);
+      void requestSignOut();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prewarmGateOpen, prewarm.status]);
 
   if (loading || !user) return <AppShellSkeleton />;
 
@@ -287,6 +303,15 @@ export default function AppShell() {
             </div>
           </div>
         </header>
+        {/* Offline pre-warm progress — slim determinate bar, non-blocking */}
+        {prewarm.status === "running" && (
+          <div className="border-b border-border bg-card" role="progressbar" aria-label="Preparing offline data" aria-valuenow={prewarm.done} aria-valuemax={prewarm.total}>
+            <div className="h-1 bg-brand transition-all duration-300" style={{ width: `${prewarm.total ? (prewarm.done / prewarm.total) * 100 : 0}%` }} />
+            <div className="px-4 lg:px-8 py-1 text-[11px] text-muted-foreground">
+              Preparing offline data… {prewarm.done}/{prewarm.total}
+            </div>
+          </div>
+        )}
         <OfflineBanner />
         <main className="flex-1 p-4 lg:p-8 animate-fade-in">
           <div key={location.key} className="w-full">
@@ -319,6 +344,25 @@ export default function AppShell() {
             <Button variant="brand" onClick={syncFromGate} disabled={!online || gateBusy}>
               {gateBusy ? "Syncing…" : "Sync now"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pre-warm gate: don't sign out mid-caching, or the offline data would be incomplete.
+          Auto-continues the sign-out once it finishes (see the effect above). */}
+      <Dialog open={prewarmGateOpen} onOpenChange={setPrewarmGateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="font-display">Finishing offline setup…</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            We{"’"}re preparing your data for offline use ({prewarm.done}/{prewarm.total}). Sign-out will continue automatically once it{"’"}s done.
+          </p>
+          <div className="h-1 w-full bg-muted rounded overflow-hidden">
+            <div className="h-full bg-brand transition-all duration-300" style={{ width: `${prewarm.total ? (prewarm.done / prewarm.total) * 100 : 0}%` }} />
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setPrewarmGateOpen(false)}>Stay signed in</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

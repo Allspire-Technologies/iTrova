@@ -12,19 +12,10 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import Paginator, { usePagination } from "@/components/Paginator";
 import OnboardingDialog from "@/components/OnboardingDialog";
-import { salesRevenue, outOfStockProducts, lowStockProducts, totalStockUnits as sumStockUnits } from "@/lib/reportMetrics";
+import { outOfStockProducts, lowStockProducts, totalStockUnits as sumStockUnits } from "@/lib/reportMetrics";
 import { useOnline } from "@/contexts/OnlineContext";
 import { cacheDashboard, readCachedDashboard } from "@/lib/offlineStore";
-
-type DashSnap = {
-  todaySales: number; salesCount: number; products: Product[]; openInvoices: number;
-  trend: { day: string; total: number }[]; topProducts: TopProduct[]; activity: ActivityEntry[];
-};
-
-type Sale = { id: string; total_amount: number; created_at: string };
-type Product = { id: string; name: string; stock_quantity: number; reorder_level: number; selling_price: number };
-type TopProduct = { product_id: string; name: string; qty: number; revenue: number };
-type ActivityEntry = { id: string; ts: string; label: string; sub: string; by?: string; sign: "pos" | "neg" | "neu" };
+import { fetchDashboardSnapshot, type DashSnap, type DashProduct as Product, type DashTopProduct as TopProduct, type DashActivityEntry as ActivityEntry } from "@/lib/dashboardSnapshot";
 
 export default function Dashboard() {
   const { business, profile, role, user } = useAuth();
@@ -62,103 +53,11 @@ export default function Dashboard() {
       return;
     }
     {
-      const since = new Date(); since.setDate(since.getDate() - 6); since.setHours(0, 0, 0, 0);
-      const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
-
-      const [
-        { data: sales },
-        { data: prods },
-        { count: openInvCount },
-        { data: saleItems },
-        { data: adjustments },
-        { data: activityLog },
-        { data: profs },
-      ] = await Promise.all([
-        supabase.from("sales").select("id,total_amount,created_at").eq("voided", false).gte("created_at", since.toISOString()),
-        supabase.from("products").select("id,name,stock_quantity,reorder_level,selling_price").order("created_at", { ascending: false }),
-        supabase.from("invoices").select("id", { count: "exact", head: true }).in("status", ["draft", "issued"]),
-        supabase.from("sale_items").select("sale_id, product_id, quantity, unit_price, products(name)"),
-        supabase.from("stock_adjustments").select("id,created_at,delta,reason,notes,user_id,product_id,raw_material_id,products(name),raw_materials(name)").order("created_at", { ascending: false }).limit(50),
-        supabase.from("activity_log").select("id,created_at,summary,actor_name").order("created_at", { ascending: false }).limit(50),
-        supabase.from("profiles").select("id, owner_name"),
-      ]);
-
-      const nameById: Record<string, string> = {};
-      for (const p of (profs as { id: string; owner_name: string | null }[] | null) ?? []) {
-        if (p.owner_name) nameById[p.id] = p.owner_name;
-      }
-
-      // Today's sales metrics
-      const todays = (sales as Sale[] | null)?.filter(s => new Date(s.created_at) >= todayStart) ?? [];
-      setTodaySales(salesRevenue(todays));
-      setSalesCount(todays.length);
-      setProducts((prods as Product[]) || []);
-      setOpenInvoices(openInvCount ?? 0);
-
-      // 7-day trend
-      const days: { day: string; total: number }[] = [];
-      for (let i = 6; i >= 0; i--) {
-        const d = new Date(); d.setDate(d.getDate() - i); d.setHours(0, 0, 0, 0);
-        const next = new Date(d); next.setDate(next.getDate() + 1);
-        const total = (sales as Sale[] | null)?.filter(s => {
-          const t = new Date(s.created_at);
-          return t >= d && t < next;
-        }).reduce((a, s) => a + Number(s.total_amount), 0) || 0;
-        days.push({ day: d.toLocaleDateString("en", { weekday: "short" }), total });
-      }
-      setTrend(days);
-
-      // Top products today from sale_items — filter by today's sale IDs
-      let topProductsSnap: TopProduct[] = [];
-      if (saleItems) {
-        const todaySaleIds = new Set(todays.map(s => s.id));
-        const map: Record<string, TopProduct> = {};
-        for (const si of (saleItems as any[]).filter(si => todaySaleIds.has(si.sale_id))) {
-          const pid = si.product_id;
-          const name = si.products?.name || "Unknown";
-          if (!map[pid]) map[pid] = { product_id: pid, name, qty: 0, revenue: 0 };
-          map[pid].qty += Number(si.quantity);
-          map[pid].revenue += Number(si.quantity) * Number(si.unit_price);
-        }
-        topProductsSnap = Object.values(map).sort((a, b) => b.qty - a.qty).slice(0, 5);
-        setTopProducts(topProductsSnap);
-      }
-
-      const adjEntries: ActivityEntry[] = (adjustments as any[] | null ?? []).map(a => {
-        const name = a.products?.name || a.raw_materials?.name || "Item";
-        const sign: ActivityEntry["sign"] = Number(a.delta) >= 0 ? "pos" : "neg";
-        return {
-          id: a.id,
-          ts: a.created_at,
-          label: `${Number(a.delta) >= 0 ? "+" : ""}${a.delta} ${name}`,
-          sub: a.reason || a.notes || "Stock adjusted",
-          by: a.user_id ? nameById[a.user_id] : undefined,
-          sign,
-        };
-      });
-      type LogRow = { id: string; created_at: string; summary: string; actor_name: string | null };
-      const logEntries: ActivityEntry[] = ((activityLog as LogRow[] | null) ?? []).map(a => ({
-        id: a.id,
-        ts: a.created_at,
-        label: a.summary,
-        sub: "",
-        by: a.actor_name ?? undefined,
-        sign: "neu",
-      }));
-      const activityAll = [...adjEntries, ...logEntries].sort((x, y) => y.ts.localeCompare(x.ts));
-      setActivity(activityAll);
+      const snap = await fetchDashboardSnapshot();
+      setTodaySales(snap.todaySales); setSalesCount(snap.salesCount); setProducts(snap.products);
+      setOpenInvoices(snap.openInvoices); setTrend(snap.trend); setTopProducts(snap.topProducts); setActivity(snap.activity);
       setLoading(false);
-
-      // Cache a read-only snapshot for offline.
-      void cacheDashboard(business.id, {
-        todaySales: salesRevenue(todays),
-        salesCount: todays.length,
-        products: (prods as Product[]) || [],
-        openInvoices: openInvCount ?? 0,
-        trend: days,
-        topProducts: topProductsSnap,
-        activity: activityAll,
-      } satisfies DashSnap);
+      void cacheDashboard(business.id, snap); // read-only snapshot for offline
     }
   }, [business, online]);
 
