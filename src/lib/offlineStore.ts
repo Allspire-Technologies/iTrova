@@ -81,6 +81,18 @@ export async function enqueueSale(sale: QueuedSale): Promise<void> {
   await db.put("saleQueue", sale);
 }
 
+export async function getQueuedSale(saleId: string): Promise<QueuedSale | null> {
+  const db = await getDb();
+  return (await db.get("saleQueue", saleId)) ?? null;
+}
+
+/** Edit a queued (not-yet-synced) offline invoice in place. */
+export async function updateQueuedSale(saleId: string, patch: Partial<QueuedSale>): Promise<void> {
+  const db = await getDb();
+  const existing = await db.get("saleQueue", saleId);
+  if (existing) await db.put("saleQueue", { ...existing, ...patch });
+}
+
 export async function listQueuedSales(businessId: string): Promise<QueuedSale[]> {
   const db = await getDb();
   const rows = await db.getAllFromIndex("saleQueue", "by-business", businessId);

@@ -94,6 +94,19 @@ test.describe("Offline gating (P1)", () => {
     await expect(page.getByText(/Pending sync/)).toHaveCount(0); // moved out of the pending queue
   });
 
+  test("offline Invoices lists a saved invoice and edits it", async ({ page }) => {
+    await captureOfflineSale(page); // 1 queued offline invoice
+    await page.goto("/invoices"); // probe is aborted -> page goes offline -> OfflineInvoices
+    await expect(page.getByRole("heading", { name: /Invoices \(offline\)/ })).toBeVisible();
+    await expect(page.getByText("Pending sync")).toBeVisible();
+
+    await page.getByRole("button", { name: /^Edit / }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByPlaceholder("Walk-in Customer").fill("Mrs. Bola");
+    await dialog.getByRole("button", { name: "Save changes" }).click();
+    await expect(page.getByText("Mrs. Bola")).toBeVisible(); // edited customer shows in the list
+  });
+
   test("blocks sign-out while offline sales are unsynced", async ({ page }) => {
     await captureOfflineSale(page); // 1 pending sale, still offline
     await page.getByRole("button", { name: "Sign out" }).click();

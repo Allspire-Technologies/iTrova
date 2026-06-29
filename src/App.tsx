@@ -47,7 +47,7 @@ const App = () => (
               <Route path="/inventory" element={<RoleGate allow={["owner","manager"]}><ModuleGate module="inventory"><Inventory /></ModuleGate></RoleGate>} />
               <Route path="/suppliers" element={<OfflineGate><RoleGate allow={["owner","manager"]}><ModuleGate module="suppliers"><Suppliers /></ModuleGate></RoleGate></OfflineGate>} />
               <Route path="/raw-materials" element={<OfflineGate><RoleGate allow={["owner","manager"]}><ModuleGate module="raw_materials"><RawMaterials /></ModuleGate></RoleGate></OfflineGate>} />
-              <Route path="/invoices" element={<OfflineGate><ModuleGate module="invoices"><Invoices /></ModuleGate></OfflineGate>} />
+              <Route path="/invoices" element={<ModuleGate module="invoices"><Invoices /></ModuleGate>} />
               <Route path="/purchase-orders" element={<OfflineGate><RoleGate allow={["owner","manager"]}><ModuleGate module="purchase_orders"><PurchaseOrders /></ModuleGate></RoleGate></OfflineGate>} />
               <Route path="/reports" element={<OfflineGate><RoleGate allow={["owner","manager"]}><ModuleGate module="reports"><Reports /></ModuleGate></RoleGate></OfflineGate>} />
               <Route path="/team" element={<OfflineGate><RoleGate allow={["owner"]}><ModuleGate module="team"><Team /></ModuleGate></RoleGate></OfflineGate>} />

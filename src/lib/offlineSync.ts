@@ -29,6 +29,9 @@ function toPayload(s: QueuedSale) {
     subtotal: s.subtotal,
     total: s.total,
     customer_name: s.customerName,
+    customer_phone: s.customerPhone ?? null,
+    customer_email: s.customerEmail ?? null,
+    notes: s.notes ?? null,
     items: s.items.map((i) => ({ product_id: i.product_id, name: i.name, quantity: i.quantity, unit_price: i.unit_price })),
   };
 }
