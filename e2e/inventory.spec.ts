@@ -28,9 +28,22 @@ test.describe("Inventory", () => {
     await expect(page.getByText("GAR-50")).toBeVisible();
   });
 
-  test("opens the add-product dialog with a required SKU", async ({ page }) => {
+  test("opens the add-product dialog with required fields asterisked and an optional expiry date", async ({ page }) => {
     await page.getByRole("button", { name: "Add product" }).click();
     await expect(page.getByText("Add a new product")).toBeVisible();
+    await expect(page.getByText("Product name *")).toBeVisible();
     await expect(page.getByText("SKU / barcode *")).toBeVisible();
+    await expect(page.getByText("Stock quantity *")).toBeVisible();
+    await expect(page.getByText("Reorder level *")).toBeVisible();
+    await expect(page.getByText("Expiry date")).toBeVisible();
+  });
+
+  test("shows expiry in its own column and badges a product expiring within 90 days", async ({ page }) => {
+    const soon = new Date(Date.now() + 10 * 86_400_000).toISOString().slice(0, 10);
+    await stubRows(page, "products", [{ ...product, expiry_date: soon }]);
+    await page.reload();
+    await expect(page.getByText("Garri 50kg")).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: "Expiry" })).toBeVisible();
+    await expect(page.getByText(/Expires in \d+d/)).toBeVisible();
   });
 });

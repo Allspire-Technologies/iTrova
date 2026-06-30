@@ -6,6 +6,8 @@ export type ProductFields = {
   selling_price: number;
   cost_price: number;
   reorder_level: number;
+  /** Optional. undefined = column absent (leave unchanged on update); null = explicitly cleared. */
+  expiry_date?: string | null;
 };
 
 type CsvRow = Record<string, string | undefined>;
@@ -38,6 +40,8 @@ function fieldsFromRow(r: CsvRow): ProductFields {
     selling_price: Number(r.selling_price) || 0,
     cost_price: Number(r.cost_price) || 0,
     reorder_level: Number(r.reorder_level) || 5,
+    // Only touch expiry when the column is present, so importing an old CSV never wipes it.
+    expiry_date: "expiry_date" in r ? ((r.expiry_date ?? "").trim() || null) : undefined,
   };
 }
 
@@ -83,4 +87,25 @@ export function buildImportPlan(
   }
 
   return { inserts, updates, skippedNoSku, overLimit };
+}
+
+export type ExpiryBand = "expired" | "critical" | "warning" | "soon" | "notice";
+export type ExpiryAlert = { band: ExpiryBand; daysLeft: number; label: string; className: string };
+
+/**
+ * Tiered expiry alert for the inventory list. The badge appears from 90 days out and escalates
+ * at 30 / 15 / 3 days, then "Expired". Returns null when there's no date or it's more than 90 days
+ * away. `today` is an ISO date (YYYY-MM-DD), already resolved to the business timezone.
+ */
+export function expiryAlert(expiryDate: string | null | undefined, today: string): ExpiryAlert | null {
+  if (!expiryDate) return null;
+  const days = Math.round((Date.parse(expiryDate) - Date.parse(today)) / 86_400_000);
+  const red = "bg-danger/10 text-danger border-danger/20";
+  if (days < 0) return { band: "expired", daysLeft: days, label: "Expired", className: red };
+  if (days === 0) return { band: "critical", daysLeft: 0, label: "Expires today", className: red };
+  if (days <= 3) return { band: "critical", daysLeft: days, label: `Expires in ${days}d`, className: red };
+  if (days <= 15) return { band: "warning", daysLeft: days, label: `Expires in ${days}d`, className: "bg-orange-500/10 text-orange-600 border-orange-500/20" };
+  if (days <= 30) return { band: "soon", daysLeft: days, label: `Expires in ${days}d`, className: "bg-warning/10 text-warning border-warning/20" };
+  if (days <= 90) return { band: "notice", daysLeft: days, label: `Expires in ${days}d`, className: "bg-muted text-muted-foreground border-border" };
+  return null;
 }
