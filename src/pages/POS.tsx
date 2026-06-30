@@ -123,7 +123,14 @@ export default function POS() {
   const filtered = useMemo(
     // Never surface out-of-stock items in POS (online or offline) — they can't be sold. Online the
     // query already excludes them; offline this also hides any out-of-stock rows from the cache.
-    () => products.filter(p => Number(p.stock_quantity) > 0 && (!q || p.name.toLowerCase().includes(q.toLowerCase()))),
+    // Search matches name OR SKU, case-insensitively.
+    () => {
+      const ql = q.trim().toLowerCase();
+      return products.filter(p =>
+        Number(p.stock_quantity) > 0 &&
+        (!ql || p.name.toLowerCase().includes(ql) || (p.sku?.toLowerCase().includes(ql) ?? false))
+      );
+    },
     [products, q]
   );
   const { paged, page, setPage, pageSize, setPageSize, pageCount, total: productCount } = usePagination(filtered, 20);
