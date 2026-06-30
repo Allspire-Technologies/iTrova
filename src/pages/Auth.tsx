@@ -8,6 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import SearchableSelect from "@/components/SearchableSelect";
 import { INDUSTRY_OPTIONS } from "@/lib/industries";
+import { isValidEmail, normalizeEmail } from "@/lib/emailVerification";
+import { isValidPhone, normalizePhone } from "@/lib/phone";
 import { toast } from "sonner";
 import { Eye, EyeOff, Sparkles, Store, MailCheck, WifiOff } from "lucide-react";
 import { useOnline } from "@/contexts/OnlineContext";
@@ -39,17 +41,25 @@ export default function Auth() {
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isValidEmail(signupEmail)) {
+      toast.error("Enter a valid email address");
+      return;
+    }
+    if (phone.trim() && !isValidPhone(phone)) {
+      toast.error("Enter a valid phone number (10–15 digits)");
+      return;
+    }
     if (signupPassword !== confirmPassword) {
       toast.error("Passwords do not match");
       return;
     }
     setBusy(true);
     const { data, error } = await supabase.auth.signUp({
-      email: signupEmail,
+      email: normalizeEmail(signupEmail),
       password: signupPassword,
       options: {
         emailRedirectTo: `${window.location.origin}/`,
-        data: { business_name: businessName, owner_name: ownerName, phone, industry },
+        data: { business_name: businessName, owner_name: ownerName, phone: normalizePhone(phone), industry },
       },
     });
     setBusy(false);
@@ -66,8 +76,12 @@ export default function Auth() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isValidEmail(loginEmail)) {
+      toast.error("Enter a valid email address");
+      return;
+    }
     setBusy(true);
-    const { error } = await supabase.auth.signInWithPassword({ email: loginEmail, password: loginPassword });
+    const { error } = await supabase.auth.signInWithPassword({ email: normalizeEmail(loginEmail), password: loginPassword });
     setBusy(false);
     if (error) return toast.error(error.message);
     navigate("/");
@@ -104,14 +118,15 @@ export default function Auth() {
       </section>
 
       {/* Form panel */}
-      <section className="flex items-center justify-center p-6 lg:p-12">
+      <section className="flex items-center justify-center p-4 py-8 sm:p-6 lg:p-12">
         <div className="w-full max-w-md">
-          <div className="lg:hidden mb-8 flex items-center gap-2 text-2xl font-display font-bold text-brand-dark">
+          <div className="lg:hidden mb-6 flex items-center gap-2 text-2xl font-display font-bold text-brand-dark">
             <div className="size-10 rounded-xl bg-gradient-brand grid place-items-center text-brand-foreground">
               <Store className="size-5" />
             </div>
             iTrova
           </div>
+          <div className="rounded-2xl border border-border bg-card p-6 shadow-card sm:p-8 lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
           {!online && (
             <div className="mb-6 flex items-start gap-3 rounded-xl border border-warning/40 bg-warning/10 p-4">
               <WifiOff className="size-5 shrink-0 text-warning" />
@@ -217,19 +232,19 @@ export default function Auth() {
                     placeholder="Select your industry"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label htmlFor="on">Your name</Label>
                     <Input id="on" required value={ownerName} onChange={e => setOwnerName(e.target.value)} placeholder="Enter your full name" />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="ph">Phone</Label>
-                    <Input id="ph" value={phone} onChange={e => setPhone(e.target.value)} placeholder="Enter your phone number" />
+                    <Input id="ph" type="tel" inputMode="tel" autoComplete="tel" value={phone} onChange={e => setPhone(e.target.value.replace(/[^\d+]/g, ""))} placeholder="e.g. 08031234567" />
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="se">Email</Label>
-                  <Input id="se" type="email" required value={signupEmail} onChange={e => setSignupEmail(e.target.value)} placeholder="Enter your email address" />
+                  <Input id="se" type="email" inputMode="email" autoComplete="email" required value={signupEmail} onChange={e => setSignupEmail(e.target.value)} placeholder="Enter your email address" />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="sp">Password</Label>
@@ -256,6 +271,7 @@ export default function Auth() {
             </TabsContent>
           </Tabs>
           )}
+          </div>
         </div>
       </section>
     </main>

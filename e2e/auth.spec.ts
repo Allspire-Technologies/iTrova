@@ -95,4 +95,36 @@ test.describe("Auth — signup", () => {
     await page.getByRole("button", { name: "Create my business" }).click();
     await expect(page.getByText("User already registered")).toBeVisible();
   });
+
+  test("blocks an invalid email (client-side)", async ({ page }) => {
+    await page.goto("/auth");
+    await page.getByRole("tab", { name: "Create account" }).click();
+    await page.locator("#bn").fill("Sunrise Stores");
+    await page.locator("#on").fill("Ada Obi");
+    await page.locator("#se").fill("ada@sunrise"); // passes type=email but has no TLD
+    await page.locator("#sp").fill("password123");
+    await page.locator("#cp").fill("password123");
+    await page.getByRole("button", { name: "Create my business" }).click();
+    await expect(page.getByText("Enter a valid email address")).toBeVisible();
+  });
+
+  test("phone field accepts only digits (and +)", async ({ page }) => {
+    await page.goto("/auth");
+    await page.getByRole("tab", { name: "Create account" }).click();
+    await page.locator("#ph").fill("ab 080-123c");
+    await expect(page.locator("#ph")).toHaveValue("080123");
+  });
+
+  test("blocks an invalid phone number (client-side)", async ({ page }) => {
+    await page.goto("/auth");
+    await page.getByRole("tab", { name: "Create account" }).click();
+    await page.locator("#bn").fill("Sunrise Stores");
+    await page.locator("#on").fill("Ada Obi");
+    await page.locator("#se").fill("ada@sunrise.test");
+    await page.locator("#ph").fill("123"); // too short
+    await page.locator("#sp").fill("password123");
+    await page.locator("#cp").fill("password123");
+    await page.getByRole("button", { name: "Create my business" }).click();
+    await expect(page.getByText(/Enter a valid phone number/)).toBeVisible();
+  });
 });
