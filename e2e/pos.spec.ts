@@ -48,6 +48,23 @@ test.describe("Point of Sale", () => {
     await expect(page.getByText("1 item", { exact: true })).toBeVisible();
   });
 
+  test("search matches SKU, case-insensitively", async ({ page }) => {
+    const search = page.getByPlaceholder("Search products...");
+    // "gar-50" is the lowercase SKU (GAR-50) and is NOT a substring of the name, so a match proves
+    // the list search now looks at SKU (and isn't case-sensitive).
+    await search.fill("gar-50");
+    await expect(page.getByRole("button", { name: /Garri 50kg/ })).toBeVisible();
+    await search.fill("zzz-none");
+    await expect(page.getByRole("button", { name: /Garri 50kg/ })).toBeHidden();
+  });
+
+  test("scan by SKU adds the product to the cart (case-insensitive)", async ({ page }) => {
+    const scan = page.getByPlaceholder("Scan or type SKU + Enter");
+    await scan.fill("gar-50"); // lowercase of GAR-50
+    await scan.press("Enter");
+    await expect(page.getByText("1 item", { exact: true })).toBeVisible();
+  });
+
   test.describe("on a mobile viewport", () => {
     test.use({ viewport: { width: 375, height: 812 } });
 
