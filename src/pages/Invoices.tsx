@@ -744,11 +744,15 @@ export default function Invoices() {
               {lines.map((l, idx) => {
                 const posLocked = !!editing?.sale_id;
                 return (
-                  <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-                    <Input className="col-span-6" placeholder="Description" value={l.description} disabled={posLocked} onChange={e => updateLine(idx, { description: e.target.value })} />
-                    <Input className="col-span-2" type="number" min={0} placeholder="Qty" value={l.quantity} onChange={e => updateLine(idx, { quantity: Number(e.target.value) })} />
-                    <Input className="col-span-3" type="number" min={0} placeholder="Unit price" value={l.unit_price || ""} disabled={posLocked} onChange={e => updateLine(idx, { unit_price: Number(e.target.value) })} />
-                    <Button variant="ghost" size="icon" className="col-span-1" disabled={posLocked} onClick={() => removeLine(idx)}><Trash2 className="size-4" /></Button>
+                  // Phones: Description full-width, then Qty/Unit price/Remove in one row.
+                  // sm+: the wrapper dissolves (sm:contents) back into the original 12-col row.
+                  <div key={idx} className="rounded-lg border border-border/60 p-2 space-y-2 sm:border-0 sm:p-0 sm:space-y-0 sm:grid sm:grid-cols-12 sm:gap-2 sm:items-center">
+                    <Input className="sm:col-span-6" placeholder="Description" value={l.description} disabled={posLocked} onChange={e => updateLine(idx, { description: e.target.value })} />
+                    <div className="flex gap-2 sm:contents">
+                      <Input className="flex-1 sm:col-span-2" type="number" min={0} placeholder="Qty" value={l.quantity} onChange={e => updateLine(idx, { quantity: Number(e.target.value) })} />
+                      <Input className="flex-1 sm:col-span-3" type="number" min={0} placeholder="Unit price" value={l.unit_price || ""} disabled={posLocked} onChange={e => updateLine(idx, { unit_price: Number(e.target.value) })} />
+                      <Button variant="ghost" size="icon" className="shrink-0 sm:col-span-1" disabled={posLocked} onClick={() => removeLine(idx)}><Trash2 className="size-4" /></Button>
+                    </div>
                   </div>
                 );
               })}

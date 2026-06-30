@@ -481,19 +481,23 @@ export default function PurchaseOrders() {
                 <div className="col-span-1 sr-only">Remove</div>
               </div>
               {lines.map((l, idx) => (
-                <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+                // Phones: stack Item + Description full-width, then Qty/Cost/Remove in one row.
+                // sm+: the wrapper dissolves (sm:contents) back into the original 12-col row.
+                <div key={idx} className="rounded-lg border border-border/60 p-2 space-y-2 sm:border-0 sm:p-0 sm:space-y-0 sm:grid sm:grid-cols-12 sm:gap-2 sm:items-center">
                   <SearchableSelect
                     value={sourceValue(l)}
                     onValueChange={(v) => pickSource(idx, v)}
-                    className="col-span-4"
+                    className="sm:col-span-4"
                     placeholder="Choose item"
                     searchPlaceholder="Search inventory & materials…"
                     options={sourceOptions}
                   />
-                  <Input className="col-span-3" placeholder="Description" value={l.description} onChange={e => updateLine(idx, { description: e.target.value })} />
-                  <Input className="col-span-2" type="number" min={0} placeholder="Qty" value={l.quantity} onChange={e => updateLine(idx, { quantity: Number(e.target.value) })} />
-                  <Input className="col-span-2" type="number" min={0} placeholder="Cost" value={l.unit_cost || ""} onChange={e => updateLine(idx, { unit_cost: Number(e.target.value) })} />
-                  <Button variant="ghost" size="icon" className="col-span-1" onClick={() => removeLine(idx)} aria-label="Remove line"><Trash2 className="size-4" /></Button>
+                  <Input className="sm:col-span-3" placeholder="Description" value={l.description} onChange={e => updateLine(idx, { description: e.target.value })} />
+                  <div className="flex gap-2 sm:contents">
+                    <Input className="flex-1 sm:col-span-2" type="number" min={0} placeholder="Qty" value={l.quantity} onChange={e => updateLine(idx, { quantity: Number(e.target.value) })} />
+                    <Input className="flex-1 sm:col-span-2" type="number" min={0} placeholder="Cost" value={l.unit_cost || ""} onChange={e => updateLine(idx, { unit_cost: Number(e.target.value) })} />
+                    <Button variant="ghost" size="icon" className="shrink-0 sm:col-span-1" onClick={() => removeLine(idx)} aria-label="Remove line"><Trash2 className="size-4" /></Button>
+                  </div>
                 </div>
               ))}
               <Button variant="outline" size="sm" onClick={addLine}><Plus className="size-4 mr-1" /> Add line</Button>
