@@ -11,6 +11,7 @@ import { useCurrency } from "@/hooks/useCurrency";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import OrdersPanel from "@/components/OrdersPanel";
 import Paginator, { usePagination } from "@/components/Paginator";
 import { invoiceFallbackNumber } from "@/lib/invoiceNumber";
@@ -53,6 +54,7 @@ export default function POS() {
   const [held, setHeld] = useState<HeldSale[]>([]);
   const [heldOpen, setHeldOpen] = useState(false);
   const [clearConfirm, setClearConfirm] = useState(false);
+  const [cartOpen, setCartOpen] = useState(false); // mobile cart bottom-sheet
   const [pending, setPending] = useState(0); // offline sales awaiting sync
   const [review, setReview] = useState<ReviewSale[]>([]); // sales the server rejected on sync
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -119,6 +121,9 @@ export default function POS() {
   };
 
   useEffect(() => { if (business) load(); }, [business, online]);
+
+  // On mobile the cart lives in a bottom sheet; close it once the cart empties (sale done, held, cleared).
+  useEffect(() => { if (cart.length === 0) setCartOpen(false); }, [cart.length]);
 
   const filtered = useMemo(
     // Never surface out-of-stock items in POS (online or offline) — they can't be sold. Online the
@@ -393,6 +398,112 @@ export default function POS() {
     setEod({ total, count: todaySales.length, byMethod, topProduct });
   };
 
+  // The cart body is shared between the desktop sidebar Card and the mobile bottom sheet. It's an
+  // element (not a nested component) so the qty/discount inputs keep focus across re-renders.
+  const cartPanel = (
+    <>
+      <div className="p-5 border-b border-border flex items-center gap-2">
+        <ShoppingCart className="size-4 text-brand" />
+        <h2 className="font-display font-semibold text-brand-dark">Active Sale</h2>
+        <Badge variant="outline" className="ml-auto bg-brand-light text-brand-dark border-brand/20">{cart.length} item{cart.length === 1 ? "" : "s"}</Badge>
+      </div>
+
+      {cart.length > 0 && (
+        <div className="px-3 pt-3 flex gap-2">
+          <Button variant="outline" size="sm" className="flex-1" onClick={holdSale}><PauseCircle className="size-4 mr-1" /> Hold sale</Button>
+          {cart.length > 1 && <Button variant="outline" size="sm" className="flex-1 text-muted-foreground hover:text-destructive" onClick={() => setClearConfirm(true)}><Trash2 className="size-4 mr-1" /> Clear all</Button>}
+        </div>
+      )}
+
+      <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-[200px]">
+        {cart.length === 0 ? (
+          <div className="h-full grid place-items-center text-center p-6">
+            <div>
+              <div className="size-12 rounded-xl bg-secondary text-muted-foreground grid place-items-center mx-auto mb-3">
+                <ShoppingCart className="size-5" />
+              </div>
+              <p className="text-sm text-muted-foreground">Cart is empty</p>
+            </div>
+          </div>
+        ) : cart.map(i => (
+          <div key={i.product.id} className="p-3 rounded-lg bg-secondary/50 flex flex-wrap items-center gap-x-3 gap-y-2">
+            <div className="flex-1 min-w-[96px]">
+              <div className="font-medium text-sm truncate text-brand-dark">{i.product.name}</div>
+              <div className="text-xs text-muted-foreground">{fmt(i.product.selling_price)} each</div>
+            </div>
+            <div className="flex items-center gap-2 ml-auto">
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="icon" className="size-7" onClick={() => updateQty(i.product.id, -1)}><Minus className="size-3" /></Button>
+                <Input type="number" min={1} max={Number(i.product.stock_quantity)} value={i.qty} onChange={e => setQty(i.product.id, Number(e.target.value))} className="w-12 h-7 px-1 text-center text-sm font-medium" />
+                <Button variant="ghost" size="icon" className="size-7" onClick={() => updateQty(i.product.id, 1)}><Plus className="size-3" /></Button>
+              </div>
+              <div className="font-display font-semibold text-sm text-brand-dark text-right whitespace-nowrap">{fmt(i.qty * Number(i.product.selling_price))}</div>
+              <Button variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-destructive" onClick={() => remove(i.product.id)}><Trash2 className="size-3" /></Button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="p-5 border-t border-border space-y-4 bg-gradient-soft">
+        {cart.length > 0 && (
+          <div className="flex items-center gap-3">
+            <label className="text-xs uppercase tracking-wider text-muted-foreground whitespace-nowrap">Discount ({symbol})</label>
+            <Input
+              type="number"
+              min="0"
+              max={subtotal}
+              step="0.01"
+              value={discount || ""}
+              onChange={e => setDiscount(Math.min(Number(e.target.value) || 0, subtotal))}
+              placeholder="0"
+              className="h-8 text-sm"
+            />
+          </div>
+        )}
+        <div className="space-y-1">
+          <div className="text-xs uppercase tracking-wider text-muted-foreground">Payment method</div>
+          <div className="grid grid-cols-3 gap-2">
+            {methods.map(m => (
+              <button
+                key={m.id}
+                onClick={() => setMethod(m.id)}
+                className={`p-2.5 rounded-lg border text-xs font-medium transition-all flex flex-col items-center gap-1 ${
+                  method === m.id ? "bg-brand text-brand-foreground border-brand shadow-brand" : "bg-card border-border hover:border-brand/40"
+                }`}
+              >
+                <m.icon className="size-4" />
+                {m.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="pt-2 border-t border-border/60 space-y-1">
+          {discount > 0 && (
+            <>
+              <div className="flex items-baseline justify-between text-sm">
+                <div className="text-muted-foreground">Subtotal</div>
+                <div className="text-muted-foreground">{fmt(subtotal)}</div>
+              </div>
+              <div className="flex items-baseline justify-between text-sm">
+                <div className="text-muted-foreground">Discount</div>
+                <div className="text-danger">-{fmt(discount)}</div>
+              </div>
+            </>
+          )}
+          <div className="flex items-baseline justify-between">
+            <div className="text-sm text-muted-foreground">Total</div>
+            <div className="font-display text-3xl font-bold text-brand-dark">{fmt(total)}</div>
+          </div>
+        </div>
+
+        <Button variant="hero" size="lg" className="w-full" disabled={cart.length === 0 || busy} onClick={checkout}>
+          {busy ? "Processing..." : "Complete sale"}
+        </Button>
+      </div>
+    </>
+  );
+
   return (
     <div className="space-y-6 w-full">
       <Tabs defaultValue="sale" className="w-full">
@@ -440,7 +551,7 @@ export default function POS() {
         <TabsContent value="sale" className="mt-6">
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-6">
             {/* Product grid */}
-            <div className="space-y-4 min-w-0">
+            <div className="space-y-4 min-w-0 pb-24 lg:pb-0">
               <div className="grid sm:grid-cols-[1fr,260px] gap-2">
                 <div className="relative">
                   <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -504,109 +615,29 @@ export default function POS() {
               )}
             </div>
 
-            {/* Cart */}
-            <Card className="shadow-elevated border-border/60 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] flex flex-col min-w-0">
-              <div className="p-5 border-b border-border flex items-center gap-2">
-                <ShoppingCart className="size-4 text-brand" />
-                <h2 className="font-display font-semibold text-brand-dark">Active Sale</h2>
-                <Badge variant="outline" className="ml-auto bg-brand-light text-brand-dark border-brand/20">{cart.length} item{cart.length === 1 ? "" : "s"}</Badge>
-              </div>
-
-              {cart.length > 0 && (
-                <div className="px-3 pt-3 flex gap-2">
-                  <Button variant="outline" size="sm" className="flex-1" onClick={holdSale}><PauseCircle className="size-4 mr-1" /> Hold sale</Button>
-                  {cart.length > 1 && <Button variant="outline" size="sm" className="flex-1 text-muted-foreground hover:text-destructive" onClick={() => setClearConfirm(true)}><Trash2 className="size-4 mr-1" /> Clear all</Button>}
-                </div>
-              )}
-
-              <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-[200px]">
-                {cart.length === 0 ? (
-                  <div className="h-full grid place-items-center text-center p-6">
-                    <div>
-                      <div className="size-12 rounded-xl bg-secondary text-muted-foreground grid place-items-center mx-auto mb-3">
-                        <ShoppingCart className="size-5" />
-                      </div>
-                      <p className="text-sm text-muted-foreground">Cart is empty</p>
-                    </div>
-                  </div>
-                ) : cart.map(i => (
-                  <div key={i.product.id} className="p-3 rounded-lg bg-secondary/50 flex flex-wrap items-center gap-x-3 gap-y-2">
-                    <div className="flex-1 min-w-[96px]">
-                      <div className="font-medium text-sm truncate text-brand-dark">{i.product.name}</div>
-                      <div className="text-xs text-muted-foreground">{fmt(i.product.selling_price)} each</div>
-                    </div>
-                    <div className="flex items-center gap-2 ml-auto">
-                      <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="icon" className="size-7" onClick={() => updateQty(i.product.id, -1)}><Minus className="size-3" /></Button>
-                        <Input type="number" min={1} max={Number(i.product.stock_quantity)} value={i.qty} onChange={e => setQty(i.product.id, Number(e.target.value))} className="w-12 h-7 px-1 text-center text-sm font-medium" />
-                        <Button variant="ghost" size="icon" className="size-7" onClick={() => updateQty(i.product.id, 1)}><Plus className="size-3" /></Button>
-                      </div>
-                      <div className="font-display font-semibold text-sm text-brand-dark text-right whitespace-nowrap">{fmt(i.qty * Number(i.product.selling_price))}</div>
-                      <Button variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-destructive" onClick={() => remove(i.product.id)}><Trash2 className="size-3" /></Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="p-5 border-t border-border space-y-4 bg-gradient-soft">
-                {cart.length > 0 && (
-                  <div className="flex items-center gap-3">
-                    <label className="text-xs uppercase tracking-wider text-muted-foreground whitespace-nowrap">Discount ({symbol})</label>
-                    <Input
-                      type="number"
-                      min="0"
-                      max={subtotal}
-                      step="0.01"
-                      value={discount || ""}
-                      onChange={e => setDiscount(Math.min(Number(e.target.value) || 0, subtotal))}
-                      placeholder="0"
-                      className="h-8 text-sm"
-                    />
-                  </div>
-                )}
-                <div className="space-y-1">
-                  <div className="text-xs uppercase tracking-wider text-muted-foreground">Payment method</div>
-                  <div className="grid grid-cols-3 gap-2">
-                    {methods.map(m => (
-                      <button
-                        key={m.id}
-                        onClick={() => setMethod(m.id)}
-                        className={`p-2.5 rounded-lg border text-xs font-medium transition-all flex flex-col items-center gap-1 ${
-                          method === m.id ? "bg-brand text-brand-foreground border-brand shadow-brand" : "bg-card border-border hover:border-brand/40"
-                        }`}
-                      >
-                        <m.icon className="size-4" />
-                        {m.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="pt-2 border-t border-border/60 space-y-1">
-                  {discount > 0 && (
-                    <>
-                      <div className="flex items-baseline justify-between text-sm">
-                        <div className="text-muted-foreground">Subtotal</div>
-                        <div className="text-muted-foreground">{fmt(subtotal)}</div>
-                      </div>
-                      <div className="flex items-baseline justify-between text-sm">
-                        <div className="text-muted-foreground">Discount</div>
-                        <div className="text-danger">-{fmt(discount)}</div>
-                      </div>
-                    </>
-                  )}
-                  <div className="flex items-baseline justify-between">
-                    <div className="text-sm text-muted-foreground">Total</div>
-                    <div className="font-display text-3xl font-bold text-brand-dark">{fmt(total)}</div>
-                  </div>
-                </div>
-
-                <Button variant="hero" size="lg" className="w-full" disabled={cart.length === 0 || busy} onClick={checkout}>
-                  {busy ? "Processing..." : "Complete sale"}
-                </Button>
-              </div>
+            {/* Cart — desktop sidebar */}
+            <Card className="hidden lg:flex shadow-elevated border-border/60 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] flex-col min-w-0">
+              {cartPanel}
             </Card>
           </div>
+
+          {/* Mobile: sticky cart bar (live feedback as items are added) + bottom-sheet cart */}
+          {cart.length > 0 && (
+            <div className="lg:hidden fixed inset-x-0 bottom-0 z-20 border-t border-border bg-card/95 backdrop-blur px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+              <Button variant="hero" size="lg" className="w-full justify-between gap-3" onClick={() => setCartOpen(true)}>
+                <span className="flex items-center gap-2">
+                  <ShoppingCart className="size-4" /> {cart.length} item{cart.length === 1 ? "" : "s"}
+                </span>
+                <span className="flex items-center gap-2 font-display font-bold">{fmt(total)} <span className="opacity-80 font-sans font-medium text-sm">Review</span></span>
+              </Button>
+            </div>
+          )}
+          <Sheet open={cartOpen} onOpenChange={setCartOpen}>
+            <SheetContent side="bottom" className="lg:hidden p-0 gap-0 max-h-[88vh] flex flex-col rounded-t-2xl">
+              <SheetTitle className="sr-only">Active sale</SheetTitle>
+              {cartPanel}
+            </SheetContent>
+          </Sheet>
         </TabsContent>
 
         <TabsContent value="orders" className="mt-6">

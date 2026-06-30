@@ -31,12 +31,12 @@ test.describe("Point of Sale", () => {
   test("adds a product to the cart", async ({ page }) => {
     await page.getByRole("button", { name: /Garri 50kg/ }).click();
     await expect(page.getByText("Cart is empty")).toBeHidden();
-    await expect(page.getByText("1 item", { exact: true })).toBeVisible();
+    await expect(page.getByText("1 item", { exact: true }).filter({ visible: true })).toBeVisible();
   });
 
   test("holds a sale and resumes it from the held-sales modal", async ({ page }) => {
     await page.getByRole("button", { name: /Garri 50kg/ }).click();
-    await expect(page.getByText("1 item", { exact: true })).toBeVisible();
+    await expect(page.getByText("1 item", { exact: true }).filter({ visible: true })).toBeVisible();
 
     await page.getByRole("button", { name: "Hold sale", exact: true }).click();
     await expect(page.getByText("Cart is empty")).toBeVisible();
@@ -45,7 +45,7 @@ test.describe("Point of Sale", () => {
     await page.getByRole("button", { name: "Resume" }).click();
 
     await expect(page.getByText("Cart is empty")).toBeHidden();
-    await expect(page.getByText("1 item", { exact: true })).toBeVisible();
+    await expect(page.getByText("1 item", { exact: true }).filter({ visible: true })).toBeVisible();
   });
 
   test("search matches SKU, case-insensitively", async ({ page }) => {
@@ -62,7 +62,7 @@ test.describe("Point of Sale", () => {
     const scan = page.getByPlaceholder("Scan or type SKU + Enter");
     await scan.fill("gar-50"); // lowercase of GAR-50
     await scan.press("Enter");
-    await expect(page.getByText("1 item", { exact: true })).toBeVisible();
+    await expect(page.getByText("1 item", { exact: true }).filter({ visible: true })).toBeVisible();
   });
 
   test.describe("on a mobile viewport", () => {
@@ -70,6 +70,8 @@ test.describe("Point of Sale", () => {
 
     test("lays out the title/tabs/held row without horizontal overflow", async ({ page }) => {
       await page.getByRole("button", { name: /Garri 50kg/ }).click();
+      // On mobile the cart lives in a bottom sheet — open it from the sticky bar to hold the sale.
+      await page.getByRole("button", { name: /Review/ }).click();
       await page.getByRole("button", { name: "Hold sale", exact: true }).click();
       await expect(page.getByRole("button", { name: /Held sales \(1\)/ })).toBeVisible();
       await page.getByRole("button", { name: /Garri 50kg/ }).click();
