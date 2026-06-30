@@ -16,8 +16,9 @@ import StockAdjustDialog from "@/components/StockAdjustDialog";
 import Paginator, { usePagination } from "@/components/Paginator";
 import { TablePageSkeleton } from "@/components/Skeletons";
 import { getLimit, isAtLimit, limitMessage } from "@/lib/planLimits";
-import { findSkuConflict, buildImportPlan } from "@/lib/inventoryRules";
+import { findSkuConflict, buildImportPlan, expiryAlert } from "@/lib/inventoryRules";
 import { useCurrency } from "@/hooks/useCurrency";
+import { useDateFormat } from "@/hooks/useDateFormat";
 import { useOnline } from "@/contexts/OnlineContext";
 import { cacheProducts, readCachedProducts } from "@/lib/offlineStore";
 
@@ -31,20 +32,23 @@ type Product = {
   cost_price: number;
   stock_quantity: number;
   reorder_level: number;
+  expiry_date?: string | null;
 };
 
-const empty = { name: "", category: "", sku: "", unit: "pcs", selling_price: "", cost_price: "", stock_quantity: "", reorder_level: 5 };
+const empty = { name: "", category: "", sku: "", unit: "pcs", selling_price: "", cost_price: "", stock_quantity: "", reorder_level: 5, expiry_date: "" };
 
 export default function Inventory() {
   const { business, hasModule } = useAuth();
   const { online } = useOnline();
   const { fmt, symbol } = useCurrency();
+  const { fmtDate, timezone } = useDateFormat();
   const [searchParams] = useSearchParams();
   const [items, setItems] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState(() => searchParams.get("q") || "");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState(() => searchParams.get("status") || "all");
+  const [expiryFilter, setExpiryFilter] = useState("all");
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [form, setForm] = useState<any>(empty);
@@ -97,6 +101,7 @@ export default function Inventory() {
       selling_price: Number(form.selling_price) || 0,
       cost_price: Number(form.cost_price) || 0,
       reorder_level: Number(form.reorder_level) || 0,
+      expiry_date: form.expiry_date || null,
     };
     const { error } = editing
       ? await supabase.from("products").update(payload).eq("id", editing.id)
@@ -109,8 +114,8 @@ export default function Inventory() {
   };
 
   const downloadTemplate = () => {
-    const headers = ["name", "category", "sku", "unit", "selling_price", "cost_price", "stock_quantity", "reorder_level"];
-    const example = ["Garri 50kg", "Foodstuff", "GAR-50", "bag", "8500", "6000", "20", "5"];
+    const headers = ["name", "category", "sku", "unit", "selling_price", "cost_price", "stock_quantity", "reorder_level", "expiry_date"];
+    const example = ["Garri 50kg", "Foodstuff", "GAR-50", "bag", "8500", "6000", "20", "5", "2026-12-31"];
     const csv = [headers.join(","), example.join(",")].join("\n");
     downloadCsv("products-template.csv", csv);
     toast.success("Template downloaded");
@@ -121,9 +126,10 @@ export default function Inventory() {
       name: p.name, category: p.category || "", sku: p.sku || "", unit: p.unit || "pcs",
       selling_price: p.selling_price, cost_price: p.cost_price,
       stock_quantity: p.stock_quantity, reorder_level: p.reorder_level,
+      expiry_date: p.expiry_date || "",
     }));
     downloadCsv(`products-${new Date().toISOString().slice(0, 10)}.csv`,
-      toCsv(rows, ["name", "category", "sku", "unit", "selling_price", "cost_price", "stock_quantity", "reorder_level"]));
+      toCsv(rows, ["name", "category", "sku", "unit", "selling_price", "cost_price", "stock_quantity", "reorder_level", "expiry_date"]));
     toast.success(`Exported ${rows.length} product${rows.length === 1 ? "" : "s"}`);
   };
 
@@ -162,6 +168,7 @@ export default function Inventory() {
   };
 
   const categories = [...new Set(items.map(i => i.category).filter(Boolean) as string[])].sort();
+  const todayInTz = new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(new Date());
 
   const filtered = items.filter(i => {
     if (q && !i.name.toLowerCase().includes(q.toLowerCase()) && !i.sku?.toLowerCase().includes(q.toLowerCase())) return false;
@@ -172,6 +179,12 @@ export default function Inventory() {
       if (statusFilter === "in_stock" && !(stock > reorder)) return false;
       if (statusFilter === "low_stock" && !(stock > 0 && stock <= reorder)) return false;
       if (statusFilter === "out_of_stock" && stock > 0) return false;
+    }
+    if (expiryFilter !== "all") {
+      const ex = expiryAlert(i.expiry_date, todayInTz);
+      if (expiryFilter === "expiring" && !(ex && ex.band !== "expired")) return false; // within 90 days, not yet expired
+      if (expiryFilter === "expired" && !(ex && ex.band === "expired")) return false;
+      if (expiryFilter === "none" && i.expiry_date) return false;
     }
     return true;
   });
@@ -228,7 +241,7 @@ export default function Inventory() {
               </DialogHeader>
               <form onSubmit={save} className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Product name</Label>
+                  <Label>Product name *</Label>
                   <Input required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Garri (50kg)" />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
@@ -243,24 +256,29 @@ export default function Inventory() {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
-                    <Label>Selling price ({symbol})</Label>
-                    <Input type="number" min="0" step="0.01" placeholder="0" value={form.selling_price} onChange={e => setForm({ ...form, selling_price: e.target.value })} />
+                    <Label>Selling price ({symbol}) *</Label>
+                    <Input type="number" required min="0" step="0.01" placeholder="0" value={form.selling_price} onChange={e => setForm({ ...form, selling_price: e.target.value })} />
                   </div>
                   <div className="space-y-2">
-                    <Label>Cost price ({symbol})</Label>
-                    <Input type="number" min="0" step="0.01" placeholder="0" value={form.cost_price} onChange={e => setForm({ ...form, cost_price: e.target.value })} />
+                    <Label>Cost price ({symbol}) *</Label>
+                    <Input type="number" required min="0" step="0.01" placeholder="0" value={form.cost_price} onChange={e => setForm({ ...form, cost_price: e.target.value })} />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
-                    <Label>Stock quantity</Label>
-                    <Input type="number" min="0" step="1" placeholder="0" value={form.stock_quantity} disabled={!!editing} onChange={e => setForm({ ...form, stock_quantity: e.target.value })} />
+                    <Label>Stock quantity *</Label>
+                    <Input type="number" required min="0" step="1" placeholder="0" value={form.stock_quantity} disabled={!!editing} onChange={e => setForm({ ...form, stock_quantity: e.target.value })} />
                     {editing && <p className="text-xs text-muted-foreground">Use “Adjust stock” to change quantity.</p>}
                   </div>
                   <div className="space-y-2">
-                    <Label>Reorder level</Label>
-                    <Input type="number" min="0" step="1" value={form.reorder_level} onChange={e => setForm({ ...form, reorder_level: e.target.value })} />
+                    <Label>Reorder level *</Label>
+                    <Input type="number" required min="0" step="1" value={form.reorder_level} onChange={e => setForm({ ...form, reorder_level: e.target.value })} />
                   </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Expiry date <span className="font-normal text-muted-foreground">(optional)</span></Label>
+                  <Input type="date" value={form.expiry_date || ""} onChange={e => setForm({ ...form, expiry_date: e.target.value })} />
+                  <p className="text-xs text-muted-foreground">Inventory flags it from 90 days out; owners/managers also get a bell alert from 30 days.</p>
                 </div>
                 <DialogFooter>
                   <Button type="button" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
@@ -301,6 +319,18 @@ export default function Inventory() {
               { value: "out_of_stock", label: "Out of stock" },
             ]}
           />
+          <SearchableSelect
+            value={expiryFilter}
+            onValueChange={setExpiryFilter}
+            className="w-40"
+            placeholder="Expiry"
+            options={[
+              { value: "all", label: "All expiry" },
+              { value: "expiring", label: "Expiring (≤90d)" },
+              { value: "expired", label: "Expired" },
+              { value: "none", label: "No expiry date" },
+            ]}
+          />
           <div className="text-sm text-muted-foreground ml-auto">{filtered.length} of {items.length}</div>
         </div>
 
@@ -322,6 +352,7 @@ export default function Inventory() {
                   <th className="px-4 py-3">Category</th>
                   <th className="px-4 py-3 text-right">Stock</th>
                   <th className="px-4 py-3 text-right">Price</th>
+                  <th className="px-4 py-3">Expiry</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
@@ -329,6 +360,7 @@ export default function Inventory() {
               <tbody>
                 {paged.map(p => {
                   const s = statusOf(p);
+                  const ex = expiryAlert(p.expiry_date, todayInTz);
                   return (
                     <tr key={p.id} className="border-b border-border/50 hover:bg-secondary/40 transition-colors">
                       <td className="px-4 py-3">
@@ -338,6 +370,16 @@ export default function Inventory() {
                       <td className="px-4 py-3 text-muted-foreground">{p.category || "Uncategorized"}</td>
                       <td className="px-4 py-3 text-right font-medium">{Number(p.stock_quantity)} <span className="text-xs text-muted-foreground">{p.unit}</span></td>
                       <td className="px-4 py-3 text-right font-display font-semibold text-brand-dark">{fmt(p.selling_price)}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {p.expiry_date ? (
+                          <div className="flex flex-col items-start gap-1">
+                            <span className="text-muted-foreground">{fmtDate(p.expiry_date)}</span>
+                            {ex && <Badge variant="outline" className={ex.className}>{ex.label}</Badge>}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3"><Badge variant="outline" className={s.className}>{s.label}</Badge></td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
                         {online ? (

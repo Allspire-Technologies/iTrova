@@ -623,6 +623,7 @@ export type Database = {
           category: string | null
           cost_price: number
           created_at: string
+          expiry_date: string | null
           id: string
           name: string
           reorder_level: number
@@ -636,6 +637,7 @@ export type Database = {
           category?: string | null
           cost_price?: number
           created_at?: string
+          expiry_date?: string | null
           id?: string
           name: string
           reorder_level?: number
@@ -649,6 +651,7 @@ export type Database = {
           category?: string | null
           cost_price?: number
           created_at?: string
+          expiry_date?: string | null
           id?: string
           name?: string
           reorder_level?: number

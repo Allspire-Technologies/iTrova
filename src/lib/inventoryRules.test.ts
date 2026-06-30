@@ -1,5 +1,29 @@
 import { describe, it, expect } from "vitest";
-import { findSkuConflict, buildImportPlan } from "./inventoryRules";
+import { findSkuConflict, buildImportPlan, expiryAlert } from "./inventoryRules";
+
+describe("expiryAlert", () => {
+  const today = "2026-06-30";
+  it("returns null with no date or when more than 90 days away", () => {
+    expect(expiryAlert(null, today)).toBeNull();
+    expect(expiryAlert(undefined, today)).toBeNull();
+    expect(expiryAlert("2026-12-31", today)).toBeNull(); // ~184 days
+    expect(expiryAlert("2026-09-29", today)).toBeNull();  // 91 days
+  });
+  it("badges from 90 days (notice band)", () => {
+    const a = expiryAlert("2026-09-28", today); // 90 days
+    expect(a?.band).toBe("notice");
+    expect(a?.daysLeft).toBe(90);
+  });
+  it("escalates at 30, 15 and 3 days", () => {
+    expect(expiryAlert("2026-07-30", today)?.band).toBe("soon");      // 30
+    expect(expiryAlert("2026-07-15", today)?.band).toBe("warning");   // 15
+    expect(expiryAlert("2026-07-03", today)?.band).toBe("critical");  // 3
+  });
+  it("flags today and past dates as expired/critical", () => {
+    expect(expiryAlert("2026-06-30", today)).toMatchObject({ band: "critical", label: "Expires today" });
+    expect(expiryAlert("2026-06-20", today)).toMatchObject({ band: "expired", label: "Expired" });
+  });
+});
 
 describe("findSkuConflict", () => {
   const products = [
@@ -66,5 +90,16 @@ describe("buildImportPlan", () => {
     expect(plan.updates).toHaveLength(1); // S1 restock allowed
     expect(plan.inserts).toHaveLength(0); // no capacity for new
     expect(plan.overLimit).toBe(2);
+  });
+});
+
+describe("buildImportPlan expiry handling", () => {
+  it("carries expiry_date from the CSV, and omits it when the column is absent", () => {
+    const withExp = buildImportPlan([{ name: "A", sku: "X1", expiry_date: "2026-12-31" }], [], 0, null);
+    expect(withExp.inserts[0].expiry_date).toBe("2026-12-31");
+    const without = buildImportPlan([{ name: "B", sku: "X2" }], [], 0, null);
+    expect(without.inserts[0].expiry_date).toBeUndefined();
+    const cleared = buildImportPlan([{ name: "C", sku: "X3", expiry_date: "" }], [], 0, null);
+    expect(cleared.inserts[0].expiry_date).toBeNull();
   });
 });

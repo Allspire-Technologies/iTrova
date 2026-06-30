@@ -55,8 +55,8 @@ const TIMEZONES = [
   { value: "Pacific/Auckland", label: "Pacific/Auckland (UTC+12/+13) — New Zealand" },
 ];
 
-type NotifPrefs = { low_stock_alerts: boolean; overdue_invoice_alerts: boolean; daily_summary: boolean };
-const DEFAULT_PREFS: NotifPrefs = { low_stock_alerts: true, overdue_invoice_alerts: true, daily_summary: false };
+type NotifPrefs = { low_stock_alerts: boolean; overdue_invoice_alerts: boolean; expiry_alerts: boolean; daily_summary: boolean };
+const DEFAULT_PREFS: NotifPrefs = { low_stock_alerts: true, overdue_invoice_alerts: true, expiry_alerts: true, daily_summary: false };
 
 function PlanCard({ plan, inheritsFrom, action, currentPlan, businessName }: { plan: Plan; inheritsFrom: { name: string; features: string[] } | null; action: PlanChange; currentPlan: string; businessName: string }) {
   const active = plan.key === currentPlan;
@@ -480,6 +480,13 @@ export default function Settings() {
               key: "overdue_invoice_alerts" as const,
               label: "Overdue invoice alerts",
               desc: "Get notified when invoices are past their due date",
+              disabled: false,
+              soon: false,
+            },
+            {
+              key: "expiry_alerts" as const,
+              label: "Expiry alerts",
+              desc: "Get notified when products are within 30 days of expiry (or already expired)",
               disabled: false,
               soon: false,
             },
