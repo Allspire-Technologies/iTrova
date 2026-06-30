@@ -121,8 +121,8 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Metrics */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Metrics — 2-up on phones so the KPIs stay scannable without a long scroll */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <MetricCard label="Today's Sales" value={fmt(todaySales)} icon={TrendingUp} accent="brand" sub={`${salesCount} transaction${salesCount === 1 ? "" : "s"}`} />
         <MetricCard label="Products in Stock" value={products.length.toString()} icon={Package} accent="dark" sub={`${totalStockUnits} units total`} />
         <MetricCard label="Stock Alerts" value={(outOfStock.length + lowStock.length).toString()} icon={AlertTriangle} accent={outOfStock.length ? "warning" : lowStock.length ? "warning" : "muted"} sub={outOfStock.length ? `${outOfStock.length} out of stock` : lowStock.length ? "Low stock items" : "All healthy"} />
@@ -160,7 +160,7 @@ export default function Dashboard() {
       </Card>
 
       {/* Stock alerts */}
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card className="shadow-card border-border/60">
           <CardHeader>
             <CardTitle className="font-display text-lg flex items-center gap-2">
@@ -215,7 +215,7 @@ export default function Dashboard() {
       </div>
 
       {/* Top Products + Stock Chart */}
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* Top selling products today */}
         <Card className="shadow-card border-border/60">
           <CardHeader>
@@ -279,7 +279,7 @@ export default function Dashboard() {
       </div>
 
       {/* Activity feed + AI teaser */}
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* Recent activity */}
         <Card className="lg:col-span-2 shadow-card border-border/60">
           <CardHeader className="flex flex-row items-center justify-between">
@@ -359,15 +359,15 @@ function MetricCard({ label, value, icon: Icon, sub, accent }: { label: string; 
   };
   return (
     <Card className="shadow-card border-border/60 hover:shadow-elevated transition-shadow">
-      <CardContent className="p-5">
-        <div className="flex items-start justify-between">
-          <div>
+      <CardContent className="p-4 sm:p-5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
             <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium">{label}</div>
-            <div className="font-display text-2xl lg:text-3xl font-bold mt-2 text-brand-dark">{value}</div>
+            <div className="font-display text-xl sm:text-2xl lg:text-3xl font-bold mt-2 text-brand-dark break-words">{value}</div>
             {sub && <div className="text-xs text-muted-foreground mt-1">{sub}</div>}
           </div>
-          <div className={`size-10 rounded-xl grid place-items-center ${accents[accent]}`}>
-            <Icon className="size-5" />
+          <div className={`size-9 sm:size-10 shrink-0 rounded-xl grid place-items-center ${accents[accent]}`}>
+            <Icon className="size-4 sm:size-5" />
           </div>
         </div>
       </CardContent>
