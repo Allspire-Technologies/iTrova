@@ -271,7 +271,9 @@ export default function Settings() {
       .eq("id", user.id)
       .maybeSingle()
       .then(({ data }) => {
-        if (data?.notification_prefs) setPrefs(data.notification_prefs as NotifPrefs);
+        // Merge over defaults so newly-added prefs (e.g. expiry_alerts) read as on for
+        // existing users whose saved prefs predate the key.
+        if (data?.notification_prefs) setPrefs({ ...DEFAULT_PREFS, ...(data.notification_prefs as Partial<NotifPrefs>) });
       });
   }, [user]);
 
