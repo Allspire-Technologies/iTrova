@@ -160,7 +160,7 @@ export default function Dashboard() {
       </Card>
 
       {/* Stock alerts */}
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card className="shadow-card border-border/60">
           <CardHeader>
             <CardTitle className="font-display text-lg flex items-center gap-2">
@@ -215,7 +215,7 @@ export default function Dashboard() {
       </div>
 
       {/* Top Products + Stock Chart */}
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* Top selling products today */}
         <Card className="shadow-card border-border/60">
           <CardHeader>
@@ -279,7 +279,7 @@ export default function Dashboard() {
       </div>
 
       {/* Activity feed + AI teaser */}
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* Recent activity */}
         <Card className="lg:col-span-2 shadow-card border-border/60">
           <CardHeader className="flex flex-row items-center justify-between">
