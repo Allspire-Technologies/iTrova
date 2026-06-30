@@ -108,6 +108,13 @@ test.describe("Auth — signup", () => {
     await expect(page.getByText("Enter a valid email address")).toBeVisible();
   });
 
+  test("phone field accepts only digits (and +)", async ({ page }) => {
+    await page.goto("/auth");
+    await page.getByRole("tab", { name: "Create account" }).click();
+    await page.locator("#ph").fill("ab 080-123c");
+    await expect(page.locator("#ph")).toHaveValue("080123");
+  });
+
   test("blocks an invalid phone number (client-side)", async ({ page }) => {
     await page.goto("/auth");
     await page.getByRole("tab", { name: "Create account" }).click();

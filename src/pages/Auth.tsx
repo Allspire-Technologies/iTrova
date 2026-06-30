@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import SearchableSelect from "@/components/SearchableSelect";
 import { INDUSTRY_OPTIONS } from "@/lib/industries";
-import { isValidEmail } from "@/lib/emailVerification";
+import { isValidEmail, normalizeEmail } from "@/lib/emailVerification";
 import { isValidPhone, normalizePhone } from "@/lib/phone";
 import { toast } from "sonner";
 import { Eye, EyeOff, Sparkles, Store, MailCheck, WifiOff } from "lucide-react";
@@ -55,7 +55,7 @@ export default function Auth() {
     }
     setBusy(true);
     const { data, error } = await supabase.auth.signUp({
-      email: signupEmail,
+      email: normalizeEmail(signupEmail),
       password: signupPassword,
       options: {
         emailRedirectTo: `${window.location.origin}/`,
@@ -76,8 +76,12 @@ export default function Auth() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isValidEmail(loginEmail)) {
+      toast.error("Enter a valid email address");
+      return;
+    }
     setBusy(true);
-    const { error } = await supabase.auth.signInWithPassword({ email: loginEmail, password: loginPassword });
+    const { error } = await supabase.auth.signInWithPassword({ email: normalizeEmail(loginEmail), password: loginPassword });
     setBusy(false);
     if (error) return toast.error(error.message);
     navigate("/");
@@ -235,7 +239,7 @@ export default function Auth() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="ph">Phone</Label>
-                    <Input id="ph" type="tel" inputMode="tel" autoComplete="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="e.g. 0803 123 4567" />
+                    <Input id="ph" type="tel" inputMode="tel" autoComplete="tel" value={phone} onChange={e => setPhone(e.target.value.replace(/[^\d+]/g, ""))} placeholder="e.g. 08031234567" />
                   </div>
                 </div>
                 <div className="space-y-2">
