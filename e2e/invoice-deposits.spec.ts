@@ -54,14 +54,15 @@ test.describe("Invoice deposits", () => {
     await authenticate(page);
     await setupInvoice(page);
     await page.goto("/invoices");
-    await expect(page.getByText("260629-1")).toBeVisible();
+    // Scope row text to the desktop table — the responsive layout also renders a (hidden) mobile card.
+    await expect(page.locator("table").getByText("260629-1")).toBeVisible();
 
     // First deposit of 4,000 -> partial, 6,000 left.
     await page.getByRole("button", { name: "Record payment" }).click();
     const dialog = page.getByRole("dialog");
     await dialog.getByRole("spinbutton").fill("4000");
     await dialog.getByRole("button", { name: "Record payment" }).click();
-    await expect(page.getByText(/6,000.*left/)).toBeVisible();
+    await expect(page.locator("table").getByText(/6,000.*left/)).toBeVisible();
 
     // Pay the remaining balance -> auto-flips to paid (Print action appears, no balance left).
     await page.getByRole("button", { name: "Record payment" }).click();
