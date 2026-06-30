@@ -42,7 +42,8 @@ test.describe("Invoices", () => {
     await authenticate(page, { role: "cashier" });
     await stubRows(page, "invoices", [paidInvoice]);
     await page.goto("/invoices");
-    await expect(page.getByText("INV-001")).toBeVisible();
+    // Scope to the desktop table — the responsive layout also renders a (hidden) mobile card.
+    await expect(page.locator("table").getByText("INV-001")).toBeVisible();
     await expect(page.getByRole("button", { name: "Print", exact: true })).toBeVisible();
   });
 

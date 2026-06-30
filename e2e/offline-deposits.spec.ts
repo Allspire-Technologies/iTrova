@@ -33,7 +33,8 @@ test.describe("Offline deposits", () => {
     await authenticate(page);
     await stubRows(page, "invoices", [INVOICE]);
     await page.goto("/invoices"); // online — caches the eligible invoice for offline
-    await expect(page.getByText("260629-1")).toBeVisible();
+    // Scope to the desktop table — the responsive layout also renders a (hidden) mobile card.
+    await expect(page.locator("table").getByText("260629-1")).toBeVisible();
 
     await goOffline(page);
     await page.goto("/invoices"); // offline — OfflineInvoices, with the cached invoice
@@ -61,7 +62,8 @@ test.describe("Offline deposits", () => {
     await authenticate(page);
     await stubRows(page, "invoices", [INVOICE]);
     await page.goto("/invoices");
-    await expect(page.getByText("260629-1")).toBeVisible();
+    // Scope to the desktop table — the responsive layout also renders a (hidden) mobile card.
+    await expect(page.locator("table").getByText("260629-1")).toBeVisible();
 
     await goOffline(page);
     await page.goto("/invoices");

@@ -508,6 +508,47 @@ export default function Invoices() {
       ? sortDir === "asc" ? <ArrowUp className="size-3 ml-1" /> : <ArrowDown className="size-3 ml-1" />
       : <ArrowUpDown className="size-3 ml-1 opacity-30" />;
 
+  // Shared between the desktop table rows and the mobile cards so both stay in sync.
+  const StatusControl = ({ i }: { i: Invoice }) => (
+    <div className="flex items-center gap-2">
+      {canManage ? (
+        <SearchableSelect
+          value={i.status}
+          onValueChange={(v) => requestStatusChange(i, v)}
+          disabled={i.status === "void"}
+          className="w-28 h-8"
+          options={statusOptionsFor(i).map(s => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) }))}
+        />
+      ) : (
+        <StatusBadge s={i.status} />
+      )}
+      {isOverdue(i, todayInTz) && <Badge variant="destructive" className="text-xs shrink-0">Overdue</Badge>}
+    </div>
+  );
+
+  const RowActions = ({ i }: { i: Invoice }) => (
+    <div className="flex gap-1 justify-end">
+      <IconBtn label="View" onClick={() => openView(i)}><Eye className="size-4" /></IconBtn>
+      {canManage && canTakePayment(i) && <IconBtn label="Record payment" onClick={() => openPay(i)}><Wallet className="size-4" /></IconBtn>}
+      {canManage && <IconBtn label={i.status === "void" ? "Voided invoices can't be edited" : "Edit"} disabled={i.status === "void"} onClick={() => openEdit(i)}><Pencil className="size-4" /></IconBtn>}
+      {i.status === "paid" && <IconBtn label="Print" onClick={() => printReceipt(i)}><Printer className="size-4" /></IconBtn>}
+      <DropdownMenu>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" aria-label="More actions"><MoreHorizontal className="size-4" /></Button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent>More actions</TooltipContent>
+        </Tooltip>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => exportPdf(i)}><Download className="size-4 mr-2" /> Download</DropdownMenuItem>
+          {canManage && <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => remove(i)}><Trash2 className="size-4 mr-2" /> Delete</DropdownMenuItem>}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+
   const creatorName = (id: string | null) => (id ? (creators[id] || "Unknown") : "—");
   const creatorOptions = [
     { value: "all", label: "All creators" },
@@ -589,7 +630,35 @@ export default function Invoices() {
             No invoices yet. Sales recorded in POS will appear here automatically.
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          {/* Mobile: card list (the desktop table is too wide for phones) */}
+          <div className="sm:hidden divide-y">
+            {paged.map(i => (
+              <div key={i.id} className="p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 font-mono text-sm font-medium">
+                      {i.invoice_number}
+                      {i.sale_id && <Badge variant="secondary" className="text-[10px] uppercase tracking-wider px-1.5 py-0">POS</Badge>}
+                    </div>
+                    <div className="text-sm text-brand-dark mt-0.5 truncate">{i.customer_name}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5 truncate">{i.issue_date} · {creatorName(i.created_by)}</div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="font-semibold">{fmt(i.total)}</div>
+                    {Number(i.discount_amount) > 0 && <div className="text-xs text-destructive">-{fmt(i.discount_amount)}</div>}
+                    {i.status === "partial" && <div className="text-xs text-muted-foreground">{fmt(balanceOf(i))} left</div>}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <StatusControl i={i} />
+                  <RowActions i={i} />
+                </div>
+              </div>
+            ))}
+          </div>
+          {/* Desktop: full table */}
+          <div className="hidden sm:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted/50 text-left text-xs uppercase tracking-wider text-muted-foreground">
                 <tr>
@@ -635,53 +704,22 @@ export default function Invoices() {
                     <td className="px-4 py-3 text-right font-medium">{fmt(i.total)}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-2">
-                          {canManage ? (
-                            <SearchableSelect
-                              value={i.status}
-                              onValueChange={(v) => requestStatusChange(i, v)}
-                              disabled={i.status === "void"}
-                              className="w-28 h-8"
-                              options={statusOptionsFor(i).map(s => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) }))}
-                            />
-                          ) : (
-                            <StatusBadge s={i.status} />
-                          )}
-                          {isOverdue(i, todayInTz) && <Badge variant="destructive" className="text-xs shrink-0">Overdue</Badge>}
-                        </div>
+                        <StatusControl i={i} />
                         {i.status === "partial" && (
                           <span className="text-xs text-muted-foreground">{fmt(balanceOf(i))} left</span>
                         )}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <div className="flex gap-1 justify-end">
-                        <IconBtn label="View" onClick={() => openView(i)}><Eye className="size-4" /></IconBtn>
-                        {canManage && canTakePayment(i) && <IconBtn label="Record payment" onClick={() => openPay(i)}><Wallet className="size-4" /></IconBtn>}
-                        {canManage && <IconBtn label={i.status === "void" ? "Voided invoices can't be edited" : "Edit"} disabled={i.status === "void"} onClick={() => openEdit(i)}><Pencil className="size-4" /></IconBtn>}
-                        {i.status === "paid" && <IconBtn label="Print" onClick={() => printReceipt(i)}><Printer className="size-4" /></IconBtn>}
-                        <DropdownMenu>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" aria-label="More actions"><MoreHorizontal className="size-4" /></Button>
-                              </DropdownMenuTrigger>
-                            </TooltipTrigger>
-                            <TooltipContent>More actions</TooltipContent>
-                          </Tooltip>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => exportPdf(i)}><Download className="size-4 mr-2" /> Download</DropdownMenuItem>
-                            {canManage && <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => remove(i)}><Trash2 className="size-4 mr-2" /> Delete</DropdownMenuItem>}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
+                      <RowActions i={i} />
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            <Paginator page={page} pageCount={pageCount} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} />
           </div>
+          <Paginator page={page} pageCount={pageCount} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} />
+          </>
         )}
       </Card>
 

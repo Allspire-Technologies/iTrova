@@ -88,7 +88,7 @@ test.describe("Guide desktop", () => {
 
   test("invoices", async ({ page }) => {
     await go(page,"/invoices");
-    await expect(page.getByText("260630-3")).toBeVisible({ timeout: 20000 });
+    await expect(page.locator("table").getByText("260630-3")).toBeVisible({ timeout: 20000 });
     await settle(page);
     await snap(page, "05-invoices");
   });
@@ -115,7 +115,7 @@ test.describe("Guide desktop", () => {
 
   test("purchase orders", async ({ page }) => {
     await go(page,"/purchase-orders");
-    await expect(page.getByText(/PO-260629-2/)).toBeVisible({ timeout: 20000 });
+    await expect(page.locator("table").getByText(/PO-260629-2/)).toBeVisible({ timeout: 20000 });
     await settle(page);
     await snap(page, "08-purchase-orders");
     await openDialog(page, "New PO");

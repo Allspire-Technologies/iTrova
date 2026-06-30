@@ -319,6 +319,24 @@ export default function PurchaseOrders() {
   const statusColor = (s: string) =>
     s === "received" ? "default" : s === "sent" ? "secondary" : s === "cancelled" ? "destructive" : "outline";
 
+  // Shared between the desktop table rows and the mobile cards so both stay in sync.
+  const StatusControl = ({ i }: { i: PO }) => (
+    <SearchableSelect
+      value={i.status}
+      onValueChange={(v) => requestStatusChange(i, v)}
+      disabled={i.status === "received"}
+      className="w-28 h-8"
+      options={STATUSES.map(s => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) }))}
+    />
+  );
+  const RowActions = ({ i }: { i: PO }) => (
+    <div className="flex gap-1 justify-end">
+      <Button variant="ghost" size="icon" aria-label="View" onClick={() => openView(i)}><Eye className="size-4" /></Button>
+      <Button variant="ghost" size="icon" aria-label="Download PDF" onClick={() => exportPdf(i)}><Download className="size-4" /></Button>
+      <Button variant="ghost" size="icon" aria-label="Delete" onClick={() => remove(i)}><Trash2 className="size-4 text-destructive" /></Button>
+    </div>
+  );
+
   return (
     <div className="space-y-6 w-full">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -366,7 +384,29 @@ export default function PurchaseOrders() {
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto">
+            {/* Mobile: card list (the desktop table is too wide for phones) */}
+            <div className="sm:hidden divide-y">
+              {paged.map(i => (
+                <div key={i.id} className="p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-mono text-sm font-medium">{i.po_number}</div>
+                      <div className="text-sm text-brand-dark mt-0.5 truncate">{suppliers.find(s => s.id === i.supplier_id)?.name || "—"}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5 truncate">
+                        {fmtDate(i.created_at)}{i.expected_date ? ` · expected ${i.expected_date}` : ""}
+                      </div>
+                    </div>
+                    <div className="font-semibold shrink-0">{fmt(i.total_amount)}</div>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <StatusControl i={i} />
+                    <RowActions i={i} />
+                  </div>
+                </div>
+              ))}
+            </div>
+            {/* Desktop: full table */}
+            <div className="hidden sm:block overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-muted/50 text-left">
                   <tr>
@@ -395,20 +435,10 @@ export default function PurchaseOrders() {
                       <td className="px-4 py-3">{i.expected_date || "—"}</td>
                       <td className="px-4 py-3 text-right font-medium">{fmt(i.total_amount)}</td>
                       <td className="px-4 py-3">
-                        <SearchableSelect
-                          value={i.status}
-                          onValueChange={(v) => requestStatusChange(i, v)}
-                          disabled={i.status === "received"}
-                          className="w-28 h-8"
-                          options={STATUSES.map(s => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) }))}
-                        />
+                        <StatusControl i={i} />
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <div className="flex gap-1 justify-end">
-                          <Button variant="ghost" size="icon" onClick={() => openView(i)}><Eye className="size-4" /></Button>
-                          <Button variant="ghost" size="icon" onClick={() => exportPdf(i)}><Download className="size-4" /></Button>
-                          <Button variant="ghost" size="icon" onClick={() => remove(i)}><Trash2 className="size-4 text-destructive" /></Button>
-                        </div>
+                        <RowActions i={i} />
                       </td>
                     </tr>
                   ))}
