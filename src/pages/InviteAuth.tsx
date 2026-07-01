@@ -207,6 +207,8 @@ export default function InviteAuth() {
             </div>
           )}
 
+          {/* Mobile: sit the form in a card like /auth does; desktop keeps the two-panel look. */}
+          <div className="rounded-2xl border border-border bg-card p-6 shadow-card sm:p-8 lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
           <Tabs value={tab} onValueChange={(v) => setTab(v as "signup" | "login")} className="w-full">
             <TabsList className="grid grid-cols-2 w-full mb-8 bg-secondary">
               <TabsTrigger value="signup">Create account</TabsTrigger>
@@ -360,6 +362,7 @@ export default function InviteAuth() {
               </form>
             </TabsContent>
           </Tabs>
+          </div>
         </div>
       </section>
     </main>
