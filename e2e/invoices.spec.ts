@@ -55,4 +55,18 @@ test.describe("Invoices", () => {
     await expect(page.getByRole("menuitem", { name: "Download", exact: true })).toBeVisible();
     await expect(page.getByRole("menuitem", { name: "Delete" })).toBeVisible();
   });
+
+  test("a discount on a new invoice nets off the total", async ({ page }) => {
+    await authenticate(page, { role: "owner" });
+    await page.goto("/invoices");
+    await page.getByRole("button", { name: "New invoice" }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByPlaceholder("Description").fill("Consulting");
+    await dialog.getByPlaceholder("Qty").fill("2");
+    await dialog.getByPlaceholder("Unit price").fill("10000"); // subtotal 20,000
+    await dialog.locator("#inv-discount").fill("5000");
+    await expect(dialog.getByText(/Subtotal:\s*\D*20,000/)).toBeVisible();
+    await expect(dialog.getByText(/Discount:\s*-\D*5,000/)).toBeVisible();
+    await expect(dialog.getByText(/Total:\s*\D*15,000/)).toBeVisible();
+  });
 });

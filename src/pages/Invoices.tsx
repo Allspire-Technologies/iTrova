@@ -65,7 +65,7 @@ export default function Invoices() {
   const { business, user, role, hasModule } = useAuth();
   const { online } = useOnline();
   const canManage = role === "owner" || role === "manager";
-  const { fmt } = useCurrency();
+  const { fmt, symbol } = useCurrency();
   const { timezone } = useDateFormat();
   const [searchParams] = useSearchParams();
   const [items, setItems] = useState<Invoice[]>([]);
@@ -80,6 +80,7 @@ export default function Invoices() {
   const [payForm, setPayForm] = useState({ amount: "", method: "cash", note: "" });
   const [waShare, setWaShare] = useState<{ message: string } | null>(null);
   const [form, setForm] = useState({ customer_name: "", customer_phone: "", customer_email: "", due_date: "", notes: "" });
+  const [discount, setDiscount] = useState(0);
   const [lines, setLines] = useState<Item[]>([{ description: "", quantity: 1, unit_price: 0, line_total: 0 }]);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<Invoice | null>(null);
@@ -145,6 +146,7 @@ export default function Invoices() {
   const openAdd = () => {
     setEditing(null);
     setForm({ customer_name: "", customer_phone: "", customer_email: "", due_date: "", notes: "" });
+    setDiscount(0);
     setLines([{ description: "", quantity: 1, unit_price: 0, line_total: 0 }]);
     setOpen(true);
   };
@@ -158,6 +160,7 @@ export default function Invoices() {
       due_date: inv.due_date || "",
       notes: inv.notes || "",
     });
+    setDiscount(Number(inv.discount_amount) || 0);
     const { data } = await supabase.from("invoice_items").select("*").eq("invoice_id", inv.id);
     setLines((data as Item[]) || [{ description: "", quantity: 1, unit_price: 0, line_total: 0 }]);
     setOpen(true);
@@ -211,6 +214,9 @@ export default function Invoices() {
   const removeLine = (idx: number) => setLines(prev => prev.length === 1 ? prev : prev.filter((_, i) => i !== idx));
 
   const subtotal = lines.reduce((s, l) => s + (l.line_total || 0), 0);
+  // A discount can never exceed the subtotal or go negative; the invoice total nets it off.
+  const discountApplied = Math.min(Math.max(0, discount), subtotal);
+  const invoiceTotal = subtotal - discountApplied;
 
   const save = async () => {
     if (!business) return;
@@ -234,7 +240,7 @@ export default function Invoices() {
         customer_email: form.customer_email || null,
         due_date: form.due_date || null,
         notes: form.notes || null,
-        subtotal, total: subtotal,
+        subtotal, discount_amount: discountApplied, total: invoiceTotal,
       }).eq("id", editing.id);
       if (error) { setBusy(false); return toast.error(error.message); }
       await supabase.from("invoice_items").delete().eq("invoice_id", editing.id);
@@ -254,7 +260,7 @@ export default function Invoices() {
         customer_email: form.customer_email || null,
         due_date: form.due_date || null,
         notes: form.notes || null,
-        subtotal, total: subtotal, status: "issued",
+        subtotal, discount_amount: discountApplied, total: invoiceTotal, status: "issued",
         created_by: user?.id ?? null,
       }).select().single();
       if (error) { setBusy(false); return toast.error(error.message); }
@@ -267,6 +273,7 @@ export default function Invoices() {
     setOpen(false);
     setEditing(null);
     setForm({ customer_name: "", customer_phone: "", customer_email: "", due_date: "", notes: "" });
+    setDiscount(0);
     setLines([{ description: "", quantity: 1, unit_price: 0, line_total: 0 }]);
     load();
   };
@@ -761,7 +768,26 @@ export default function Invoices() {
               )}
             </div>
             <div><Label>Notes</Label><Textarea rows={2} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></div>
-            <div className="text-right text-lg font-semibold">Total: {fmt(subtotal)}</div>
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-end gap-3">
+                <Label htmlFor="inv-discount" className="text-sm text-muted-foreground whitespace-nowrap">Discount ({symbol})</Label>
+                <Input
+                  id="inv-discount"
+                  type="number"
+                  min={0}
+                  max={subtotal}
+                  step="0.01"
+                  className="w-32 h-9 text-right"
+                  value={discount || ""}
+                  disabled={!!editing?.sale_id}
+                  onChange={e => setDiscount(Math.min(Math.max(0, Number(e.target.value) || 0), subtotal))}
+                  placeholder="0"
+                />
+              </div>
+              <div className="text-right text-sm text-muted-foreground">Subtotal: {fmt(subtotal)}</div>
+              {discountApplied > 0 && <div className="text-right text-sm text-destructive">Discount: -{fmt(discountApplied)}</div>}
+              <div className="text-right text-lg font-semibold">Total: {fmt(invoiceTotal)}</div>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
