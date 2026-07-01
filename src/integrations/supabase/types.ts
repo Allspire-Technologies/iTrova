@@ -100,12 +100,15 @@ export type Database = {
       }
       businesses: {
         Row: {
+          city: string | null
           created_at: string
           currency: string
           id: string
           industry: string | null
+          industry_other: string | null
           name: string
           owner_id: string
+          state: string | null
           subscription_cycle: string | null
           subscription_renews_at: string | null
           subscription_started_at: string | null
@@ -114,12 +117,15 @@ export type Database = {
           whatsapp_number: string | null
         }
         Insert: {
+          city?: string | null
           created_at?: string
           currency?: string
           id?: string
           industry?: string | null
+          industry_other?: string | null
           name: string
           owner_id: string
+          state?: string | null
           subscription_cycle?: string | null
           subscription_renews_at?: string | null
           subscription_started_at?: string | null
@@ -128,12 +134,15 @@ export type Database = {
           whatsapp_number?: string | null
         }
         Update: {
+          city?: string | null
           created_at?: string
           currency?: string
           id?: string
           industry?: string | null
+          industry_other?: string | null
           name?: string
           owner_id?: string
+          state?: string | null
           subscription_cycle?: string | null
           subscription_renews_at?: string | null
           subscription_started_at?: string | null

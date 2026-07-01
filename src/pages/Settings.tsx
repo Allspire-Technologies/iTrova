@@ -288,14 +288,13 @@ export default function Settings() {
     if (industry === "Other" && !industryOther.trim()) return toast.error("Tell us your industry");
     setProfileBusy(true);
     const [{ error: e1 }, { error: e2 }] = await Promise.all([
-      // industry_other/city/state added by 20260701150000_*.sql; cast until types regenerate.
       supabase.from("businesses").update({
         name: bizName,
         industry: industry || null,
         industry_other: industry === "Other" ? (industryOther.trim() || null) : null,
         city: city.trim() || null,
         state: state.trim() || null,
-      } as any).eq("id", business.id),
+      }).eq("id", business.id),
       supabase.from("profiles").update({ owner_name: ownerName }).eq("id", user.id),
     ]);
     setProfileBusy(false);
