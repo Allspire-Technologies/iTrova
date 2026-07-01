@@ -13,6 +13,7 @@ import { isValidPhone, normalizePhone } from "@/lib/phone";
 import { toast } from "sonner";
 import { Eye, EyeOff, Sparkles, Store, MailCheck, WifiOff } from "lucide-react";
 import { useOnline } from "@/contexts/OnlineContext";
+import ConsentNote from "@/components/ConsentNote";
 
 export default function Auth() {
   const { user, loading } = useAuth();
@@ -209,6 +210,7 @@ export default function Auth() {
                 <Button type="submit" variant="hero" size="lg" className="w-full" disabled={busy || !online}>
                   {busy ? "Signing in..." : "Sign in"}
                 </Button>
+                <ConsentNote action="signing in" />
               </form>
 
             </TabsContent>
@@ -267,6 +269,7 @@ export default function Auth() {
                 <Button type="submit" variant="hero" size="lg" className="w-full" disabled={busy || !online}>
                   {busy ? "Creating..." : "Create my business"}
                 </Button>
+                <ConsentNote action="creating your business" />
               </form>
             </TabsContent>
           </Tabs>

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
+import ConsentNote from "@/components/ConsentNote";
 import { toast } from "sonner";
 import { Eye, EyeOff, Store, Users, Loader2, XCircle, Clock, MailCheck } from "lucide-react";
 
@@ -300,6 +301,7 @@ export default function InviteAuth() {
                 <Button type="submit" variant="hero" size="lg" className="w-full" disabled={busy}>
                   {busy ? "Creating account..." : "Create account & join"}
                 </Button>
+                <ConsentNote action="creating your account" />
               </form>
             </TabsContent>
 
@@ -359,6 +361,7 @@ export default function InviteAuth() {
                 <Button type="submit" variant="hero" size="lg" className="w-full" disabled={busy}>
                   {busy ? "Signing in..." : "Sign in & join"}
                 </Button>
+                <ConsentNote action="signing in" />
               </form>
             </TabsContent>
           </Tabs>
