@@ -72,6 +72,27 @@ test.describe("Auth — signup", () => {
     await expect(page.locator("#bn")).toBeVisible();
   });
 
+  test("collects City/State and, for 'Other' industry, a required industry name", async ({ page }) => {
+    await page.goto("/auth");
+    await page.getByRole("tab", { name: "Create account" }).click();
+    // Location fields are present.
+    await expect(page.locator("#city")).toBeVisible();
+    await expect(page.locator("#state")).toBeVisible();
+    // The industry-name field only appears once "Other" is chosen.
+    await expect(page.locator("#io")).toHaveCount(0);
+    await page.getByText("Select your industry").click();
+    await page.getByRole("option", { name: "Other" }).click();
+    await expect(page.locator("#io")).toBeVisible();
+    // Submitting "Other" with no industry name is blocked client-side.
+    await page.locator("#bn").fill("Sunrise Stores");
+    await page.locator("#on").fill("Ada Obi");
+    await page.locator("#se").fill("ada@sunrise.test");
+    await page.locator("#sp").fill("password123");
+    await page.locator("#cp").fill("password123");
+    await page.getByRole("button", { name: "Create my business" }).click();
+    await expect(page.getByText("Tell us your industry")).toBeVisible();
+  });
+
   test("blocks mismatched passwords (client-side)", async ({ page }) => {
     await page.goto("/auth");
     await page.getByRole("tab", { name: "Create account" }).click();

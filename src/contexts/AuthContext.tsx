@@ -21,6 +21,9 @@ type Business = {
   id: string;
   name: string;
   industry: string | null;
+  industry_other: string | null;
+  city: string | null;
+  state: string | null;
   currency: string;
   timezone: string | null;
   subscription_tier: string | null;
@@ -132,7 +135,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         supabase.from("user_roles").select("role").eq("user_id", uid).eq("business_id", p.business_id),
       ]);
       if (bErr || rErr) { await hydrateFromCache(); return; } // offline mid-load
-      const biz = b as Business | null;
+      // select("*") returns the new industry_other/city/state columns at runtime; the generated
+      // types lag until regenerated, so widen through unknown.
+      const biz = b as unknown as Business | null;
       if (biz) {
         applyBusiness(biz);
       } else {
