@@ -219,6 +219,9 @@ export default function Settings() {
   // Business Profile
   const [bizName, setBizName] = useState("");
   const [industry, setIndustry] = useState("");
+  const [industryOther, setIndustryOther] = useState("");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
   const [ownerName, setOwnerName] = useState("");
   const [profileBusy, setProfileBusy] = useState(false);
 
@@ -255,6 +258,9 @@ export default function Settings() {
     if (business) {
       setBizName(business.name || "");
       setIndustry(business.industry || "");
+      setIndustryOther(business.industry_other || "");
+      setCity(business.city || "");
+      setState(business.state || "");
       setCurrency(business.currency || "NGN");
       setTimezone(business.timezone || "Africa/Lagos");
       setCurrentPlan(business.subscription_tier || "free");
@@ -279,9 +285,17 @@ export default function Settings() {
 
   const saveProfile = async () => {
     if (!business || !user) return;
+    if (industry === "Other" && !industryOther.trim()) return toast.error("Tell us your industry");
     setProfileBusy(true);
     const [{ error: e1 }, { error: e2 }] = await Promise.all([
-      supabase.from("businesses").update({ name: bizName, industry: industry || null }).eq("id", business.id),
+      // industry_other/city/state added by 20260701150000_*.sql; cast until types regenerate.
+      supabase.from("businesses").update({
+        name: bizName,
+        industry: industry || null,
+        industry_other: industry === "Other" ? (industryOther.trim() || null) : null,
+        city: city.trim() || null,
+        state: state.trim() || null,
+      } as any).eq("id", business.id),
       supabase.from("profiles").update({ owner_name: ownerName }).eq("id", user.id),
     ]);
     setProfileBusy(false);
@@ -359,7 +373,10 @@ export default function Settings() {
       : "Verification email sent. Check your inbox to confirm.");
   };
 
-  const profileDirty = isDirty([bizName, industry, ownerName], [business?.name || "", business?.industry || "", profile?.owner_name || ""]);
+  const profileDirty = isDirty(
+    [bizName, industry, industryOther, city, state, ownerName],
+    [business?.name || "", business?.industry || "", business?.industry_other || "", business?.city || "", business?.state || "", profile?.owner_name || ""],
+  );
   const regionalDirty = isDirty([currency, timezone], [business?.currency || "NGN", business?.timezone || "Africa/Lagos"]);
   const integrationsDirty = isDirty([whatsapp], [business?.whatsapp_number || ""]);
   const securityReady = isPasswordFormReady(newPassword, confirmPassword);
@@ -398,6 +415,22 @@ export default function Settings() {
                 options={INDUSTRY_OPTIONS}
                 placeholder="Select your industry"
               />
+            </div>
+            {industry === "Other" && (
+              <div className="space-y-2">
+                <Label>Which industry?</Label>
+                <Input value={industryOther} onChange={e => setIndustryOther(e.target.value)} placeholder="Tell us your industry" />
+              </div>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>City</Label>
+                <Input value={city} onChange={e => setCity(e.target.value)} placeholder="e.g. Ikeja" />
+              </div>
+              <div className="space-y-2">
+                <Label>State</Label>
+                <Input value={state} onChange={e => setState(e.target.value)} placeholder="e.g. Lagos" />
+              </div>
             </div>
             <div className="space-y-2">
               <Label>Owner name</Label>

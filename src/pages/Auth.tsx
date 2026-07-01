@@ -24,6 +24,9 @@ export default function Auth() {
   // signup
   const [businessName, setBusinessName] = useState("");
   const [industry, setIndustry] = useState("");
+  const [industryOther, setIndustryOther] = useState("");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
   const [ownerName, setOwnerName] = useState("");
   const [phone, setPhone] = useState("");
   const [signupEmail, setSignupEmail] = useState("");
@@ -50,6 +53,10 @@ export default function Auth() {
       toast.error("Enter a valid phone number (10–15 digits)");
       return;
     }
+    if (industry === "Other" && !industryOther.trim()) {
+      toast.error("Tell us your industry");
+      return;
+    }
     if (signupPassword !== confirmPassword) {
       toast.error("Passwords do not match");
       return;
@@ -60,7 +67,15 @@ export default function Auth() {
       password: signupPassword,
       options: {
         emailRedirectTo: `${window.location.origin}/`,
-        data: { business_name: businessName, owner_name: ownerName, phone: normalizePhone(phone), industry },
+        data: {
+          business_name: businessName,
+          owner_name: ownerName,
+          phone: normalizePhone(phone),
+          industry,
+          industry_other: industry === "Other" ? industryOther.trim() : "",
+          city: city.trim(),
+          state: state.trim(),
+        },
       },
     });
     setBusy(false);
@@ -222,7 +237,7 @@ export default function Auth() {
               </div>
               <form onSubmit={handleSignup} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="bn">Business name</Label>
+                  <Label htmlFor="bn">Business name *</Label>
                   <Input id="bn" required value={businessName} onChange={e => setBusinessName(e.target.value)} placeholder="Enter your business name" />
                 </div>
                 <div className="space-y-2">
@@ -234,9 +249,25 @@ export default function Auth() {
                     placeholder="Select your industry"
                   />
                 </div>
+                {industry === "Other" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="io">Which industry? *</Label>
+                    <Input id="io" value={industryOther} onChange={e => setIndustryOther(e.target.value)} placeholder="Tell us your industry" />
+                  </div>
+                )}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-2">
-                    <Label htmlFor="on">Your name</Label>
+                    <Label htmlFor="city">City</Label>
+                    <Input id="city" value={city} onChange={e => setCity(e.target.value)} placeholder="e.g. Ikeja" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="state">State</Label>
+                    <Input id="state" value={state} onChange={e => setState(e.target.value)} placeholder="e.g. Lagos" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="on">Your name *</Label>
                     <Input id="on" required value={ownerName} onChange={e => setOwnerName(e.target.value)} placeholder="Enter your full name" />
                   </div>
                   <div className="space-y-2">
@@ -245,11 +276,11 @@ export default function Auth() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="se">Email</Label>
+                  <Label htmlFor="se">Email *</Label>
                   <Input id="se" type="email" inputMode="email" autoComplete="email" required value={signupEmail} onChange={e => setSignupEmail(e.target.value)} placeholder="Enter your email address" />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="sp">Password</Label>
+                  <Label htmlFor="sp">Password *</Label>
                   <div className="relative">
                     <Input id="sp" type={showSignupPassword ? "text" : "password"} required minLength={8} value={signupPassword} onChange={e => setSignupPassword(e.target.value)} placeholder="Create a password (min. 8 characters)" className="pr-10" />
                     <button type="button" onClick={() => setShowSignupPassword(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" tabIndex={-1} aria-label={showSignupPassword ? "Hide password" : "Show password"}>
@@ -258,7 +289,7 @@ export default function Auth() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="cp">Confirm password</Label>
+                  <Label htmlFor="cp">Confirm password *</Label>
                   <div className="relative">
                     <Input id="cp" type={showConfirmPassword ? "text" : "password"} required minLength={8} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="Re-enter your password" className="pr-10" />
                     <button type="button" onClick={() => setShowConfirmPassword(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" tabIndex={-1} aria-label={showConfirmPassword ? "Hide password" : "Show password"}>
