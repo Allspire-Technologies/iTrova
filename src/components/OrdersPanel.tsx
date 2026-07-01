@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -8,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Minus, Trash2, Pencil, Phone, Globe, Package, Truck, CheckCircle2, XCircle, Clock } from "lucide-react";
+import { Plus, Minus, Trash2, Pencil, Phone, Globe, Package, Truck, CheckCircle2, XCircle, Clock, FileText } from "lucide-react";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { toast } from "sonner";
@@ -30,8 +31,10 @@ type Order = {
   total_amount: number;
   discount_amount: number;
   stock_deducted: boolean;
+  invoice_id: string | null;
   created_at: string;
   order_items?: OrderItem[];
+  invoice?: { invoice_number: string } | null;
 };
 
 const STATUSES = ["pending", "shipped", "delivered", "cancelled"];
@@ -69,7 +72,7 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
     setLoading(true);
     const { data } = await supabase
       .from("orders")
-      .select("*, order_items(id,product_id,quantity,unit_price)")
+      .select("*, order_items(id,product_id,quantity,unit_price), invoice:invoices!orders_invoice_id_fkey(invoice_number)")
       .order("created_at", { ascending: false });
     setOrders((data as any) || []);
     setLoading(false);
@@ -195,11 +198,28 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
         }
       }
     }
+    // Delivering books revenue: one RPC deducts stock (via the order trigger), records a sale and
+    // creates a paid invoice, all atomically and idempotently.
+    if (newStatus === "delivered") {
+      const { data, error } = await supabase.rpc("deliver_order" as any, { _order_id: order.id });
+      if (error) {
+        if (error.message?.includes("NEEDS_REVIEW")) {
+          return toast.error(`Not enough stock for ${error.message.split("NEEDS_REVIEW:")[1]?.trim() || "an item"}`);
+        }
+        return toast.error(error.message);
+      }
+      const res = (data as { invoice_number?: string }) || {};
+      toast.success(res.invoice_number ? `Delivered — invoice ${res.invoice_number} created` : "Order delivered");
+      load();
+      onStockChanged();
+      return;
+    }
+
     const { error } = await supabase.from("orders").update({ status: newStatus }).eq("id", order.id);
     if (error) return toast.error(error.message);
     toast.success(newStatus === "cancelled" ? "Order cancelled" : `Order marked ${newStatus}`);
     load();
-    if (["pending", "shipped", "delivered", "cancelled"].includes(newStatus)) onStockChanged();
+    if (["pending", "shipped", "cancelled"].includes(newStatus)) onStockChanged();
   };
 
   const requestStatusChange = (order: Order, newStatus: string) => {
@@ -230,8 +250,8 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
       setPending({
         title: "Mark this order delivered?",
         description: order.stock_deducted
-          ? "Once delivered, the order can only be cancelled — you can't set it back to pending or shipped."
-          : "This takes the items out of stock. Once delivered, the order can only be cancelled.",
+          ? "This creates a paid invoice for the order (a receipt you can share). Once delivered, the order can only be cancelled."
+          : "This takes the items out of stock and creates a paid invoice (a receipt you can share). Once delivered, the order can only be cancelled.",
         confirmLabel: "Mark delivered",
         variant: "default",
         onConfirm: () => updateStatus(order, "delivered"),
@@ -265,6 +285,10 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
       },
     });
   };
+
+  // Once an order has shipped its stock is already deducted, so editing its items would desync
+  // stock — lock the lines but still allow discount / customer / notes changes before delivery.
+  const itemsLocked = !!editing?.stock_deducted;
 
   return (
     <div className="space-y-4">
@@ -323,19 +347,25 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
                 </div>
               </div>
 
-              <div>
-                <Label>Add product</Label>
-                <SearchableSelect
-                  value=""
-                  onValueChange={addItem}
-                  placeholder="Pick a product..."
-                  emptyText="No products in stock"
-                  options={products.map(p => ({
-                    value: p.id,
-                    label: `${p.name} — ${fmt(p.selling_price)} (${Number(p.stock_quantity)} in stock)`,
-                  }))}
-                />
-              </div>
+              {itemsLocked ? (
+                <p className="text-xs text-muted-foreground">
+                  This order has shipped — its items are locked. You can still adjust the discount and details.
+                </p>
+              ) : (
+                <div>
+                  <Label>Add product</Label>
+                  <SearchableSelect
+                    value=""
+                    onValueChange={addItem}
+                    placeholder="Pick a product..."
+                    emptyText="No products in stock"
+                    options={products.map(p => ({
+                      value: p.id,
+                      label: `${p.name} — ${fmt(p.selling_price)} (${Number(p.stock_quantity)} in stock)`,
+                    }))}
+                  />
+                </div>
+              )}
 
               {items.length > 0 && (
                 <div className="space-y-2 border border-border/60 rounded-lg p-3 bg-secondary/30">
@@ -345,9 +375,9 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
                         <div className="text-sm font-medium truncate">{i.product_name}</div>
                         <div className="text-xs text-muted-foreground">{fmt(i.unit_price)} each</div>
                       </div>
-                      <Button variant="ghost" size="icon" className="size-7" onClick={() => updateItemQty(i.product_id, -1)}><Minus className="size-3" /></Button>
-                      <Input type="number" min={1} value={i.quantity} onChange={e => setItemQty(i.product_id, Number(e.target.value))} className="w-12 h-7 px-1 text-center text-sm font-medium" />
-                      <Button variant="ghost" size="icon" className="size-7" onClick={() => updateItemQty(i.product_id, 1)}><Plus className="size-3" /></Button>
+                      <Button variant="ghost" size="icon" className="size-7" disabled={itemsLocked} onClick={() => updateItemQty(i.product_id, -1)}><Minus className="size-3" /></Button>
+                      <Input type="number" min={1} value={i.quantity} disabled={itemsLocked} onChange={e => setItemQty(i.product_id, Number(e.target.value))} className="w-12 h-7 px-1 text-center text-sm font-medium" />
+                      <Button variant="ghost" size="icon" className="size-7" disabled={itemsLocked} onClick={() => updateItemQty(i.product_id, 1)}><Plus className="size-3" /></Button>
                       <div className="w-20 text-right text-sm font-semibold">{fmt(i.unit_price * i.quantity)}</div>
                     </div>
                   ))}
@@ -433,6 +463,11 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
                   <div className="text-right">
                     <div className="font-display text-xl font-bold text-brand-dark">{fmt(o.total_amount)}</div>
                     <div className="text-xs text-muted-foreground capitalize">{o.payment_method}</div>
+                    {o.invoice?.invoice_number && (
+                      <Link to={`/invoices?q=${o.invoice.invoice_number}`} className="text-xs text-brand inline-flex items-center gap-1 hover:underline mt-0.5" title="View the paid invoice for this order">
+                        <FileText className="size-3" /> {o.invoice.invoice_number}
+                      </Link>
+                    )}
                   </div>
                 </div>
 
@@ -447,7 +482,7 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
                     className="h-9 w-[140px]"
                     options={orderStatusOptions(o.status).map(s => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) }))}
                   />
-                  <Button variant="ghost" size="icon" aria-label="Edit order" disabled={o.status !== "pending"} title={o.status !== "pending" ? "Only pending orders can be edited" : undefined} onClick={() => openEdit(o)}>
+                  <Button variant="ghost" size="icon" aria-label="Edit order" disabled={o.status === "delivered" || o.status === "cancelled"} title={o.status === "delivered" || o.status === "cancelled" ? "Delivered and cancelled orders can't be edited" : undefined} onClick={() => openEdit(o)}>
                     <Pencil className="size-4" />
                   </Button>
                   {canManage && (

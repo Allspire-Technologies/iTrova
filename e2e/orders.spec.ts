@@ -75,4 +75,30 @@ test.describe("POS orders", () => {
     await expect(dialog.getByText(/-\D*500/)).toBeVisible();
     await expect(dialog.getByText(/8,000/)).toBeVisible(); // net total
   });
+
+  test("delivering an order books a paid invoice and links it", async ({ page }) => {
+    await authenticate(page, { role: "owner" });
+    await stubRows(page, "products", [product]);
+    // A shipped order (stock already deducted) so delivery only has to create the invoice.
+    const state = { order: { ...order, status: "shipped", stock_deducted: true } as Record<string, unknown> };
+    await page.route("**/rest/v1/orders**", (r) =>
+      r.request().method() === "GET"
+        ? r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([state.order]) })
+        : r.fallback());
+    await page.route("**/rest/v1/rpc/deliver_order**", (r) => {
+      state.order = { ...state.order, status: "delivered", invoice_id: "inv-x", invoice: { invoice_number: "260701-1" } };
+      return r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "committed", invoice_number: "260701-1" }) });
+    });
+    await page.goto("/pos");
+    await page.getByRole("tab", { name: "Orders" }).click();
+    await expect(page.getByText("Adaeze O.")).toBeVisible();
+
+    // Move the order to Delivered via its status dropdown, then confirm.
+    await page.getByRole("combobox").click();
+    await page.getByRole("option", { name: "Delivered" }).click();
+    await page.getByRole("button", { name: "Mark delivered" }).click();
+
+    // The RPC created the invoice; the card now shows a link to it.
+    await expect(page.getByRole("link", { name: /260701-1/ })).toBeVisible();
+  });
 });
