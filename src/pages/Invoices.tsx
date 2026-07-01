@@ -745,7 +745,7 @@ export default function Invoices() {
               <Label>Line items</Label>
               {editing?.sale_id && (
                 <p className="text-xs text-muted-foreground -mt-1">
-                  This invoice came from a POS sale — description and unit price are locked to the price at sale time. Only quantity can be adjusted.
+                  This invoice came from a POS sale — description and unit price are locked to the price at sale time. Quantity and the discount can still be adjusted.
                 </p>
               )}
               {lines.map((l, idx) => {
@@ -779,7 +779,6 @@ export default function Invoices() {
                   step="0.01"
                   className="w-32 h-9 text-right"
                   value={discount || ""}
-                  disabled={!!editing?.sale_id}
                   onChange={e => setDiscount(Math.min(Math.max(0, Number(e.target.value) || 0), subtotal))}
                   placeholder="0"
                 />
