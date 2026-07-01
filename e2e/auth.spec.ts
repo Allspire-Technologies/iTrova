@@ -16,6 +16,20 @@ test.describe("Auth — login", () => {
     await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
   });
 
+  test("shows the consent line with links to the public Terms and Privacy docs", async ({ page }) => {
+    await page.goto("/auth");
+    const terms = page.getByRole("link", { name: "Terms of Service" });
+    const privacy = page.getByRole("link", { name: "Privacy Policy" });
+    await expect(terms).toBeVisible();
+    await expect(privacy).toBeVisible();
+    await expect(terms).toHaveAttribute("href", /^https:\/\/allspire\.tech\/terms/);
+    await expect(privacy).toHaveAttribute("href", /^https:\/\/allspire\.tech\/privacy/);
+    // And it's present on the create-account tab too.
+    await page.getByRole("tab", { name: "Create account" }).click();
+    await expect(page.getByRole("link", { name: "Terms of Service" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Privacy Policy" })).toBeVisible();
+  });
+
   test("toggles password visibility", async ({ page }) => {
     await page.goto("/auth");
     await page.locator("#lp").fill("secret123");
