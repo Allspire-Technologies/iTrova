@@ -63,4 +63,16 @@ test.describe("POS orders", () => {
     await expect(page.getByText("Edit order")).toBeVisible();
     await expect(page.getByPlaceholder("e.g. Adaeze O.")).toHaveValue("Adaeze O.");
   });
+
+  test("a discount on a new order nets off the total", async ({ page }) => {
+    await openOrders(page, "owner");
+    await page.getByRole("button", { name: "New order" }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByText("Pick a product...").click();
+    await page.getByRole("option", { name: /Garri 50kg/ }).click(); // subtotal 8,500
+    await dialog.locator("#order-discount").fill("500");
+    await expect(dialog.getByText(/Subtotal/)).toBeVisible();
+    await expect(dialog.getByText(/-\D*500/)).toBeVisible();
+    await expect(dialog.getByText(/8,000/)).toBeVisible(); // net total
+  });
 });

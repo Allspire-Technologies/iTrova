@@ -28,6 +28,7 @@ type Order = {
   status: string;
   notes: string | null;
   total_amount: number;
+  discount_amount: number;
   stock_deducted: boolean;
   created_at: string;
   order_items?: OrderItem[];
@@ -44,7 +45,7 @@ const statusMeta: Record<string, { icon: any; cls: string; label: string }> = {
 
 export default function OrdersPanel({ products, onStockChanged }: { products: Product[]; onStockChanged: () => void }) {
   const { business, user, role } = useAuth();
-  const { fmt } = useCurrency();
+  const { fmt, symbol } = useCurrency();
   const { fmtDateTime } = useDateFormat();
   const canManage = role === "owner" || role === "manager";
   const [orders, setOrders] = useState<Order[]>([]);
@@ -58,6 +59,7 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
   const [channel, setChannel] = useState("online");
   const [payment, setPayment] = useState("cash");
   const [notes, setNotes] = useState("");
+  const [discount, setDiscount] = useState(0);
   const [items, setItems] = useState<OrderItem[]>([]);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<Order | null>(null);
@@ -81,6 +83,9 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
   const { paged, page, setPage, pageSize, setPageSize, pageCount, total: orderCount } = usePagination(filtered, 20);
 
   const itemsTotal = items.reduce((a, i) => a + i.quantity * i.unit_price, 0);
+  // A discount can never exceed the subtotal or go negative; the order total nets it off.
+  const discountApplied = Math.min(Math.max(0, discount), itemsTotal);
+  const orderTotal = itemsTotal - discountApplied;
 
   const addItem = (productId: string) => {
     const p = productMap[productId];
@@ -107,7 +112,7 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
     }));
 
   const resetForm = () => {
-    setCustomer(""); setPhone(""); setChannel("online"); setPayment("cash"); setNotes(""); setItems([]);
+    setCustomer(""); setPhone(""); setChannel("online"); setPayment("cash"); setNotes(""); setDiscount(0); setItems([]);
   };
 
   const openEdit = (order: Order) => {
@@ -117,6 +122,7 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
     setChannel(order.channel);
     setPayment(order.payment_method);
     setNotes(order.notes || "");
+    setDiscount(Number(order.discount_amount) || 0);
     setItems((order.order_items || []).map(it => ({
       product_id: it.product_id,
       product_name: productMap[it.product_id]?.name,
@@ -142,8 +148,9 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
         customer_phone: phone.trim() || null,
         channel, payment_method: payment,
         notes: notes.trim() || null,
-        total_amount: itemsTotal,
-      }).eq("id", editing.id);
+        // discount_amount is added by 20260701120000_orders_discount.sql; cast until types regenerate.
+        discount_amount: discountApplied, total_amount: orderTotal,
+      } as any).eq("id", editing.id);
       if (e1) { setSaving(false); return toast.error(e1.message); }
       await supabase.from("order_items").delete().eq("order_id", editing.id);
       const { error: e2 } = await supabase.from("order_items").insert(itemRows(editing.id));
@@ -162,9 +169,10 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
       customer_phone: phone.trim() || null,
       channel, payment_method: payment,
       notes: notes.trim() || null,
-      total_amount: itemsTotal,
+      // discount_amount is added by 20260701120000_orders_discount.sql; cast until types regenerate.
+      discount_amount: discountApplied, total_amount: orderTotal,
       status: "pending",
-    }).select().single();
+    } as any).select().single();
     if (e1 || !order) { setSaving(false); return toast.error(e1?.message || "Failed"); }
 
     const { error: e2 } = await supabase.from("order_items").insert(itemRows(order.id));
@@ -343,9 +351,33 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
                       <div className="w-20 text-right text-sm font-semibold">{fmt(i.unit_price * i.quantity)}</div>
                     </div>
                   ))}
-                  <div className="flex justify-between pt-2 border-t border-border/60">
-                    <span className="text-sm text-muted-foreground">Total</span>
-                    <span className="font-display font-bold text-brand-dark">{fmt(itemsTotal)}</span>
+                  <div className="pt-2 border-t border-border/60 space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <Label htmlFor="order-discount" className="text-sm text-muted-foreground whitespace-nowrap">Discount ({symbol})</Label>
+                      <Input
+                        id="order-discount"
+                        type="number"
+                        min={0}
+                        max={itemsTotal}
+                        step="0.01"
+                        className="w-32 h-8 text-right"
+                        value={discount || ""}
+                        onChange={e => setDiscount(Math.min(Math.max(0, Number(e.target.value) || 0), itemsTotal))}
+                        placeholder="0"
+                      />
+                    </div>
+                    <div className="flex justify-between text-sm text-muted-foreground">
+                      <span>Subtotal</span><span>{fmt(itemsTotal)}</span>
+                    </div>
+                    {discountApplied > 0 && (
+                      <div className="flex justify-between text-sm text-destructive">
+                        <span>Discount</span><span>-{fmt(discountApplied)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Total</span>
+                      <span className="font-display font-bold text-brand-dark">{fmt(orderTotal)}</span>
+                    </div>
                   </div>
                 </div>
               )}
