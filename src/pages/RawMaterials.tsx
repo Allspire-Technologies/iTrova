@@ -252,7 +252,40 @@ export default function RawMaterials() {
             <Button variant="brand" onClick={openAdd} disabled={atRawMatLimit}><Plus className="size-4" /> Add material</Button>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          {/* Mobile: card list (the desktop table's 6 columns don't fit a phone) */}
+          <div className="sm:hidden divide-y">
+            {paged.map(m => {
+              const s = statusOf(m);
+              const supp = suppliers.find(x => x.id === m.supplier_id);
+              return (
+                <div key={m.id} className="p-4 space-y-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-medium text-brand-dark truncate">{m.name}</div>
+                      {m.sku && <div className="text-xs text-muted-foreground">{m.sku}</div>}
+                      <div className="text-xs text-muted-foreground mt-0.5 truncate">{supp?.name || "—"}</div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="font-display font-semibold text-brand-dark">{fmt(m.cost_per_unit)}</div>
+                      <div className="text-sm">{Number(m.stock_quantity)} <span className="text-xs text-muted-foreground">{m.unit}</span></div>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <Badge variant="outline" className={s.className}>{s.label}</Badge>
+                    <div className="flex gap-1 shrink-0">
+                      <Button variant="ghost" size="icon" title="Record purchase" onClick={() => { setPurchaseFor(m); setPCost(Number(m.cost_per_unit) || 0); setPurchaseOpen(true); }}><PackagePlus className="size-4" /></Button>
+                      <Button variant="ghost" size="icon" title="Adjust stock" onClick={() => setAdjustTarget(m)}><SlidersHorizontal className="size-4" /></Button>
+                      <Button variant="ghost" size="icon" title="Reorder via WhatsApp" onClick={() => reorder(m)} disabled={!suppliers.find(x => x.id === m.supplier_id)?.phone}><MessageCircle className="size-4" /></Button>
+                      <Button variant="ghost" size="icon" aria-label="Edit" onClick={() => openEdit(m)}><Pencil className="size-4" /></Button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {/* Desktop: full table */}
+          <div className="hidden sm:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wider text-muted-foreground border-b border-border">
@@ -289,8 +322,9 @@ export default function RawMaterials() {
                 })}
               </tbody>
             </table>
-            <Paginator page={page} pageCount={pageCount} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} />
           </div>
+          <Paginator page={page} pageCount={pageCount} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} />
+          </>
         )}
       </Card>
         </TabsContent>
@@ -304,7 +338,29 @@ export default function RawMaterials() {
                 <p className="text-muted-foreground text-sm mt-1">Record a purchase on any material to see deliveries here.</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <>
+              {/* Mobile: card list */}
+              <div className="sm:hidden divide-y">
+                {pagedPurchases.map(p => {
+                  const mat = items.find(m => m.id === p.raw_material_id);
+                  const supp = suppliers.find(s => s.id === p.supplier_id);
+                  return (
+                    <div key={p.id} className="p-4 flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-medium text-brand-dark truncate">{mat?.name || "—"}</div>
+                        {p.notes && <div className="text-xs text-muted-foreground truncate">{p.notes}</div>}
+                        <div className="text-xs text-muted-foreground mt-0.5 truncate">{supp?.name || "—"} · {fmtDate(p.created_at)}</div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="font-display font-semibold text-brand-dark">{fmt(p.total_cost)}</div>
+                        <div className="text-xs text-muted-foreground">{Number(p.quantity)} {mat?.unit} · {fmt(p.unit_cost)}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Desktop: full table */}
+              <div className="hidden sm:block overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-left text-xs uppercase tracking-wider text-muted-foreground border-b border-border">
@@ -338,10 +394,11 @@ export default function RawMaterials() {
                     })}
                   </tbody>
                 </table>
-                {purPageCount > 1 && (
-                  <Paginator page={purPage} pageCount={purPageCount} pageSize={purPageSize} total={purTotal} onPageChange={setPurPage} onPageSizeChange={setPurPageSize} />
-                )}
               </div>
+              {purPageCount > 1 && (
+                <Paginator page={purPage} pageCount={purPageCount} pageSize={purPageSize} total={purTotal} onPageChange={setPurPage} onPageSizeChange={setPurPageSize} />
+              )}
+              </>
             )}
           </Card>
         </TabsContent>

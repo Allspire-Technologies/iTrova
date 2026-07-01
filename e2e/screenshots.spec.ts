@@ -66,7 +66,7 @@ test.describe("Guide desktop", () => {
 
   test("inventory", async ({ page }) => {
     await go(page,"/inventory");
-    await expect(page.getByText("Garri (white) 50kg")).toBeVisible({ timeout: 20000 });
+    await expect(page.locator("table").getByText("Garri (white) 50kg")).toBeVisible({ timeout: 20000 });
     await settle(page);
     await snap(page, "03-inventory");
     await openDialog(page, "Add product");
@@ -105,7 +105,7 @@ test.describe("Guide desktop", () => {
 
   test("raw materials", async ({ page }) => {
     await go(page,"/raw-materials");
-    await expect(page.getByText("Wheat Flour 50kg")).toBeVisible({ timeout: 20000 });
+    await expect(page.locator("table").getByText("Wheat Flour 50kg")).toBeVisible({ timeout: 20000 });
     await settle(page);
     await snap(page, "07-raw-materials");
     await page.getByRole("tab", { name: "Deliveries" }).click();
@@ -227,7 +227,7 @@ test.describe("Guide showcase", () => {
     await snapPath(page, `${SHOW}/itrova-pos.png`);
 
     await go(page, "/inventory");
-    await expect(page.getByText("Garri (white) 50kg")).toBeVisible({ timeout: 20000 });
+    await expect(page.locator("table").getByText("Garri (white) 50kg")).toBeVisible({ timeout: 20000 });
     await settle(page);
     await snapPath(page, `${SHOW}/itrova-inventory.png`);
 
