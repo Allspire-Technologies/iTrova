@@ -55,4 +55,34 @@ test.describe("Invoices", () => {
     await expect(page.getByRole("menuitem", { name: "Download", exact: true })).toBeVisible();
     await expect(page.getByRole("menuitem", { name: "Delete" })).toBeVisible();
   });
+
+  test("an owner/manager can edit the discount on a POS invoice", async ({ page }) => {
+    await authenticate(page, { role: "owner" });
+    await stubRows(page, "invoices", [paidInvoice]); // paidInvoice has a sale_id (POS-originated)
+    await stubRows(page, "invoice_items", [
+      { id: "ii-1", invoice_id: "inv-1", description: "Garri 50kg", quantity: 1, unit_price: 25000, line_total: 25000 },
+    ]);
+    await page.goto("/invoices");
+    await page.getByRole("button", { name: "Edit", exact: true }).click();
+    const dialog = page.getByRole("dialog");
+    // Discount is editable even though the POS line items are locked.
+    await expect(dialog.locator("#inv-discount")).toBeEnabled();
+    await expect(dialog.getByPlaceholder("Description")).toBeDisabled();
+    await dialog.locator("#inv-discount").fill("5000");
+    await expect(dialog.getByText(/Total:\s*\D*20,000/)).toBeVisible();
+  });
+
+  test("a discount on a new invoice nets off the total", async ({ page }) => {
+    await authenticate(page, { role: "owner" });
+    await page.goto("/invoices");
+    await page.getByRole("button", { name: "New invoice" }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByPlaceholder("Description").fill("Consulting");
+    await dialog.getByPlaceholder("Qty").fill("2");
+    await dialog.getByPlaceholder("Unit price").fill("10000"); // subtotal 20,000
+    await dialog.locator("#inv-discount").fill("5000");
+    await expect(dialog.getByText(/Subtotal:\s*\D*20,000/)).toBeVisible();
+    await expect(dialog.getByText(/Discount:\s*-\D*5,000/)).toBeVisible();
+    await expect(dialog.getByText(/Total:\s*\D*15,000/)).toBeVisible();
+  });
 });
