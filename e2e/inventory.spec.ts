@@ -24,8 +24,9 @@ test.describe("Inventory", () => {
 
   test("lists products", async ({ page }) => {
     await expect(page.getByRole("heading", { name: "Inventory" })).toBeVisible();
-    await expect(page.getByText("Garri 50kg")).toBeVisible();
-    await expect(page.getByText("GAR-50")).toBeVisible();
+    // Scope to the desktop table — the responsive layout also renders a (hidden) mobile card.
+    await expect(page.locator("table").getByText("Garri 50kg")).toBeVisible();
+    await expect(page.locator("table").getByText("GAR-50")).toBeVisible();
   });
 
   test("opens the add-product dialog with required fields asterisked and an optional expiry date", async ({ page }) => {
@@ -42,8 +43,8 @@ test.describe("Inventory", () => {
     const soon = new Date(Date.now() + 10 * 86_400_000).toISOString().slice(0, 10);
     await stubRows(page, "products", [{ ...product, expiry_date: soon }]);
     await page.reload();
-    await expect(page.getByText("Garri 50kg")).toBeVisible();
+    await expect(page.locator("table").getByText("Garri 50kg")).toBeVisible();
     await expect(page.getByRole("columnheader", { name: "Expiry" })).toBeVisible();
-    await expect(page.getByText(/Expires in \d+d/)).toBeVisible();
+    await expect(page.locator("table").getByText(/Expires in \d+d/)).toBeVisible();
   });
 });

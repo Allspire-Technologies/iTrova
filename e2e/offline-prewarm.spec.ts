@@ -47,7 +47,8 @@ test.describe("Offline pre-warm", () => {
     await page.goto("/inventory");
 
     // The product is there, served from the pre-warmed cache.
-    await expect(page.getByText("Garri 50kg")).toBeVisible();
+    // Scope to the desktop table — Inventory also renders a (hidden) mobile card.
+    await expect(page.locator("table").getByText("Garri 50kg")).toBeVisible();
   });
 
   test("offline POS hides out-of-stock products (Inventory still shows them)", async ({ page }) => {
@@ -70,6 +71,6 @@ test.describe("Offline pre-warm", () => {
 
     // Inventory (management view) still lists the out-of-stock one.
     await page.goto("/inventory");
-    await expect(page.getByText("Garri Out Of Stock")).toBeVisible();
+    await expect(page.locator("table").getByText("Garri Out Of Stock")).toBeVisible();
   });
 });

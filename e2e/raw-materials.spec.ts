@@ -24,7 +24,8 @@ test.describe("Raw Materials", () => {
 
   test("lists materials", async ({ page }) => {
     await expect(page.getByRole("heading", { name: "Raw Materials" })).toBeVisible();
-    await expect(page.getByText("Cassava flour")).toBeVisible();
+    // Scope to the desktop table — the responsive layout also renders a (hidden) mobile card.
+    await expect(page.locator("table").getByText("Cassava flour")).toBeVisible();
   });
 
   test("shows the materials and deliveries tabs", async ({ page }) => {
