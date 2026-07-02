@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import { Suspense, useEffect, useState } from "react";
 import { AppShellSkeleton, TablePageSkeleton } from "@/components/Skeletons";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import NotificationsBell from "@/components/NotificationsBell";
 import HeaderClock from "@/components/HeaderClock";
@@ -96,16 +97,11 @@ export default function AppShell() {
 
   const confirmSignOut = () => { signOut(); navigate("/auth"); };
 
-  // Don't let anyone sign out while offline sales are still queued on this device — they'd be left
-  // behind. Block sign-out until the queue is synced (manually). Counting offline work is best-effort:
-  // if IndexedDB errors/is unavailable, fail OPEN (treat as nothing pending) so sign-out is never stuck.
-  const countUnsynced = async (businessId: string): Promise<number> => {
-    try {
-      return (await countPending(businessId)) + (await countPendingInvoices(businessId)) + (await countPendingPayments(businessId));
-    } catch {
-      return 0;
-    }
-  };
+  // Count offline work still queued on this device (POS sales + offline invoices/deposits). Throws
+  // if IndexedDB is unavailable/corrupt — callers decide what to do (see requestSignOut, which logs,
+  // warns, and still fails OPEN so sign-out is never stuck).
+  const countUnsynced = async (businessId: string): Promise<number> =>
+    (await countPending(businessId)) + (await countPendingInvoices(businessId)) + (await countPendingPayments(businessId));
 
   const requestSignOut = async () => {
     setMobileOpen(false);
@@ -113,8 +109,15 @@ export default function AppShell() {
     // (On error the pre-warm finishes as 'error', which unblocks — we don't trap the user.)
     if (prewarm.status === "running") { setPrewarmGateOpen(true); return; }
     if (business) {
-      const n = await countUnsynced(business.id);
-      if (n > 0) { setGatePending(n); setSyncGateOpen(true); return; }
+      try {
+        const n = await countUnsynced(business.id);
+        if (n > 0) { setGatePending(n); setSyncGateOpen(true); return; }
+      } catch (e) {
+        // Fail OPEN (never trap the user), but don't fail silently: log it and warn, since a broken
+        // offline store could mean queued sales we couldn't see are about to be left behind.
+        console.error("Couldn't check for unsynced offline work before sign-out:", e);
+        toast.warning("Couldn't verify your offline sales have synced. Open Point of Sale to check before signing out on another device.");
+      }
     }
     setSignOutOpen(true);
   };
@@ -315,10 +318,14 @@ export default function AppShell() {
         <OfflineBanner />
         <main className="flex-1 p-4 lg:p-8 animate-fade-in">
           <div key={location.key} className="w-full">
-            {/* Lazy route chunks suspend here so the nav/header stay visible while they load. */}
-            <Suspense fallback={<TablePageSkeleton />}>
-              <Outlet />
-            </Suspense>
+            {/* A page crash shows the fallback but keeps the nav/header usable; lazy route chunks
+                suspend into the skeleton while they load. Keyed by location so navigating away
+                clears a crashed page. */}
+            <ErrorBoundary variant="inline">
+              <Suspense fallback={<TablePageSkeleton />}>
+                <Outlet />
+              </Suspense>
+            </ErrorBoundary>
           </div>
         </main>
       </div>

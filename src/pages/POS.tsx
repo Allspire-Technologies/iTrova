@@ -113,7 +113,16 @@ export default function POS() {
       setLoading(false);
       return;
     }
-    const { data } = await supabase.from("products").select("id,name,sku,selling_price,stock_quantity,reorder_level,category").gt("stock_quantity", 0).order("name");
+    const { data, error } = await supabase.from("products").select("id,name,sku,selling_price,stock_quantity,reorder_level,category").gt("stock_quantity", 0).order("name");
+    if (error) {
+      // Don't render an empty grid as if the shop had no stock — tell the cashier and fall back to
+      // the last cached catalogue so they can keep selling.
+      toast.error("Couldn't load products — showing the last saved list.");
+      const cached = await readCachedProducts(business.id);
+      setProducts(cached as Product[]);
+      setLoading(false);
+      return;
+    }
     const rows = (data as Product[]) || [];
     setProducts(rows);
     setLoading(false);
@@ -372,13 +381,14 @@ export default function POS() {
   const openEod = async () => {
     if (!business) return;
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
-    const { data: todaySales } = await supabase
+    const { data: todaySales, error } = await supabase
       .from("sales")
       .select("id,total_amount,payment_method,sale_items(product_id,quantity,products(name))")
       .eq("business_id", business.id)
       .eq("voided", false)
       .gte("created_at", todayStart.toISOString());
 
+    if (error) return toast.error("Couldn't load today's sales for the end-of-day summary.");
     if (!todaySales) return;
     const byMethod: Record<string, number> = {};
     const prodQty: Record<string, { name: string; qty: number }> = {};
