@@ -190,9 +190,9 @@ export default function AppShell() {
   );
 
   return (
-    <div className="min-h-screen flex bg-gradient-soft">
+    <div className="min-h-[calc(100vh-var(--titlebar-h))] flex bg-gradient-soft">
       {/* Desktop Sidebar */}
-      <aside className={`hidden lg:flex flex-col bg-sidebar text-sidebar-foreground sticky top-0 h-screen transition-all duration-200 ${collapsed ? "w-16" : "w-64"}`}>
+      <aside className={`hidden lg:flex flex-col bg-sidebar text-sidebar-foreground sticky top-[var(--titlebar-h)] h-[calc(100vh-var(--titlebar-h))] transition-all duration-200 ${collapsed ? "w-16" : "w-64"}`}>
         {/* Brand + collapse toggle */}
         <div className={`flex items-center border-b border-sidebar-border shrink-0 ${collapsed ? "justify-center p-3" : "justify-between pl-6 pr-3 py-4"}`}>
           {collapsed ? (
@@ -252,7 +252,7 @@ export default function AppShell() {
 
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="sticky top-0 z-10 bg-background/80 backdrop-blur border-b border-border">
+        <header className="sticky top-[var(--titlebar-h)] z-10 bg-background/80 backdrop-blur border-b border-border">
           <div className="flex items-center gap-3 px-4 lg:px-8 h-16">
             {/* Mobile menu trigger */}
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
