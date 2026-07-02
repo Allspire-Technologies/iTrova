@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import { buildPdf } from "./pdf";
 
 describe("buildPdf", () => {
-  it("builds an invoice PDF with discount and a custom currency formatter", () => {
-    const doc = buildPdf({
+  it("builds an invoice PDF with discount and a custom currency formatter", async () => {
+    const doc = await buildPdf({
       docType: "INVOICE",
       docNumber: "INV-001",
       date: "2026-06-23",
@@ -24,8 +24,8 @@ describe("buildPdf", () => {
     expect(out.length).toBeGreaterThan(1000);
   });
 
-  it("falls back to the default formatter and omits the discount line when zero", () => {
-    const doc = buildPdf({
+  it("falls back to the default formatter and omits the discount line when zero", async () => {
+    const doc = await buildPdf({
       docType: "INVOICE",
       docNumber: "INV-002",
       date: "2026-06-23",

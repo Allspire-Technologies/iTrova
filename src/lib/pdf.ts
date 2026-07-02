@@ -1,6 +1,14 @@
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
 import { formatNaira } from "./format";
+
+// jsPDF (+autotable and its transitive html2canvas/dompurify chunks) is heavy — load it only when
+// someone actually exports a PDF, not at app startup (Experience Roadmap · Phase 1).
+async function loadPdf() {
+  const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+    import("jspdf"),
+    import("jspdf-autotable"),
+  ]);
+  return { jsPDF, autoTable };
+}
 
 export type PdfDocInput = {
   docType: "INVOICE" | "PURCHASE ORDER";
@@ -20,7 +28,8 @@ export type PdfDocInput = {
   notes?: string | null;
 };
 
-export function buildPdf(input: PdfDocInput) {
+export async function buildPdf(input: PdfDocInput) {
+  const { jsPDF, autoTable } = await loadPdf();
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
   const M = 40;
@@ -106,6 +115,6 @@ export function buildPdf(input: PdfDocInput) {
   return doc;
 }
 
-export function downloadPdf(input: PdfDocInput, filename: string) {
-  buildPdf(input).save(filename);
+export async function downloadPdf(input: PdfDocInput, filename: string) {
+  (await buildPdf(input)).save(filename);
 }

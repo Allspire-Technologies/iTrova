@@ -8,8 +8,6 @@ import { Label } from "@/components/ui/label";
 import { useCurrency } from "@/hooks/useCurrency";
 import { Download, TrendingUp, ShoppingCart, Package, AlertTriangle, Truck, Users, ArrowUpRight, ArrowDownRight, ChevronLeft, ChevronRight } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, AreaChart, Area, CartesianGrid } from "recharts";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
 import { toast } from "sonner";
 import { ReportsChartSkeleton } from "@/components/Skeletons";
 import {
@@ -137,7 +135,12 @@ export default function Reports() {
 
   const pct = pctChange;
 
-  const exportPdf = () => {
+  const exportPdf = async () => {
+    // jsPDF is heavy — load it only when the user actually exports (Experience Roadmap · Phase 1).
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import("jspdf"),
+      import("jspdf-autotable"),
+    ]);
     const doc = new jsPDF({ unit: "pt", format: "a4" });
     const M = 40; const w = doc.internal.pageSize.getWidth();
     doc.setFont("helvetica", "bold").setFontSize(20).text("Business Report", M, 56);

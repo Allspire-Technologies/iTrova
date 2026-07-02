@@ -4,8 +4,8 @@ import { LayoutDashboard, Package, ShoppingCart, Truck, FileText, ClipboardList,
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
-import { useEffect, useState } from "react";
-import { AppShellSkeleton } from "@/components/Skeletons";
+import { Suspense, useEffect, useState } from "react";
+import { AppShellSkeleton, TablePageSkeleton } from "@/components/Skeletons";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import NotificationsBell from "@/components/NotificationsBell";
 import HeaderClock from "@/components/HeaderClock";
@@ -315,7 +315,10 @@ export default function AppShell() {
         <OfflineBanner />
         <main className="flex-1 p-4 lg:p-8 animate-fade-in">
           <div key={location.key} className="w-full">
-            <Outlet />
+            {/* Lazy route chunks suspend here so the nav/header stay visible while they load. */}
+            <Suspense fallback={<TablePageSkeleton />}>
+              <Outlet />
+            </Suspense>
           </div>
         </main>
       </div>
