@@ -15,9 +15,52 @@ const PLACEHOLDER = "__BUILD_ID__";
 const PRECACHE_TOKEN = "/* __PRECACHE__ */";
 const ROOT = "dist";
 
-// The hashed JS/CSS bundles emitted by Vite. Precaching these (not just the HTML shell) is what
-// lets a cold launch render fully offline. Resilient: if dist/assets is missing, returns [].
-function assetUrls() {
+// The app only works offline for the modules OfflineGate allows — Dashboard, POS, Inventory and
+// Invoices (everything else is blocked offline). So the SW precaches the app shell + exactly the
+// chunks those four routes STATICALLY need, and nothing else. Online-only pages (Suppliers,
+// Reports, Team, Settings, …) and the heavy on-demand PDF-export stack (jspdf/autotable/
+// html2canvas/purify, reached only via a dynamic import) are left out — they still cache on-demand
+// the first time they're used online, so nothing breaks; this just keeps SW install lean and
+// reliable on a flaky connection.
+//
+// The set is computed from Vite's build manifest (build.manifest = true) by walking each seed's
+// STATIC import graph — following `imports`, never `dynamicImports` — which is exactly what a cold
+// offline navigation to that route requires. Precache these routes offline:
+const OFFLINE_SEEDS = [
+  "index.html", // the entry chunk = React + providers + Auth + AppShell (the shell/runtime)
+  "src/pages/Dashboard.tsx",
+  "src/pages/POS.tsx",
+  "src/pages/Inventory.tsx",
+  "src/pages/Invoices.tsx",
+];
+
+function offlineClosure() {
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(join(ROOT, ".vite", "manifest.json"), "utf8"));
+  } catch {
+    return null; // no manifest -> caller falls back to all assets
+  }
+  const files = new Set();
+  const seen = new Set();
+  const visit = (key) => {
+    if (seen.has(key) || !manifest[key]) return;
+    seen.add(key);
+    const node = manifest[key];
+    if (node.file) files.add(`/${node.file}`);
+    for (const c of node.css || []) files.add(`/${c}`);
+    for (const dep of node.imports || []) visit(dep); // static deps only
+  };
+  for (const seed of OFFLINE_SEEDS) {
+    if (!manifest[seed]) throw new Error(`stamp-sw: offline seed "${seed}" not found in the Vite manifest — did a route move?`);
+    visit(seed);
+  }
+  return [...files];
+}
+
+// Every hashed JS/CSS bundle — the fallback when the manifest is unavailable (keeps a working, if
+// larger, offline shell rather than none).
+function allAssets() {
   try {
     return readdirSync(join(ROOT, "assets"))
       .filter((f) => /\.(js|css)$/.test(f))
@@ -25,6 +68,10 @@ function assetUrls() {
   } catch {
     return [];
   }
+}
+
+function assetUrls() {
+  return offlineClosure() ?? allAssets();
 }
 
 function buildId() {

@@ -26,6 +26,9 @@ export default defineConfig(({ mode }) => ({
     },
     dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"],
   },
+  // Emit .vite/manifest.json so scripts/stamp-sw.mjs can compute the exact set of chunks the
+  // offline routes need (the SW precaches only those — see the stamper).
+  build: { manifest: true },
   test: {
     environment: "jsdom",
     globals: true,
