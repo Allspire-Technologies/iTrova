@@ -120,8 +120,10 @@ export default function Invoices() {
           customer_name: i.customer_name, total: Number(i.total), amount_paid: Number(i.amount_paid),
           status: i.status, cachedAt: Date.now(),
         }));
-      cacheInvoices(business.id, eligible).catch(() => {/* offline storage optional */});
-      countOfflineWork(business.id).then(setOfflinePending).catch(() => {/* optional */});
+      // Offline storage is optional (feature still works online) — don't surface to the user, but
+      // log so a broken IndexedDB is diagnosable rather than silent.
+      cacheInvoices(business.id, eligible).catch((e) => console.warn("cacheInvoices failed:", e));
+      countOfflineWork(business.id).then(setOfflinePending).catch((e) => console.warn("countOfflineWork failed:", e));
     }
   };
   useEffect(() => { if (business && online) load(); }, [business, online]);
@@ -161,7 +163,8 @@ export default function Invoices() {
       notes: inv.notes || "",
     });
     setDiscount(Number(inv.discount_amount) || 0);
-    const { data } = await supabase.from("invoice_items").select("*").eq("invoice_id", inv.id);
+    const { data, error } = await supabase.from("invoice_items").select("*").eq("invoice_id", inv.id);
+    if (error) toast.error("Couldn't load this invoice's items.");
     setLines((data as Item[]) || [{ description: "", quantity: 1, unit_price: 0, line_total: 0 }]);
     setOpen(true);
   };
@@ -327,11 +330,12 @@ export default function Invoices() {
   };
 
   const loadPayments = async (invoiceId: string) => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("invoice_payments")
       .select("*")
       .eq("invoice_id", invoiceId)
       .order("created_at", { ascending: true });
+    if (error) toast.error("Couldn't load this invoice's payment history.");
     setPayments((data as Payment[]) || []);
   };
 
@@ -387,7 +391,8 @@ export default function Invoices() {
   const openView = async (i: Invoice) => {
     setViewing(i);
     loadPayments(i.id);
-    const { data } = await supabase.from("invoice_items").select("*").eq("invoice_id", i.id);
+    const { data, error } = await supabase.from("invoice_items").select("*").eq("invoice_id", i.id);
+    if (error) toast.error("Couldn't load this invoice's items.");
     let resolved = (data as Item[]) || [];
 
     // Trigger-created invoices may have no invoice_items (trigger fired before sale_items
@@ -417,7 +422,8 @@ export default function Invoices() {
   };
 
   const exportPdf = async (i: Invoice) => {
-    const { data } = await supabase.from("invoice_items").select("*").eq("invoice_id", i.id);
+    const { data, error } = await supabase.from("invoice_items").select("*").eq("invoice_id", i.id);
+    if (error) return toast.error("Couldn't load the invoice's items — PDF not generated.");
     downloadPdf({
       docType: "INVOICE", docNumber: i.invoice_number, date: i.issue_date,
       dueDate: i.due_date, status: i.status,
@@ -432,7 +438,8 @@ export default function Invoices() {
   };
 
   const printReceipt = async (i: Invoice) => {
-    const { data } = await supabase.from("invoice_items").select("*").eq("invoice_id", i.id);
+    const { data, error } = await supabase.from("invoice_items").select("*").eq("invoice_id", i.id);
+    if (error) return toast.error("Couldn't load the invoice's items — receipt not generated.");
     const items = ((data as Item[]) || []).map(it => ({
       description: it.description,
       quantity: Number(it.quantity),

@@ -159,7 +159,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (sess?.user) {
         setTimeout(() => loadProfile(sess.user.id), 0);
         if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION") {
-          supabase.from("profiles").update({ last_seen: new Date().toISOString() }).eq("id", sess.user.id).then();
+          // Best-effort presence stamp — log if it fails, but never surface to the user.
+          supabase.from("profiles").update({ last_seen: new Date().toISOString() }).eq("id", sess.user.id)
+            .then(({ error }) => { if (error) console.warn("last_seen update failed:", error.message); });
         }
       } else {
         setProfile(null);
@@ -174,7 +176,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(sess?.user ?? null);
       if (sess?.user) {
         loadProfile(sess.user.id);
-        supabase.from("profiles").update({ last_seen: new Date().toISOString() }).eq("id", sess.user.id).then();
+        supabase.from("profiles").update({ last_seen: new Date().toISOString() }).eq("id", sess.user.id)
+          .then(({ error }) => { if (error) console.warn("last_seen update failed:", error.message); });
       }
       setLoading(false);
     });

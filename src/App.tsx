@@ -8,6 +8,8 @@ import { OnlineProvider } from "@/contexts/OnlineContext";
 import { PrewarmProvider } from "@/contexts/PrewarmContext";
 import AppShell from "@/components/AppShell";
 import Auth from "./pages/Auth";
+import ErrorBoundary from "@/components/ErrorBoundary";
+import PwaTitlebar from "@/components/PwaTitlebar";
 import { RoleGate } from "@/components/RoleGate";
 import { ModuleGate } from "@/components/ModuleGate";
 import { OfflineGate } from "@/components/OfflineGate";
@@ -40,6 +42,7 @@ const PageLoader = () => (
 );
 
 const App = () => (
+  <ErrorBoundary>
   <TooltipProvider>
     <Toaster />
     <Sonner />
@@ -47,6 +50,10 @@ const App = () => (
       <AuthProvider>
         <OnlineProvider>
         <PrewarmProvider>
+        {/* Installed-PWA title bar (renders only under Window Controls Overlay). The wrapper below
+            reserves its height so no route renders under it; --titlebar-h is 0 otherwise. */}
+        <PwaTitlebar />
+        <div style={{ paddingTop: "var(--titlebar-h)" }}>
         <Suspense fallback={<PageLoader />}>
         <Routes>
           <Route path="/auth" element={<Auth />} />
@@ -69,11 +76,13 @@ const App = () => (
           <Route path="*" element={<NotFound />} />
         </Routes>
         </Suspense>
+        </div>
         </PrewarmProvider>
         </OnlineProvider>
       </AuthProvider>
     </BrowserRouter>
   </TooltipProvider>
+  </ErrorBoundary>
 );
 
 export default App;
