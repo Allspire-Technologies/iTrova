@@ -13,7 +13,9 @@ const CACHE = `itrova-${VERSION}`;
 // instead of showing a blank screen while the scripts try to download. If the placeholder isn't
 // stamped (dev/preview) this is just an empty list and we fall back to caching the shell only.
 const ASSETS = [/* __PRECACHE__ */];
-const SHELL = ["/", "/index.html", "/manifest.webmanifest", ...ASSETS];
+// App icons are precached too so an installed PWA's splash/home-screen icon renders offline.
+const ICONS = ["/icon-192.png", "/icon-512.png", "/icon-maskable-512.png", "/apple-touch-icon.png", "/favicon.ico"];
+const SHELL = ["/", "/index.html", "/manifest.webmanifest", ...ICONS, ...ASSETS];
 
 self.addEventListener("install", (event) => {
   // Best-effort precache: a single missing/oversized asset must not fail the whole install

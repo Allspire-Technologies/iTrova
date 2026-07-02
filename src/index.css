@@ -1,4 +1,6 @@
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@500;600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap');
+/* Fonts load from index.html (<link rel="preconnect"> + stylesheet) instead of a CSS @import —
+   an @import inside the bundled CSS can't start downloading until the CSS itself has, which
+   delayed first paint by an extra round-trip (Experience Roadmap · Phase 1). */
 
 @tailwind base;
 @tailwind components;
