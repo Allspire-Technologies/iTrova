@@ -135,9 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         supabase.from("user_roles").select("role").eq("user_id", uid).eq("business_id", p.business_id),
       ]);
       if (bErr || rErr) { await hydrateFromCache(); return; } // offline mid-load
-      // select("*") returns the new industry_other/city/state columns at runtime; the generated
-      // types lag until regenerated, so widen through unknown.
-      const biz = b as unknown as Business | null;
+      const biz = b as Business | null;
       if (biz) {
         applyBusiness(biz);
       } else {
