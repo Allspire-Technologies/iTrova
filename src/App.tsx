@@ -8,6 +8,7 @@ import { OnlineProvider } from "@/contexts/OnlineContext";
 import { PrewarmProvider } from "@/contexts/PrewarmContext";
 import AppShell from "@/components/AppShell";
 import Auth from "./pages/Auth";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import { RoleGate } from "@/components/RoleGate";
 import { ModuleGate } from "@/components/ModuleGate";
 import { OfflineGate } from "@/components/OfflineGate";
@@ -40,6 +41,7 @@ const PageLoader = () => (
 );
 
 const App = () => (
+  <ErrorBoundary>
   <TooltipProvider>
     <Toaster />
     <Sonner />
@@ -74,6 +76,7 @@ const App = () => (
       </AuthProvider>
     </BrowserRouter>
   </TooltipProvider>
+  </ErrorBoundary>
 );
 
 export default App;

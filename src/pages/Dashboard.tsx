@@ -36,7 +36,9 @@ export default function Dashboard() {
   // Silently mark invited staff as onboarded — they skip the owner setup flow
   useEffect(() => {
     if (profile && profile.onboarded === false && role && role !== "owner" && user) {
-      supabase.from("profiles").update({ onboarded: true }).eq("id", user.id).then();
+      // Best-effort: silently mark invited staff as onboarded; log if it fails.
+      supabase.from("profiles").update({ onboarded: true }).eq("id", user.id)
+        .then(({ error }) => { if (error) console.warn("onboarded update failed:", error.message); });
     }
   }, [profile, role, user]);
 
