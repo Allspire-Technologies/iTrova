@@ -13,6 +13,10 @@
 
 @layer base {
   :root {
+    /* Height reserved at the top for the installed-PWA title bar (Window Controls Overlay).
+       Resolves to 0 in a normal browser tab / non-WCO install, so all the offsets that reference
+       it are no-ops there — the title bar only takes space when the OS overlay is actually shown. */
+    --titlebar-h: env(titlebar-area-height, 0px);
     /* Brand */
     --background: 150 40% 98%;
     --foreground: 165 80% 9%;
