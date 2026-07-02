@@ -6,6 +6,10 @@ function Boom(): JSX.Element {
   throw new Error("kaboom");
 }
 
+function ChunkBoom(): JSX.Element {
+  throw new Error("Failed to fetch dynamically imported module: /assets/Invoices-abc.js");
+}
+
 describe("ErrorBoundary", () => {
   afterEach(() => vi.restoreAllMocks());
 
@@ -20,5 +24,12 @@ describe("ErrorBoundary", () => {
     render(<ErrorBoundary><Boom /></ErrorBoundary>);
     expect(screen.getByText("Something went wrong")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
+  });
+
+  it("shows a connection-oriented message for a failed chunk load", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    render(<ErrorBoundary><ChunkBoom /></ErrorBoundary>);
+    expect(screen.getByText("Couldn't load this page")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
   });
 });

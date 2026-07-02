@@ -1,5 +1,6 @@
-import { lazy, Suspense } from "react";
+import { Suspense } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { lazyWithRetry as lazy } from "@/lib/lazyWithRetry";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -16,8 +17,9 @@ import { OfflineGate } from "@/components/OfflineGate";
 
 // Every page except Auth is code-split so the entry bundle stays small (Experience Roadmap ·
 // Phase 1). Auth stays eager: it's the first paint for logged-out users. The service worker
-// precaches every chunk (scripts/stamp-sw.mjs lists all built JS), so lazy routes still load
-// offline. Pages inside AppShell suspend into the Outlet fallback there, keeping the nav visible.
+// precaches the offline routes' chunks, so they still load offline. Pages inside AppShell suspend
+// into the Outlet fallback there, keeping the nav visible. lazyWithRetry retries a chunk import a
+// couple of times before failing, to ride out flaky connections and post-deploy hash changes.
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const AcceptInvite = lazy(() => import("./pages/AcceptInvite"));
 const InviteAuth = lazy(() => import("./pages/InviteAuth"));

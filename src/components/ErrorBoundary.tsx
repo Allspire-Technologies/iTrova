@@ -1,5 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, WifiOff } from "lucide-react";
 
 type Props = {
   children: ReactNode;
@@ -7,6 +7,15 @@ type Props = {
   variant?: "screen" | "inline";
 };
 type State = { error: Error | null };
+
+// A code-split page whose chunk can't be downloaded (offline for an un-cached route, a flaky
+// connection, or a hashed chunk that 404s briefly after a deploy) throws this kind of error. We
+// show a connection-oriented message + Retry for it, rather than the generic crash copy.
+function isChunkLoadError(e: Error | null): boolean {
+  if (!e) return false;
+  const s = `${e.name} ${e.message}`;
+  return /ChunkLoadError|dynamically imported module|Loading chunk|Importing a module script failed|error loading dynamically imported module/i.test(s);
+}
 
 // Catches render/lifecycle errors anywhere below it and shows a recoverable fallback instead of a
 // blank white screen (Experience Roadmap · Phase 2 · F2). Intentionally dependency-light — it must
@@ -29,22 +38,27 @@ export default class ErrorBoundary extends Component<Props, State> {
     if (!this.state.error) return this.props.children;
 
     const inline = this.props.variant === "inline";
+    const chunk = isChunkLoadError(this.state.error);
+    const Icon = chunk ? WifiOff : AlertTriangle;
     return (
       <div className={`${inline ? "min-h-[60vh]" : "min-h-screen bg-gradient-soft"} grid place-items-center p-4`}>
         <div className="max-w-md w-full rounded-2xl border border-border bg-card p-8 text-center shadow-card space-y-4">
           <div className="size-12 rounded-xl bg-danger/10 text-danger grid place-items-center mx-auto">
-            <AlertTriangle className="size-6" />
+            <Icon className="size-6" />
           </div>
-          <h1 className="font-display text-xl font-bold text-brand-dark">Something went wrong</h1>
+          <h1 className="font-display text-xl font-bold text-brand-dark">
+            {chunk ? "Couldn't load this page" : "Something went wrong"}
+          </h1>
           <p className="text-sm text-muted-foreground">
-            The app hit an unexpected error. Reloading usually fixes it — any sales you saved offline
-            are safe on this device.
+            {chunk
+              ? "This page couldn't be downloaded — check your internet connection and try again. Any sales you saved offline are safe on this device."
+              : "The app hit an unexpected error. Reloading usually fixes it — any sales you saved offline are safe on this device."}
           </p>
           <button
             onClick={this.reload}
             className="inline-flex h-11 items-center justify-center rounded-lg bg-brand px-6 text-sm font-medium text-brand-foreground shadow-brand transition-opacity hover:opacity-90"
           >
-            Reload
+            {chunk ? "Try again" : "Reload"}
           </button>
         </div>
       </div>
