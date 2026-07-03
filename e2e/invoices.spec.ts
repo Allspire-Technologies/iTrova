@@ -56,6 +56,26 @@ test.describe("Invoices", () => {
     await expect(page.getByRole("menuitem", { name: "Delete" })).toBeVisible();
   });
 
+  test("deleting a POS invoice reverses the sale via the delete_invoice RPC", async ({ page }) => {
+    await authenticate(page, { role: "owner" });
+    await stubRows(page, "invoices", [paidInvoice]);
+    // Capture the RPC the delete routes through — it must be delete_invoice (which reverses the sale),
+    // not a bare invoices DELETE (which would leave the sale counting on the dashboard).
+    let rpcBody: unknown = null;
+    await page.route("**/rest/v1/rpc/delete_invoice**", (r) => {
+      rpcBody = r.request().postDataJSON();
+      return r.fulfill({ status: 200, contentType: "application/json", body: "null" });
+    });
+    await page.goto("/invoices");
+    await page.getByRole("button", { name: "More actions" }).click();
+    await page.getByRole("menuitem", { name: "Delete" }).click();
+    // The confirm copy warns a POS invoice's stock is returned (sale_id is set on this invoice).
+    await expect(page.getByText(/returned to inventory/i)).toBeVisible();
+    await page.getByRole("button", { name: "Delete" }).click();
+    await expect(page.getByText("Invoice deleted")).toBeVisible();
+    expect(rpcBody).toEqual({ _invoice_id: "inv-1" });
+  });
+
   test("an owner/manager can edit the discount on a POS invoice", async ({ page }) => {
     await authenticate(page, { role: "owner" });
     await stubRows(page, "invoices", [paidInvoice]); // paidInvoice has a sale_id (POS-originated)

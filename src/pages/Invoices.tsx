@@ -284,9 +284,13 @@ export default function Invoices() {
   const remove = (i: Invoice) => {
     setPending({
       title: `Delete ${i.invoice_number}?`,
-      description: "This invoice and all its line items will be permanently deleted.",
+      description: i.sale_id
+        ? "This invoice and its sale will be permanently deleted, and the sold stock returned to inventory."
+        : "This invoice and all its line items will be permanently deleted.",
       onConfirm: async () => {
-        const { error } = await supabase.from("invoices").delete().eq("id", i.id);
+        // delete_invoice reverses the linked sale (returns stock + drops it from the dashboard/reports)
+        // before removing the invoice, so a deleted transaction no longer counts.
+        const { error } = await supabase.rpc("delete_invoice" as any, { _invoice_id: i.id });
         if (error) return toast.error(error.message);
         toast.success("Invoice deleted"); load();
       },
