@@ -274,11 +274,18 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
   };
 
   const deleteOrder = (o: Order) => {
+    const reverses = o.invoice_id || o.stock_deducted;
     setPending({
       title: `Delete order for ${o.customer_name}?`,
-      description: "This order and all its items will be permanently deleted.",
+      description: o.invoice_id
+        ? "This order and its sale/invoice will be permanently deleted, and the stock returned to inventory."
+        : reverses
+        ? "This order will be permanently deleted and its reserved stock returned to inventory."
+        : "This order and all its items will be permanently deleted.",
       onConfirm: async () => {
-        const { error } = await supabase.from("orders").delete().eq("id", o.id);
+        // delete_order reverses whatever stock the order holds (via its sale for a delivered order, or
+        // directly for a shipped one) before removing it, so a deleted order no longer counts.
+        const { error } = await supabase.rpc("delete_order" as any, { _order_id: o.id });
         if (error) return toast.error(error.message);
         toast.success("Order deleted");
         load();
