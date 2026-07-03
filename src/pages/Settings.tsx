@@ -231,6 +231,11 @@ export default function Settings() {
   const [exportPhone, setExportPhone] = useState("");
   const [exportCountry, setExportCountry] = useState("");
   const [exportPrefix, setExportPrefix] = useState("");
+  const [exportRc, setExportRc] = useState("");
+  const [exportBankName, setExportBankName] = useState("");
+  const [exportAccountName, setExportAccountName] = useState("");
+  const [exportAccountNumber, setExportAccountNumber] = useState("");
+  const [exportSwift, setExportSwift] = useState("");
   const [exporterBusy, setExporterBusy] = useState(false);
 
   // Regional
@@ -278,6 +283,11 @@ export default function Settings() {
       setExportPhone(business.export_phone || "");
       setExportCountry(business.export_country || "");
       setExportPrefix(business.export_invoice_prefix || "");
+      setExportRc(business.export_rc_number || "");
+      setExportBankName(business.export_bank_name || "");
+      setExportAccountName(business.export_account_name || "");
+      setExportAccountNumber(business.export_account_number || "");
+      setExportSwift(business.export_swift || "");
     }
     if (profile) setOwnerName(profile.owner_name || "");
   }, [business, profile]);
@@ -325,6 +335,11 @@ export default function Settings() {
       export_phone: exportPhone.trim() || null,
       export_country: exportCountry.trim() || null,
       export_invoice_prefix: exportPrefix.trim().toUpperCase() || null,
+      export_rc_number: exportRc.trim() || null,
+      export_bank_name: exportBankName.trim() || null,
+      export_account_name: exportAccountName.trim() || null,
+      export_account_number: exportAccountNumber.trim() || null,
+      export_swift: exportSwift.trim() || null,
     } as any).eq("id", business.id);
     setExporterBusy(false);
     if (error) return toast.error(error.message);
@@ -406,8 +421,8 @@ export default function Settings() {
     [business?.name || "", business?.industry || "", business?.industry_other || "", business?.city || "", business?.state || "", profile?.owner_name || ""],
   );
   const exporterDirty = isDirty(
-    [exportAddress, exportEmail, exportPhone, exportCountry, exportPrefix],
-    [business?.export_address || "", business?.export_email || "", business?.export_phone || "", business?.export_country || "", business?.export_invoice_prefix || ""],
+    [exportAddress, exportEmail, exportPhone, exportCountry, exportPrefix, exportRc, exportBankName, exportAccountName, exportAccountNumber, exportSwift],
+    [business?.export_address || "", business?.export_email || "", business?.export_phone || "", business?.export_country || "", business?.export_invoice_prefix || "", business?.export_rc_number || "", business?.export_bank_name || "", business?.export_account_name || "", business?.export_account_number || "", business?.export_swift || ""],
   );
   const regionalDirty = isDirty([currency, timezone], [business?.currency || "NGN", business?.timezone || "Africa/Lagos"]);
   const integrationsDirty = isDirty([whatsapp], [business?.whatsapp_number || ""]);
@@ -516,6 +531,30 @@ export default function Settings() {
                 <Input value={exportPrefix} onChange={e => setExportPrefix(e.target.value)} placeholder="e.g. ABC" />
                 <p className="text-xs text-muted-foreground">Used in numbers like {(exportPrefix.trim().toUpperCase() || "PREFIX")}/EXP/{new Date().getFullYear()}/001.</p>
               </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>RC number</Label>
+                <Input value={exportRc} onChange={e => setExportRc(e.target.value)} placeholder="Company registration number" />
+              </div>
+              <div className="space-y-2">
+                <Label>Bank name</Label>
+                <Input value={exportBankName} onChange={e => setExportBankName(e.target.value)} placeholder="Bank name" />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Account name</Label>
+                <Input value={exportAccountName} onChange={e => setExportAccountName(e.target.value)} placeholder="Account holder name" />
+              </div>
+              <div className="space-y-2">
+                <Label>Account number</Label>
+                <Input value={exportAccountNumber} onChange={e => setExportAccountNumber(e.target.value)} placeholder="Account number" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>SWIFT / IBAN <span className="text-muted-foreground font-normal">(optional)</span></Label>
+              <Input value={exportSwift} onChange={e => setExportSwift(e.target.value)} placeholder="SWIFT or IBAN" />
             </div>
             <div className="flex justify-end">
               <Button variant="brand" onClick={saveExporter} disabled={exporterBusy || !exporterDirty}>

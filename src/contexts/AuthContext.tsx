@@ -31,6 +31,11 @@ type Business = {
   export_phone: string | null;
   export_country: string | null;
   export_invoice_prefix: string | null;
+  export_rc_number: string | null;
+  export_bank_name: string | null;
+  export_account_name: string | null;
+  export_account_number: string | null;
+  export_swift: string | null;
   subscription_tier: string | null;
   subscription_renews_at: string | null;
   subscription_started_at: string | null;

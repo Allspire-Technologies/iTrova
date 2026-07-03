@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 // The module imports the Supabase client (no env in CI) — stub it; these tests only touch pure helpers.
 vi.mock("@/integrations/supabase/client", () => ({ supabase: {} }));
 
-import { lineTotal, invoiceTotal, formatExportMoney, emptyItem } from "./exportInvoice";
+import { lineTotal, invoiceTotal, totalCartons, depletionQty, formatExportMoney, numberToWords, amountInWords, emptyItem } from "./exportInvoice";
 
 describe("lineTotal", () => {
   it("multiplies boxes by unit price", () => {
@@ -26,6 +26,30 @@ describe("invoiceTotal", () => {
   });
   it("is zero for no lines", () => {
     expect(invoiceTotal([])).toBe(0);
+  });
+});
+
+describe("totalCartons + depletionQty", () => {
+  it("sums boxes for the summary and deducts boxes x units/box from stock", () => {
+    const items = [
+      { ...emptyItem(), boxes: 10, units_per_box: 48 },
+      { ...emptyItem(), boxes: 5, units_per_box: 12 },
+    ];
+    expect(totalCartons(items)).toBe(15);
+    expect(depletionQty(items[0])).toBe(480);
+    expect(depletionQty(items[1])).toBe(60);
+  });
+});
+
+describe("numberToWords + amountInWords", () => {
+  it("spells integers", () => {
+    expect(numberToWords(0)).toBe("Zero");
+    expect(numberToWords(768000)).toBe("Seven Hundred and Sixty-Eight Thousand");
+    expect(numberToWords(31927000)).toBe("Thirty-One Million, Nine Hundred and Twenty-Seven Thousand");
+  });
+  it("appends the currency word and Only", () => {
+    expect(amountInWords(31927000, "NGN")).toBe("Thirty-One Million, Nine Hundred and Twenty-Seven Thousand Naira Only");
+    expect(amountInWords(2500, "USD")).toBe("Two Thousand, Five Hundred US Dollars Only");
   });
 });
 
