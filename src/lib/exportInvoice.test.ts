@@ -1,4 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+// The module imports the Supabase client (no env in CI) — stub it; these tests only touch pure helpers.
+vi.mock("@/integrations/supabase/client", () => ({ supabase: {} }));
+
 import { lineTotal, invoiceTotal, formatExportMoney, emptyItem } from "./exportInvoice";
 
 describe("lineTotal", () => {
