@@ -1,15 +1,17 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Plus, FileDown, Ship } from "lucide-react";
+import { Plus, FileDown, Ship, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { TablePageSkeleton } from "@/components/Skeletons";
+import { useAuth } from "@/contexts/AuthContext";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { listExportInvoices, downloadExportInvoicePdf, formatExportMoney, type ExportInvoiceRecord } from "@/lib/exportInvoice";
 
 export default function ExportInvoiceList() {
   const navigate = useNavigate();
+  const isOwner = useAuth().role === "owner";
   const { fmtDate } = useDateFormat();
   const [items, setItems] = useState<ExportInvoiceRecord[] | null>(null);
 
@@ -52,8 +54,13 @@ export default function ExportInvoiceList() {
                   {inv.buyer.name || "—"} · {fmtDate(inv.invoice_date)} · {inv.total_cartons} cartons
                 </p>
               </div>
-              <div className="flex items-center gap-3">
-                <span className="font-medium text-brand-dark">{formatExportMoney(inv.total, inv.currency)}</span>
+              <div className="flex items-center gap-2">
+                <span className="mr-1 font-medium text-brand-dark">{formatExportMoney(inv.total, inv.currency)}</span>
+                {isOwner && (
+                  <Button variant="ghost" size="sm" onClick={() => navigate(`/export-invoice/${inv.id}/edit`)}>
+                    <Pencil className="size-4" /> Edit
+                  </Button>
+                )}
                 <Button variant="outline" size="sm" onClick={() => downloadExportInvoicePdf(inv, `${inv.invoice_number.replace(/[^\w.-]+/g, "-")}.pdf`)}>
                   <FileDown className="size-4" /> PDF
                 </Button>

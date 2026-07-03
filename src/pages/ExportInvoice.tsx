@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { ArrowLeft, Plus, Trash2, FileDown, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -15,7 +15,10 @@ import {
   totalCartons,
   depletionQty,
   formatExportMoney,
+  nextExportInvoiceNumber,
   saveExportInvoice,
+  updateExportInvoice,
+  getExportInvoice,
   downloadExportInvoicePdf,
   type ExportInvoiceItem,
   type ExportInvoiceDraft,
@@ -29,12 +32,16 @@ const selectCls = "h-10 w-full rounded-md border border-input bg-background px-2
 
 export default function ExportInvoice() {
   const navigate = useNavigate();
+  const { id } = useParams();
+  const editing = !!id;
   const { business, role } = useAuth();
   const isOwner = role === "owner";
 
   const [seller, setSeller] = useState({ name: "", address: "", email: "", phone: "", rc: "" });
   const [bank, setBank] = useState({ bank_name: "", account_name: "", account_number: "", swift: "" });
   const [buyer, setBuyer] = useState({ name: "", address: "", country: "" });
+  const [number, setNumber] = useState("");
+  const [numberLoading, setNumberLoading] = useState(true);
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [country, setCountry] = useState("");
   const [currency, setCurrency] = useState("NGN");
@@ -46,6 +53,23 @@ export default function ExportInvoice() {
 
   useEffect(() => {
     if (!business) return;
+    supabase.from("products").select("id,name,stock_quantity,unit,selling_price").order("name").then(({ data }) => {
+      if (data) setProducts(data as Product[]);
+    });
+
+    if (editing && id) {
+      // Editing a saved invoice: load its snapshot (not the current business defaults).
+      getExportInvoice(id).then((rec) => {
+        if (!rec) { toast.error("Export invoice not found"); navigate("/export-invoice"); return; }
+        setSeller(rec.seller); setBank(rec.bank); setBuyer(rec.buyer);
+        setNumber(rec.invoice_number); setDate(rec.invoice_date); setCountry(rec.country_of_origin);
+        setCurrency(rec.currency); setShipping(rec.shipping);
+        setItems(rec.items.length ? rec.items : [emptyItem()]); setNotes(rec.notes);
+      }).catch((e) => toast.error(e?.message ?? "Couldn't load the invoice")).finally(() => setNumberLoading(false));
+      return;
+    }
+
+    // New invoice: prefill seller/bank from the exporter profile + suggest the next number.
     setSeller({
       name: business.name || "",
       address: [business.export_address, business.city, business.state].filter(Boolean).join(", "),
@@ -61,10 +85,8 @@ export default function ExportInvoice() {
     });
     setCountry(business.export_country || "");
     setCurrency(business.currency || "NGN");
-    supabase.from("products").select("id,name,stock_quantity,unit,selling_price").order("name").then(({ data }) => {
-      if (data) setProducts(data as Product[]);
-    });
-  }, [business]);
+    nextExportInvoiceNumber(business.id).then(setNumber).catch(() => {}).finally(() => setNumberLoading(false));
+  }, [business, id, editing, navigate]);
 
   const total = useMemo(() => invoiceTotal(items), [items]);
   const cartons = useMemo(() => totalCartons(items), [items]);
@@ -88,6 +110,7 @@ export default function ExportInvoice() {
 
   async function saveAndDownload() {
     if (!business) return;
+    if (!number.trim()) return toast.error("Enter an invoice number");
     if (!buyer.name.trim()) return toast.error("Enter the buyer's name");
     const usable = items.filter((it) => it.description.trim() && (Number(it.boxes) || 0) > 0);
     if (usable.length === 0) return toast.error("Add at least one line with a description and boxes");
@@ -100,14 +123,16 @@ export default function ExportInvoice() {
 
     setBusy(true);
     try {
-      const draft: ExportInvoiceDraft = { invoice_number: "", invoice_date: date, country_of_origin: country.trim(), currency, seller, buyer, shipping, bank, items: usable, notes: notes.trim() };
-      const saved = await saveExportInvoice(business.id, draft);
+      const draft: ExportInvoiceDraft = { invoice_number: number.trim(), invoice_date: date, country_of_origin: country.trim(), currency, seller, buyer, shipping, bank, items: usable, notes: notes.trim() };
+      const saved = editing && id ? await updateExportInvoice(id, business.id, draft) : await saveExportInvoice(business.id, draft);
       await downloadExportInvoicePdf(saved, `${saved.invoice_number.replace(/[^\w.-]+/g, "-")}.pdf`);
-      toast.success(`Export invoice ${saved.invoice_number} saved`);
+      toast.success(`Export invoice ${saved.invoice_number} ${editing ? "updated" : "saved"}`);
       navigate("/export-invoice");
     } catch (e) {
       const msg = (e as { message?: string })?.message ?? "Couldn't save the invoice";
-      toast.error(msg.includes("INSUFFICIENT_STOCK") ? `Not enough stock for ${msg.split("INSUFFICIENT_STOCK:")[1]?.trim() || "an item"}` : msg);
+      if (/duplicate key|already exists|unique constraint/i.test(msg)) toast.error(`Invoice number "${number.trim()}" is already used — choose another`);
+      else if (msg.includes("INSUFFICIENT_STOCK")) toast.error(`Not enough stock for ${msg.split("INSUFFICIENT_STOCK:")[1]?.trim() || "an item"}`);
+      else toast.error(msg);
     } finally {
       setBusy(false);
     }
@@ -127,8 +152,8 @@ export default function ExportInvoice() {
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="icon" onClick={() => navigate("/export-invoice")} aria-label="Back to export invoices"><ArrowLeft className="size-5" /></Button>
         <div>
-          <h1 className="font-display text-2xl lg:text-3xl font-bold text-brand-dark">New Export Invoice</h1>
-          <p className="text-muted-foreground text-sm">The number is assigned automatically. Saving depletes the linked product stock.</p>
+          <h1 className="font-display text-2xl lg:text-3xl font-bold text-brand-dark">{editing ? "Edit Export Invoice" : "New Export Invoice"}</h1>
+          <p className="text-muted-foreground text-sm">{editing ? "Editing adjusts inventory to match the new quantities." : "The number is suggested automatically. Saving depletes the linked product stock."}</p>
         </div>
       </div>
 
@@ -156,6 +181,11 @@ export default function ExportInvoice() {
         <Card className="shadow-card border-border/60">
           <CardHeader className="pb-3"><CardTitle className="font-display text-lg">Invoice details</CardTitle></CardHeader>
           <CardContent className="space-y-3">
+            <div className="space-y-2">
+              <Label>Invoice number</Label>
+              <Input value={numberLoading ? "" : number} onChange={(e) => setNumber(e.target.value)} placeholder={numberLoading ? "Suggesting…" : "Invoice number"} aria-label="Invoice number" />
+              <p className="text-xs text-muted-foreground">Suggested automatically — edit it if you need a different one.</p>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-2"><Label>Date</Label><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
               <div className="space-y-2">
@@ -234,7 +264,7 @@ export default function ExportInvoice() {
           <div className="space-y-2 sm:col-span-2"><Label>Notes (optional)</Label><textarea className={textareaCls} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything else to appear on the invoice" /></div>
           <div className="sm:col-span-2 flex justify-end">
             <Button variant="brand" onClick={saveAndDownload} disabled={busy}>
-              {busy ? <Loader2 className="size-4 animate-spin" /> : <FileDown className="size-4" />} Save &amp; download PDF
+              {busy ? <Loader2 className="size-4 animate-spin" /> : <FileDown className="size-4" />} {editing ? "Update" : "Save"} &amp; download PDF
             </Button>
           </div>
         </CardContent>

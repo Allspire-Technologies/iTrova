@@ -113,14 +113,10 @@ export async function nextExportInvoiceNumber(businessId: string): Promise<strin
   return data as string;
 }
 
-/** Save via the atomic RPC: deducts stock for product-linked lines, numbers, and inserts. */
-export async function saveExportInvoice(businessId: string, draft: ExportInvoiceDraft): Promise<ExportInvoiceRecord> {
-  const items = draft.items.map((it) => ({ ...it, total: lineTotal(it) }));
-  const total = invoiceTotal(items);
-  const cartons = totalCartons(items);
-  const words = amountInWords(total, draft.currency);
-  const payload = {
+function toPayload(businessId: string, draft: ExportInvoiceDraft, items: ExportInvoiceItem[], words: string) {
+  return {
     business_id: businessId,
+    invoice_number: draft.invoice_number.trim() || null,
     invoice_date: draft.invoice_date,
     country_of_origin: draft.country_of_origin || null,
     currency: draft.currency,
@@ -144,11 +140,38 @@ export async function saveExportInvoice(businessId: string, draft: ExportInvoice
     notes: draft.notes || null,
     items,
   };
+}
+
+/** Save via the atomic RPC: deducts stock for product-linked lines, numbers, and inserts. */
+export async function saveExportInvoice(businessId: string, draft: ExportInvoiceDraft): Promise<ExportInvoiceRecord> {
+  const items = draft.items.map((it) => ({ ...it, total: lineTotal(it) }));
+  const total = invoiceTotal(items);
+  const words = amountInWords(total, draft.currency);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await supabase.rpc("create_export_invoice" as any, { _data: payload });
+  const { data, error } = await supabase.rpc("create_export_invoice" as any, { _data: toPayload(businessId, draft, items, words) });
   if (error) throw error;
   const res = data as { id: string; invoice_number: string; total: number; total_cartons: number };
   return { ...draft, items, invoice_number: res.invoice_number, id: res.id, subtotal: res.total, total: res.total, total_cartons: res.total_cartons, amount_in_words: words, created_at: new Date().toISOString() };
+}
+
+/** Update a saved invoice, atomically reconciling stock (reverse old lines, apply new). */
+export async function updateExportInvoice(id: string, businessId: string, draft: ExportInvoiceDraft): Promise<ExportInvoiceRecord> {
+  const items = draft.items.map((it) => ({ ...it, total: lineTotal(it) }));
+  const total = invoiceTotal(items);
+  const words = amountInWords(total, draft.currency);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await supabase.rpc("update_export_invoice" as any, { _id: id, _data: toPayload(businessId, draft, items, words) });
+  if (error) throw error;
+  const res = data as { id: string; invoice_number: string; total: number; total_cartons: number };
+  return { ...draft, items, invoice_number: res.invoice_number, id: res.id, subtotal: res.total, total: res.total, total_cartons: res.total_cartons, amount_in_words: words, created_at: new Date().toISOString() };
+}
+
+/** Fetch one saved invoice by id (RLS scopes it to the caller's business). */
+export async function getExportInvoice(id: string): Promise<ExportInvoiceRecord | null> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await supabase.from("export_invoices" as any).select("*").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data ? fromRow(data) : null;
 }
 
 export async function listExportInvoices(limit = 50): Promise<ExportInvoiceRecord[]> {
