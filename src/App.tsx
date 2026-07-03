@@ -26,6 +26,7 @@ const InviteAuth = lazy(() => import("./pages/InviteAuth"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Inventory = lazy(() => import("./pages/Inventory"));
 const ExportInvoiceList = lazy(() => import("./pages/ExportInvoiceList"));
+const ExportInvoiceView = lazy(() => import("./pages/ExportInvoiceView"));
 const ExportInvoice = lazy(() => import("./pages/ExportInvoice"));
 const POS = lazy(() => import("./pages/POS"));
 const Suppliers = lazy(() => import("./pages/Suppliers"));
@@ -70,6 +71,7 @@ const App = () => (
             <Route path="/inventory" element={<RoleGate allow={["owner","manager"]}><ModuleGate module="inventory"><Inventory /></ModuleGate></RoleGate>} />
             <Route path="/export-invoice" element={<OfflineGate><RoleGate allow={["owner","manager"]}><ModuleGate module="export_invoices"><ExportInvoiceList /></ModuleGate></RoleGate></OfflineGate>} />
             <Route path="/export-invoice/new" element={<OfflineGate><RoleGate allow={["owner","manager"]}><ModuleGate module="export_invoices"><ExportInvoice /></ModuleGate></RoleGate></OfflineGate>} />
+            <Route path="/export-invoice/:id" element={<OfflineGate><RoleGate allow={["owner","manager"]}><ModuleGate module="export_invoices"><ExportInvoiceView /></ModuleGate></RoleGate></OfflineGate>} />
             <Route path="/export-invoice/:id/edit" element={<OfflineGate><RoleGate allow={["owner"]}><ModuleGate module="export_invoices"><ExportInvoice /></ModuleGate></RoleGate></OfflineGate>} />
             <Route path="/suppliers" element={<OfflineGate><RoleGate allow={["owner","manager"]}><ModuleGate module="suppliers"><Suppliers /></ModuleGate></RoleGate></OfflineGate>} />
             <Route path="/raw-materials" element={<OfflineGate><RoleGate allow={["owner","manager"]}><ModuleGate module="raw_materials"><RawMaterials /></ModuleGate></RoleGate></OfflineGate>} />

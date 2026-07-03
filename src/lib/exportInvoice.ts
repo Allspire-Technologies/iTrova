@@ -320,3 +320,84 @@ export async function buildExportInvoicePdf(inv: ExportInvoiceDraft) {
 export async function downloadExportInvoicePdf(inv: ExportInvoiceDraft, filename: string) {
   (await buildExportInvoicePdf(inv)).save(filename);
 }
+
+// ---------------------------------------------------------------- DOCX
+/** Build the commercial invoice as a Word document (docx loaded on demand). */
+export async function buildExportInvoiceDocx(inv: ExportInvoiceDraft): Promise<Blob> {
+  const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, AlignmentType, HeadingLevel } = await import("docx");
+  type Align = (typeof AlignmentType)[keyof typeof AlignmentType];
+  const items = inv.items.map((it) => ({ ...it, total: lineTotal(it) }));
+  const total = invoiceTotal(items);
+  const money = (n: number) => formatExportMoney(n, inv.currency);
+
+  const H = (text: string) => new Paragraph({ spacing: { before: 200, after: 60 }, children: [new TextRun({ text, bold: true })] });
+  const P = (text: string) => new Paragraph({ children: [new TextRun(text)] });
+  const B = (text: string) => new Paragraph({ children: [new TextRun({ text, bold: true })] });
+  const KV = (k: string, v: string) => new Paragraph({ children: [new TextRun({ text: `${k}: `, bold: true }), new TextRun(v)] });
+  const cell = (text: string, bold = false, align?: Align) =>
+    new TableCell({ width: { size: 0, type: WidthType.AUTO }, children: [new Paragraph({ alignment: align, children: [new TextRun({ text, bold })] })] });
+
+  const itemsTable = new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    rows: [
+      new TableRow({ tableHeader: true, children: ["No", "Product Description", "Size", "Units/Box", "Boxes", `Unit Price (${inv.currency})`, `Total (${inv.currency})`].map((t) => cell(t, true)) }),
+      ...items.map((it, i) => new TableRow({ children: [
+        cell(String(i + 1), false, AlignmentType.RIGHT),
+        cell(it.description),
+        cell(it.size),
+        cell(it.units_per_box ? String(it.units_per_box) : ""),
+        cell(String(it.boxes), false, AlignmentType.RIGHT),
+        cell(money(it.unit_price), false, AlignmentType.RIGHT),
+        cell(money(it.total), false, AlignmentType.RIGHT),
+      ] })),
+    ],
+  });
+
+  const children: Array<InstanceType<typeof Paragraph> | InstanceType<typeof Table>> = [
+    new Paragraph({ alignment: AlignmentType.CENTER, heading: HeadingLevel.HEADING_1, children: [new TextRun({ text: "INTERNATIONAL COMMERCIAL INVOICE", bold: true })] }),
+    H("SELLER (EXPORTER)"), B(inv.seller.name || "—"),
+  ];
+  if (inv.seller.address) children.push(P(inv.seller.address));
+  if (inv.seller.email) children.push(KV("Email", inv.seller.email));
+  if (inv.seller.phone) children.push(KV("Phone", inv.seller.phone));
+  if (inv.seller.rc) children.push(KV("RC", inv.seller.rc));
+
+  children.push(H("INVOICE DETAILS"), KV("Invoice No", inv.invoice_number), KV("Date", inv.invoice_date));
+  if (inv.country_of_origin) children.push(KV("Country of Origin", inv.country_of_origin));
+
+  children.push(H("BUYER (IMPORTER)"), B(inv.buyer.name || "—"));
+  if (inv.buyer.address) children.push(P(inv.buyer.address));
+  if (inv.buyer.country) children.push(P(inv.buyer.country));
+
+  children.push(new Paragraph({ spacing: { before: 120 }, children: [] }), itemsTable);
+
+  children.push(H("INVOICE SUMMARY"), P(`Total Cartons: ${totalCartons(items)} Boxes`),
+    H("TOTAL INVOICE VALUE"), B(money(total)), P(amountInWords(total, inv.currency)));
+
+  const ship: [string, string][] = [];
+  if (inv.shipping.mode_of_shipment) ship.push(["Mode of Shipment", inv.shipping.mode_of_shipment]);
+  if (inv.shipping.delivery_terms) ship.push(["Delivery Terms", inv.shipping.delivery_terms]);
+  if (inv.shipping.packaging) ship.push(["Packaging", inv.shipping.packaging]);
+  if (inv.shipping.payment_terms) ship.push(["Payment", inv.shipping.payment_terms]);
+  if (ship.length) { children.push(H("SHIPPING DETAILS")); ship.forEach(([k, v]) => children.push(KV(k, v))); }
+
+  const bank: [string, string][] = [];
+  if (inv.bank.bank_name) bank.push(["Bank", inv.bank.bank_name]);
+  if (inv.bank.account_name) bank.push(["Account Name", inv.bank.account_name]);
+  if (inv.bank.account_number) bank.push(["Account Number", inv.bank.account_number]);
+  if (inv.bank.swift) bank.push(["SWIFT/IBAN", inv.bank.swift]);
+  if (bank.length) { children.push(H("BANK DETAILS")); bank.forEach(([k, v]) => children.push(KV(k, v))); }
+
+  if (inv.notes) children.push(H("Notes"), P(inv.notes));
+
+  const doc = new Document({ sections: [{ children }] });
+  return Packer.toBlob(doc);
+}
+
+export async function downloadExportInvoiceDocx(inv: ExportInvoiceDraft, filename: string) {
+  const url = URL.createObjectURL(await buildExportInvoiceDocx(inv));
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}

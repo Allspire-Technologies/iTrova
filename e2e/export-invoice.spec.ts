@@ -37,6 +37,9 @@ test.describe("Export Invoice", () => {
     await page.getByLabel("Unit price 1").fill("168000");
     await expect(page.getByLabel("Line total 1")).toHaveValue("NGN 1,680,000.00");
     await expect(page.getByText(/Total cartons/)).toContainText("10");
+    // Both export formats are offered.
+    await expect(page.getByRole("button", { name: /Save & PDF/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Save & DOCX/ })).toBeVisible();
   });
 
   test("selecting a product fills its inventory price; a manager can't change it", async ({ page }) => {
@@ -46,6 +49,20 @@ test.describe("Export Invoice", () => {
     await page.getByLabel("Product 1").selectOption({ label: "Mixed Spices" });
     await expect(page.getByLabel("Unit price 1")).toHaveValue("168000");
     await expect(page.getByLabel("Unit price 1")).toBeDisabled();
+  });
+
+  test("anyone can open the read-only view from the list", async ({ page }) => {
+    await authenticate(page, { role: "manager" });
+    await stubRows(page, "export_invoices", [{ ...REC, items: [{ product_id: null, description: "Mixed Spices", size: "100g", units_per_box: 48, boxes: 10, unit_price: 168000, total: 1680000 }] }]);
+    await page.goto("/export-invoice");
+    await page.getByRole("button", { name: "View" }).click();
+    await expect(page).toHaveURL(/\/export-invoice\/ei-1$/);
+    await expect(page.getByRole("heading", { name: "ACME/EXP/2026/001" })).toBeVisible();
+    await expect(page.getByText("Mixed Spices")).toBeVisible();
+    await expect(page.getByText("MR Cash and Carry").first()).toBeVisible();
+    // Managers can view + download but not edit.
+    await expect(page.getByRole("button", { name: "DOCX" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Edit" })).toHaveCount(0);
   });
 
   test("owner can open a saved invoice to edit (prefilled)", async ({ page }) => {

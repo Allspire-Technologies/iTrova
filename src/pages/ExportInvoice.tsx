@@ -20,6 +20,7 @@ import {
   updateExportInvoice,
   getExportInvoice,
   downloadExportInvoicePdf,
+  downloadExportInvoiceDocx,
   type ExportInvoiceItem,
   type ExportInvoiceDraft,
 } from "@/lib/exportInvoice";
@@ -108,7 +109,7 @@ export default function ExportInvoice() {
   const addRow = () => setItems((l) => [...l, emptyItem()]);
   const removeRow = (i: number) => setItems((l) => (l.length === 1 ? l : l.filter((_, idx) => idx !== i)));
 
-  async function saveAndDownload() {
+  async function saveAndDownload(format: "pdf" | "docx") {
     if (!business) return;
     if (!number.trim()) return toast.error("Enter an invoice number");
     if (!buyer.name.trim()) return toast.error("Enter the buyer's name");
@@ -125,7 +126,9 @@ export default function ExportInvoice() {
     try {
       const draft: ExportInvoiceDraft = { invoice_number: number.trim(), invoice_date: date, country_of_origin: country.trim(), currency, seller, buyer, shipping, bank, items: usable, notes: notes.trim() };
       const saved = editing && id ? await updateExportInvoice(id, business.id, draft) : await saveExportInvoice(business.id, draft);
-      await downloadExportInvoicePdf(saved, `${saved.invoice_number.replace(/[^\w.-]+/g, "-")}.pdf`);
+      const base = saved.invoice_number.replace(/[^\w.-]+/g, "-");
+      if (format === "docx") await downloadExportInvoiceDocx(saved, `${base}.docx`);
+      else await downloadExportInvoicePdf(saved, `${base}.pdf`);
       toast.success(`Export invoice ${saved.invoice_number} ${editing ? "updated" : "saved"}`);
       navigate("/export-invoice");
     } catch (e) {
@@ -262,9 +265,12 @@ export default function ExportInvoice() {
           <div className="space-y-2"><Label>Packaging</Label><Input value={shipping.packaging} onChange={(e) => setShipping((s) => ({ ...s, packaging: e.target.value }))} placeholder="e.g. Export-grade sealed cartons" /></div>
           <div className="space-y-2"><Label>Payment terms</Label><Input value={shipping.payment_terms} onChange={(e) => setShipping((s) => ({ ...s, payment_terms: e.target.value }))} placeholder="e.g. 50% on arrival" /></div>
           <div className="space-y-2 sm:col-span-2"><Label>Notes (optional)</Label><textarea className={textareaCls} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything else to appear on the invoice" /></div>
-          <div className="sm:col-span-2 flex justify-end">
-            <Button variant="brand" onClick={saveAndDownload} disabled={busy}>
-              {busy ? <Loader2 className="size-4 animate-spin" /> : <FileDown className="size-4" />} {editing ? "Update" : "Save"} &amp; download PDF
+          <div className="sm:col-span-2 flex flex-wrap justify-end gap-2">
+            <Button variant="outline" onClick={() => saveAndDownload("docx")} disabled={busy}>
+              <FileDown className="size-4" /> {editing ? "Update" : "Save"} &amp; DOCX
+            </Button>
+            <Button variant="brand" onClick={() => saveAndDownload("pdf")} disabled={busy}>
+              {busy ? <Loader2 className="size-4 animate-spin" /> : <FileDown className="size-4" />} {editing ? "Update" : "Save"} &amp; PDF
             </Button>
           </div>
         </CardContent>
