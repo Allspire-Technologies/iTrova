@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { AlertTriangle, WifiOff } from "lucide-react";
+import { isChunkLoadError } from "@/lib/lazyWithRetry";
 
 type Props = {
   children: ReactNode;
@@ -7,15 +8,6 @@ type Props = {
   variant?: "screen" | "inline";
 };
 type State = { error: Error | null };
-
-// A code-split page whose chunk can't be downloaded (offline for an un-cached route, a flaky
-// connection, or a hashed chunk that 404s briefly after a deploy) throws this kind of error. We
-// show a connection-oriented message + Retry for it, rather than the generic crash copy.
-function isChunkLoadError(e: Error | null): boolean {
-  if (!e) return false;
-  const s = `${e.name} ${e.message}`;
-  return /ChunkLoadError|dynamically imported module|Loading chunk|Importing a module script failed|error loading dynamically imported module/i.test(s);
-}
 
 // Catches render/lifecycle errors anywhere below it and shows a recoverable fallback instead of a
 // blank white screen (Experience Roadmap · Phase 2 · F2). Intentionally dependency-light — it must
