@@ -70,12 +70,39 @@ export function parseImportNumber(v: string | undefined): number {
   return Number(cleaned);
 }
 
+/** A CSV row that couldn't be imported, kept verbatim alongside a human reason for the summary. */
+export type RejectedRow = { row: CsvRow; reason: string };
+
 export type ImportPlan = {
   inserts: (ProductFields & { stock_quantity: number })[];
   updates: { id: string; fields: ProductFields; stock: number }[];
-  skippedNoSku: number;
-  overLimit: number;
+  rejected: RejectedRow[];
 };
+
+/**
+ * Columns every product row must supply. Category, unit and expiry date are optional (unit defaults
+ * to "pcs"). `numeric` fields must additionally parse to a number (commas/currency are tolerated —
+ * see parseImportNumber), so "1,000" and "800.00" are accepted while blanks and text are rejected.
+ */
+const REQUIRED_FIELDS: { field: keyof CanonicalRow; label: string; numeric?: boolean }[] = [
+  { field: "name", label: "Name" },
+  { field: "sku", label: "SKU" },
+  { field: "selling_price", label: "Selling Price", numeric: true },
+  { field: "cost_price", label: "Cost Price", numeric: true },
+  { field: "stock_quantity", label: "Stock Quantity", numeric: true },
+  { field: "reorder_level", label: "Reorder Level", numeric: true },
+];
+
+/** List the required-column problems in a canonicalised row (empty array = row is valid). */
+export function validateImportRow(r: CanonicalRow): string[] {
+  const problems: string[] = [];
+  for (const { field, label, numeric } of REQUIRED_FIELDS) {
+    const val = (r[field] ?? "").trim();
+    if (!val) { problems.push(`Missing ${label}`); continue; }
+    if (numeric && Number.isNaN(parseImportNumber(val))) problems.push(`Invalid ${label}`);
+  }
+  return problems;
+}
 
 /** Find another product using the same SKU (case-insensitive), excluding the one being edited. */
 export function findSkuConflict<T extends { id: string; sku: string | null }>(
@@ -103,9 +130,11 @@ function fieldsFromRow(r: CanonicalRow): ProductFields {
 }
 
 /**
- * Decide how a CSV import maps onto existing products: rows are aggregated by SKU
- * (case-insensitive), matched against existing products to restock, and the plan
- * limit caps only genuinely new products. Pure — the caller performs the writes.
+ * Decide how a CSV import maps onto existing products: rows are validated against the required
+ * columns, aggregated by SKU (case-insensitive), matched against existing products to restock, and
+ * the plan limit caps only genuinely new products. Rows that fail validation or overflow the plan
+ * limit come back in `rejected` (with the original row + a reason) so the caller can summarise them
+ * and offer a re-download. Pure — the caller performs the writes.
  */
 export function buildImportPlan(
   rows: CsvRow[],
@@ -113,39 +142,53 @@ export function buildImportPlan(
   currentCount: number,
   limit: number | null,
 ): ImportPlan {
-  // Re-key every row onto canonical field names first, so varied header casing/wording still maps.
-  const canon = rows.map(canonicalizeRow);
-  const usable = canon.filter(r => r.name?.trim() && r.sku?.trim());
-  const skippedNoSku = canon.filter(r => r.name?.trim() && !r.sku?.trim()).length;
+  const rejected: RejectedRow[] = [];
 
-  const agg = new Map<string, { fields: ProductFields; qty: number }>();
-  for (const r of usable) {
-    const key = r.sku!.trim().toLowerCase();
+  // Re-key every row onto canonical field names first (varied header casing/wording still maps),
+  // then require every mandatory column. A row missing any is rejected with a specific reason.
+  const valid: { raw: CsvRow; canon: CanonicalRow }[] = [];
+  for (const raw of rows) {
+    const canon = canonicalizeRow(raw);
+    const problems = validateImportRow(canon);
+    if (problems.length) rejected.push({ row: raw, reason: problems.join("; ") });
+    else valid.push({ raw, canon });
+  }
+
+  // Aggregate valid rows by SKU: sum quantities, keep the last row's fields, and hold onto one raw
+  // row per SKU so a plan-limit rejection can still be reported/downloaded.
+  const agg = new Map<string, { fields: ProductFields; qty: number; raw: CsvRow }>();
+  for (const { raw, canon } of valid) {
+    const key = canon.sku!.trim().toLowerCase();
     const prev = agg.get(key);
-    agg.set(key, { fields: fieldsFromRow(r), qty: (prev?.qty || 0) + (parseImportNumber(r.stock_quantity) || 0) });
+    agg.set(key, {
+      fields: fieldsFromRow(canon),
+      qty: (prev?.qty || 0) + (parseImportNumber(canon.stock_quantity) || 0),
+      raw,
+    });
   }
 
   const existingBySku = new Map(existing.filter(p => p.sku).map(p => [p.sku!.trim().toLowerCase(), p]));
 
   const updates: ImportPlan["updates"] = [];
-  const allInserts: ImportPlan["inserts"] = [];
+  const allInserts: { insert: ProductFields & { stock_quantity: number }; raw: CsvRow }[] = [];
   for (const [key, a] of agg) {
     const ex = existingBySku.get(key);
     if (ex) updates.push({ id: ex.id, fields: a.fields, stock: Number(ex.stock_quantity) + a.qty });
-    else allInserts.push({ ...a.fields, stock_quantity: a.qty });
+    else allInserts.push({ insert: { ...a.fields, stock_quantity: a.qty }, raw: a.raw });
   }
 
-  let inserts = allInserts;
-  let overLimit = 0;
+  let allowedInserts = allInserts;
   if (limit !== null) {
     const capacity = Math.max(0, limit - currentCount);
     if (allInserts.length > capacity) {
-      overLimit = allInserts.length - capacity;
-      inserts = allInserts.slice(0, capacity);
+      allowedInserts = allInserts.slice(0, capacity);
+      for (const over of allInserts.slice(capacity)) {
+        rejected.push({ row: over.raw, reason: "Plan limit reached — upgrade to add more products" });
+      }
     }
   }
 
-  return { inserts, updates, skippedNoSku, overLimit };
+  return { inserts: allowedInserts.map(i => i.insert), updates, rejected };
 }
 
 export type ExpiryBand = "expired" | "critical" | "warning" | "soon" | "notice";

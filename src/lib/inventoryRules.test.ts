@@ -46,86 +46,108 @@ describe("findSkuConflict", () => {
 });
 
 describe("buildImportPlan", () => {
-  const row = (sku: string, qty: string, name = "P") => ({ name, sku, stock_quantity: qty, selling_price: "10" });
+  // A complete, valid row (every required column filled); pass overrides for the field under test.
+  const full = (over: Record<string, string> = {}) =>
+    ({ name: "P", sku: "S1", unit: "pcs", selling_price: "10", cost_price: "5", stock_quantity: "1", reorder_level: "5", ...over });
 
   it("inserts new SKUs", () => {
-    const plan = buildImportPlan([row("S1", "5")], [], 0, null);
+    const plan = buildImportPlan([full({ sku: "S1", stock_quantity: "5" })], [], 0, null);
     expect(plan.updates).toHaveLength(0);
     expect(plan.inserts).toHaveLength(1);
     expect(plan.inserts[0].sku).toBe("S1");
     expect(plan.inserts[0].stock_quantity).toBe(5);
+    expect(plan.rejected).toHaveLength(0);
   });
 
   it("restocks an existing SKU (case-insensitive) by adding quantity", () => {
-    const plan = buildImportPlan([row("s1", "5")], [{ id: "e1", sku: "S1", stock_quantity: 3 }], 1, null);
+    const plan = buildImportPlan([full({ sku: "s1", stock_quantity: "5" })], [{ id: "e1", sku: "S1", stock_quantity: 3 }], 1, null);
     expect(plan.inserts).toHaveLength(0);
     expect(plan.updates).toEqual([{ id: "e1", fields: expect.objectContaining({ sku: "s1" }), stock: 8 }]);
   });
 
   it("merges duplicate SKUs within the same file (sums quantity, keeps last fields)", () => {
-    const plan = buildImportPlan([row("S1", "5", "A"), row("s1", "2", "B")], [], 0, null);
+    const plan = buildImportPlan(
+      [full({ sku: "S1", stock_quantity: "5", name: "A" }), full({ sku: "s1", stock_quantity: "2", name: "B" })],
+      [], 0, null,
+    );
     expect(plan.inserts).toHaveLength(1);
     expect(plan.inserts[0].stock_quantity).toBe(7);
     expect(plan.inserts[0].name).toBe("B");
   });
 
-  it("skips rows without an SKU", () => {
-    const plan = buildImportPlan(
-      [{ name: "no sku" }, row("S2", "1")],
-      [],
-      0,
-      null,
-    );
-    expect(plan.skippedNoSku).toBe(1);
-    expect(plan.inserts).toHaveLength(1);
-  });
-
   it("applies the plan limit to new products only, never to restocks", () => {
     const plan = buildImportPlan(
-      [row("S1", "5"), row("S2", "1"), row("S3", "1")],
+      [full({ sku: "S1", stock_quantity: "5" }), full({ sku: "S2", stock_quantity: "1" }), full({ sku: "S3", stock_quantity: "1" })],
       [{ id: "e1", sku: "S1", stock_quantity: 1 }],
       1,
       1,
     );
     expect(plan.updates).toHaveLength(1); // S1 restock allowed
     expect(plan.inserts).toHaveLength(0); // no capacity for new
-    expect(plan.overLimit).toBe(2);
+    expect(plan.rejected).toHaveLength(2);
+    expect(plan.rejected.every(r => /plan limit/i.test(r.reason))).toBe(true);
+  });
+});
+
+describe("buildImportPlan required-column validation", () => {
+  const full = (over: Record<string, string> = {}) =>
+    ({ name: "P", sku: "S1", unit: "pcs", selling_price: "10", cost_price: "5", stock_quantity: "1", reorder_level: "5", ...over });
+
+  it("rejects a row missing any required column, naming each one, and keeps the good rows", () => {
+    const plan = buildImportPlan(
+      [{ name: "no sku", unit: "pcs", selling_price: "1", cost_price: "1", stock_quantity: "1", reorder_level: "1" }, full({ sku: "S2" })],
+      [], 0, null,
+    );
+    expect(plan.inserts).toHaveLength(1);
+    expect(plan.rejected).toHaveLength(1);
+    expect(plan.rejected[0].reason).toContain("Missing SKU");
+    expect(plan.rejected[0].row).toMatchObject({ name: "no sku" }); // original row kept for re-download
+  });
+
+  it("category, unit and expiry date are optional (unit defaults to pcs)", () => {
+    const plan = buildImportPlan(
+      [{ name: "P", sku: "S1", selling_price: "10", cost_price: "5", stock_quantity: "1", reorder_level: "5" }],
+      [], 0, null,
+    );
+    expect(plan.rejected).toHaveLength(0);
+    expect(plan.inserts).toHaveLength(1);
+    expect(plan.inserts[0].unit).toBe("pcs");
+  });
+
+  it("rejects a non-numeric price as invalid rather than importing 0", () => {
+    const plan = buildImportPlan([full({ selling_price: "abc" })], [], 0, null);
+    expect(plan.inserts).toHaveLength(0);
+    expect(plan.rejected[0].reason).toContain("Invalid Selling Price");
   });
 });
 
 describe("buildImportPlan header + number robustness", () => {
   it("maps human/case-varied headers onto the right fields (prices are not zeroed)", () => {
     const plan = buildImportPlan(
-      [{ "Name": "Garri", "SKU": "G1", "Cost Price": "6000", "Selling Price": "8500", "Stock Quantity": "20", "Reorder Level": "5" }],
+      [{ "Name": "Garri", "SKU": "G1", "Unit": "bag", "Cost Price": "6000", "Selling Price": "8500", "Stock Quantity": "20", "Reorder Level": "5" }],
       [], 0, null,
     );
     expect(plan.inserts).toHaveLength(1);
     expect(plan.inserts[0]).toMatchObject({
-      name: "Garri", sku: "G1", cost_price: 6000, selling_price: 8500, reorder_level: 5, stock_quantity: 20,
+      name: "Garri", sku: "G1", unit: "bag", cost_price: 6000, selling_price: 8500, reorder_level: 5, stock_quantity: 20,
     });
   });
 
-  it("accepts common aliases (Product / Code / Price / Qty)", () => {
+  it("accepts common aliases (Product / Code / Buy Price / Qty)", () => {
     const plan = buildImportPlan(
-      [{ "Product": "Rice", "Code": "R1", "Price": "1200", "Qty": "3" }],
+      [{ "Product": "Rice", "Code": "R1", "Unit": "bag", "Price": "1200", "Buy Price": "800", "Qty": "3", "Reorder": "2" }],
       [], 0, null,
     );
-    expect(plan.inserts[0]).toMatchObject({ name: "Rice", sku: "R1", selling_price: 1200, stock_quantity: 3 });
+    expect(plan.inserts[0]).toMatchObject({ name: "Rice", sku: "R1", selling_price: 1200, cost_price: 800, stock_quantity: 3, reorder_level: 2 });
   });
 
   it("strips currency symbols and thousands separators from numbers", () => {
     const plan = buildImportPlan(
-      [{ "name": "A", "sku": "A1", "cost_price": "₦1,500", "selling_price": " 2,000.50 ", "stock_quantity": "1,000" }],
+      [{ "name": "A", "sku": "A1", "unit": "pcs", "cost_price": "₦1,500", "selling_price": " 2,000.50 ", "stock_quantity": "1,000", "reorder_level": "5" }],
       [], 0, null,
     );
     expect(plan.inserts[0]).toMatchObject({ cost_price: 1500, selling_price: 2000.5 });
     expect(plan.inserts[0].stock_quantity).toBe(1000);
-  });
-
-  it("leaves a truly missing price at 0 rather than NaN", () => {
-    const plan = buildImportPlan([{ "Name": "B", "SKU": "B1" }], [], 0, null);
-    expect(plan.inserts[0].cost_price).toBe(0);
-    expect(plan.inserts[0].selling_price).toBe(0);
   });
 });
 
@@ -146,12 +168,15 @@ describe("canonicalizeRow / parseImportNumber", () => {
 });
 
 describe("buildImportPlan expiry handling", () => {
+  const full = (over: Record<string, string> = {}) =>
+    ({ name: "P", sku: "S1", unit: "pcs", selling_price: "10", cost_price: "5", stock_quantity: "1", reorder_level: "5", ...over });
+
   it("carries expiry_date from the CSV, and omits it when the column is absent", () => {
-    const withExp = buildImportPlan([{ name: "A", sku: "X1", expiry_date: "2026-12-31" }], [], 0, null);
+    const withExp = buildImportPlan([full({ sku: "X1", expiry_date: "2026-12-31" })], [], 0, null);
     expect(withExp.inserts[0].expiry_date).toBe("2026-12-31");
-    const without = buildImportPlan([{ name: "B", sku: "X2" }], [], 0, null);
+    const without = buildImportPlan([full({ sku: "X2" })], [], 0, null);
     expect(without.inserts[0].expiry_date).toBeUndefined();
-    const cleared = buildImportPlan([{ name: "C", sku: "X3", expiry_date: "" }], [], 0, null);
+    const cleared = buildImportPlan([full({ sku: "X3", expiry_date: "" })], [], 0, null);
     expect(cleared.inserts[0].expiry_date).toBeNull();
   });
 });

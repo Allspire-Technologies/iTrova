@@ -47,4 +47,19 @@ test.describe("Inventory", () => {
     await expect(page.getByRole("columnheader", { name: "Expiry" })).toBeVisible();
     await expect(page.locator("table").getByText(/Expires in \d+d/)).toBeVisible();
   });
+
+  test("CSV import summarises what imported vs missed and offers a re-download", async ({ page }) => {
+    const csv = [
+      "Name,SKU,Cost Price,Selling Price,Stock Quantity,Reorder Level",
+      'New Rice,NR-1,"6,000","8,500",20,5', // valid — commas stripped, friendly headers
+      "Bad Beans,BB-1,,1200,10,5",           // invalid — missing cost price
+    ].join("\n");
+    await page.locator('input[type="file"]').setInputFiles({ name: "products.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
+
+    await expect(page.getByRole("heading", { name: "Import results" })).toBeVisible();
+    await expect(page.getByText(/1 row imported/)).toBeVisible();
+    await expect(page.getByText(/1 row not imported/)).toBeVisible();
+    await expect(page.getByText(/Missing Cost Price/)).toBeVisible();
+    await expect(page.getByRole("button", { name: /Download not-imported \(1\)/ })).toBeVisible();
+  });
 });
