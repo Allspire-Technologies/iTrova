@@ -51,6 +51,20 @@ test.describe("Export Invoice", () => {
     await expect(page.getByLabel("Unit price 1")).toBeDisabled();
   });
 
+  test("anyone can open the read-only view from the list", async ({ page }) => {
+    await authenticate(page, { role: "manager" });
+    await stubRows(page, "export_invoices", [{ ...REC, items: [{ product_id: null, description: "Mixed Spices", size: "100g", units_per_box: 48, boxes: 10, unit_price: 168000, total: 1680000 }] }]);
+    await page.goto("/export-invoice");
+    await page.getByRole("button", { name: "View" }).click();
+    await expect(page).toHaveURL(/\/export-invoice\/ei-1$/);
+    await expect(page.getByRole("heading", { name: "ACME/EXP/2026/001" })).toBeVisible();
+    await expect(page.getByText("Mixed Spices")).toBeVisible();
+    await expect(page.getByText("MR Cash and Carry").first()).toBeVisible();
+    // Managers can view + download but not edit.
+    await expect(page.getByRole("button", { name: "DOCX" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Edit" })).toHaveCount(0);
+  });
+
   test("owner can open a saved invoice to edit (prefilled)", async ({ page }) => {
     await authenticate(page, { role: "owner" });
     await stubRows(page, "export_invoices", [REC]);

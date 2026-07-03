@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Plus, FileDown, Ship, Pencil, Trash2 } from "lucide-react";
+import { Plus, FileDown, Ship, Pencil, Trash2, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import ConfirmDialog from "@/components/ConfirmDialog";
@@ -62,14 +62,17 @@ export default function ExportInvoiceList() {
         <div className="space-y-2">
           {items.map((inv) => (
             <div key={inv.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 bg-card p-4">
-              <div className="min-w-0">
-                <p className="font-medium text-brand-dark">{inv.invoice_number}</p>
+              <button type="button" onClick={() => navigate(`/export-invoice/${inv.id}`)} className="min-w-0 text-left">
+                <p className="font-medium text-brand-dark hover:underline underline-offset-2">{inv.invoice_number}</p>
                 <p className="text-sm text-muted-foreground truncate">
                   {inv.buyer.name || "—"} · {fmtDate(inv.invoice_date)} · {inv.total_cartons} cartons
                 </p>
-              </div>
+              </button>
               <div className="flex items-center gap-2">
                 <span className="mr-1 font-medium text-brand-dark">{formatExportMoney(inv.total, inv.currency)}</span>
+                <Button variant="ghost" size="sm" onClick={() => navigate(`/export-invoice/${inv.id}`)}>
+                  <Eye className="size-4" /> View
+                </Button>
                 {isOwner && (
                   <Button variant="ghost" size="sm" onClick={() => navigate(`/export-invoice/${inv.id}/edit`)}>
                     <Pencil className="size-4" /> Edit
