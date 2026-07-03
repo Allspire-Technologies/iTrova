@@ -47,4 +47,52 @@ test.describe("Inventory", () => {
     await expect(page.getByRole("columnheader", { name: "Expiry" })).toBeVisible();
     await expect(page.locator("table").getByText(/Expires in \d+d/)).toBeVisible();
   });
+
+  test("CSV import summarises what imported vs missed and offers a re-download", async ({ page }) => {
+    const csv = [
+      "Name,SKU,Cost Price,Selling Price,Stock Quantity,Reorder Level",
+      'New Rice,NR-1,"6,000","8,500",20,5', // valid — commas stripped, friendly headers
+      "Bad Beans,BB-1,,1200,10,5",           // invalid — missing cost price
+    ].join("\n");
+    await page.locator('input[type="file"]').setInputFiles({ name: "products.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
+
+    await expect(page.getByRole("heading", { name: "Import results" })).toBeVisible();
+    await expect(page.getByText(/1 row imported/)).toBeVisible();
+    await expect(page.getByText(/1 row not imported/)).toBeVisible();
+    await expect(page.getByText(/Missing Cost Price/)).toBeVisible();
+    await expect(page.getByRole("button", { name: /Download not-imported \(1\)/ })).toBeVisible();
+  });
+
+  test("flags duplicate SKUs within the file as failed", async ({ page }) => {
+    const csv = [
+      "Name,SKU,Cost Price,Selling Price,Stock Quantity,Reorder Level",
+      "First,DUP-1,1,2,3,4",
+      "Second,dup-1,1,2,3,4", // same SKU (case-insensitive) -> both flagged
+      "Unique,UNQ-1,1,2,3,4",
+    ].join("\n");
+    await page.locator('input[type="file"]').setInputFiles({ name: "products.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
+
+    await expect(page.getByRole("heading", { name: "Import results" })).toBeVisible();
+    await expect(page.getByText(/1 row imported/)).toBeVisible();
+    await expect(page.getByText(/2 rows not imported/)).toBeVisible();
+    await expect(page.getByText(/Duplicate SKU/i)).toBeVisible();
+  });
+
+  test("shows a progress bar while the import is writing rows", async ({ page }) => {
+    // Hold the insert open so the progress dialog is observable, then let it complete.
+    await page.route("**/rest/v1/products**", async (route) => {
+      if (route.request().method() === "POST") {
+        await new Promise((r) => setTimeout(r, 800));
+        return route.fulfill({ status: 201, contentType: "application/json", body: "[]" });
+      }
+      return route.fallback();
+    });
+    const csv = ["Name,SKU,Cost Price,Selling Price,Stock Quantity,Reorder Level", "A,A-1,1,2,3,4", "B,B-1,1,2,3,4", "C,C-1,1,2,3,4"].join("\n");
+    await page.locator('input[type="file"]').setInputFiles({ name: "products.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
+
+    await expect(page.getByRole("heading", { name: "Importing products…" })).toBeVisible();
+    await expect(page.getByRole("progressbar")).toBeVisible();
+    // …then it finishes and hands off to the results summary.
+    await expect(page.getByText(/3 rows imported/)).toBeVisible();
+  });
 });

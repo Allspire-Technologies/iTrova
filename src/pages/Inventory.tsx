@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import { Plus, Search, Package, Pencil, Upload, Download, SlidersHorizontal } from "lucide-react";
 import SearchableSelect from "@/components/SearchableSelect";
 import { toast } from "sonner";
@@ -16,7 +17,7 @@ import StockAdjustDialog from "@/components/StockAdjustDialog";
 import Paginator, { usePagination } from "@/components/Paginator";
 import { TablePageSkeleton } from "@/components/Skeletons";
 import { getLimit, isAtLimit, limitMessage } from "@/lib/planLimits";
-import { findSkuConflict, buildImportPlan, expiryAlert } from "@/lib/inventoryRules";
+import { findSkuConflict, buildImportPlan, expiryAlert, canonicalizeRow, type ProductFields } from "@/lib/inventoryRules";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { useOnline } from "@/contexts/OnlineContext";
@@ -37,6 +38,10 @@ type Product = {
 
 const empty = { name: "", category: "", sku: "", unit: "pcs", selling_price: "", cost_price: "", stock_quantity: "", reorder_level: 5, expiry_date: "" };
 
+// A row the import couldn't apply — its values keyed by the template columns, plus why it failed.
+// Kept so we can summarise and re-download the misses in the standard template format.
+type FailedImportRow = { values: Record<string, string>; reason: string };
+
 export default function Inventory() {
   const { business, hasModule } = useAuth();
   const { online } = useOnline();
@@ -54,6 +59,8 @@ export default function Inventory() {
   const [form, setForm] = useState<any>(empty);
   const [busy, setBusy] = useState(false);
   const [adjustTarget, setAdjustTarget] = useState<Product | null>(null);
+  const [importResult, setImportResult] = useState<{ added: number; restocked: number; failed: FailedImportRow[] } | null>(null);
+  const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = async () => {
@@ -113,25 +120,43 @@ export default function Inventory() {
     load();
   };
 
+  // Human-readable headers for the template/export. Import is case/spacing-insensitive and accepts
+  // these plus common aliases (see inventoryRules canonicalizeRow), so re-importing either an old
+  // snake_case export or this friendlier one both work.
+  const CSV_HEADERS = ["Name", "Category", "SKU", "Unit", "Selling Price", "Cost Price", "Stock Quantity", "Reorder Level", "Expiry Date"];
+
   const downloadTemplate = () => {
-    const headers = ["name", "category", "sku", "unit", "selling_price", "cost_price", "stock_quantity", "reorder_level", "expiry_date"];
     const example = ["Garri 50kg", "Foodstuff", "GAR-50", "bag", "8500", "6000", "20", "5", "2026-12-31"];
-    const csv = [headers.join(","), example.join(",")].join("\n");
+    const csv = [CSV_HEADERS.join(","), example.join(",")].join("\n");
     downloadCsv("products-template.csv", csv);
     toast.success("Template downloaded");
   };
 
   const exportCsv = () => {
     const rows = items.map(p => ({
-      name: p.name, category: p.category || "", sku: p.sku || "", unit: p.unit || "pcs",
-      selling_price: p.selling_price, cost_price: p.cost_price,
-      stock_quantity: p.stock_quantity, reorder_level: p.reorder_level,
-      expiry_date: p.expiry_date || "",
+      "Name": p.name, "Category": p.category || "", "SKU": p.sku || "", "Unit": p.unit || "pcs",
+      "Selling Price": p.selling_price, "Cost Price": p.cost_price,
+      "Stock Quantity": p.stock_quantity, "Reorder Level": p.reorder_level,
+      "Expiry Date": p.expiry_date || "",
     }));
-    downloadCsv(`products-${new Date().toISOString().slice(0, 10)}.csv`,
-      toCsv(rows, ["name", "category", "sku", "unit", "selling_price", "cost_price", "stock_quantity", "reorder_level", "expiry_date"]));
+    downloadCsv(`products-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(rows, CSV_HEADERS));
     toast.success(`Exported ${rows.length} product${rows.length === 1 ? "" : "s"}`);
   };
+
+  // Present a failed row in the template's columns so the re-download is fixable & re-importable.
+  const templateValuesFromRaw = (row: Record<string, string | undefined>): Record<string, string> => {
+    const c = canonicalizeRow(row);
+    return {
+      "Name": c.name ?? "", "Category": c.category ?? "", "SKU": c.sku ?? "", "Unit": c.unit ?? "",
+      "Selling Price": c.selling_price ?? "", "Cost Price": c.cost_price ?? "",
+      "Stock Quantity": c.stock_quantity ?? "", "Reorder Level": c.reorder_level ?? "", "Expiry Date": c.expiry_date ?? "",
+    };
+  };
+  const templateValuesFromFields = (f: ProductFields, stock: number): Record<string, string> => ({
+    "Name": f.name, "Category": f.category ?? "", "SKU": f.sku, "Unit": f.unit,
+    "Selling Price": String(f.selling_price), "Cost Price": String(f.cost_price),
+    "Stock Quantity": String(stock), "Reorder Level": String(f.reorder_level), "Expiry Date": f.expiry_date ?? "",
+  });
 
   const importCsv = async (file: File) => {
     if (!business) return;
@@ -139,32 +164,55 @@ export default function Inventory() {
       const text = await readFileText(file);
       const rows = parseCsv(text);
       const plan = buildImportPlan(rows, items, items.length, getLimit(business.subscription_tier, "products"));
-      if (plan.inserts.length === 0 && plan.updates.length === 0) {
-        return toast.error("No valid rows. Required columns: name, sku");
+      if (plan.inserts.length === 0 && plan.updates.length === 0 && plan.rejected.length === 0) {
+        return toast.error("No rows found in the file.");
       }
 
-      let updated = 0;
+      // Start the misses with the rows that failed validation or the plan limit, then add any DB errors.
+      const failed: FailedImportRow[] = plan.rejected.map(r => ({ values: templateValuesFromRaw(r.row), reason: r.reason }));
+
+      // Inserts go up in batches (kinder to large files) so we can advance a real progress bar: one
+      // step per restock plus one per insert batch. A failed batch only sinks its own rows.
+      const INSERT_BATCH = 100;
+      const insertBatches: (typeof plan.inserts)[] = [];
+      for (let i = 0; i < plan.inserts.length; i += INSERT_BATCH) insertBatches.push(plan.inserts.slice(i, i + INSERT_BATCH));
+      const totalSteps = plan.updates.length + insertBatches.length;
+      let done = 0;
+      const tick = () => setImportProgress({ done: ++done, total: totalSteps });
+      if (totalSteps > 0) setImportProgress({ done: 0, total: totalSteps });
+
+      let restocked = 0;
       for (const u of plan.updates) {
         const { error } = await supabase.from("products").update({ ...u.fields, stock_quantity: u.stock }).eq("id", u.id);
-        if (!error) updated++;
-      }
-      if (plan.inserts.length > 0) {
-        const { error } = await supabase.from("products").insert(plan.inserts.map(i => ({ ...i, business_id: business.id })) as never);
-        if (error) return toast.error(error.message);
+        if (error) failed.push({ values: templateValuesFromFields(u.fields, u.stock), reason: `Update failed: ${error.message}` });
+        else restocked++;
+        tick();
       }
 
-      const parts: string[] = [];
-      if (plan.inserts.length) parts.push(`${plan.inserts.length} added`);
-      if (updated) parts.push(`${updated} restocked`);
-      if (plan.overLimit) parts.push(`${plan.overLimit} skipped (plan limit)`);
-      if (plan.skippedNoSku) parts.push(`${plan.skippedNoSku} skipped (no SKU)`);
-      toast.success(parts.length ? `Import: ${parts.join(", ")}` : "Nothing to import");
+      let added = 0;
+      for (const batch of insertBatches) {
+        const { error } = await supabase.from("products").insert(batch.map(i => ({ ...i, business_id: business.id })) as never);
+        if (error) batch.forEach(i => failed.push({ values: templateValuesFromFields(i, i.stock_quantity), reason: `Upload failed: ${error.message}` }));
+        else added += batch.length;
+        tick();
+      }
+
+      setImportProgress(null);
+      setImportResult({ added, restocked, failed });
       load();
     } catch (e: any) {
+      setImportProgress(null);
       toast.error(e.message || "Import failed");
     } finally {
       if (fileRef.current) fileRef.current.value = "";
     }
+  };
+
+  const downloadFailedRows = () => {
+    if (!importResult?.failed.length) return;
+    const cols = [...CSV_HEADERS, "Reason"];
+    const rows = importResult.failed.map(f => ({ ...f.values, "Reason": f.reason }));
+    downloadCsv(`products-not-imported-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(rows, cols));
   };
 
   const categories = [...new Set(items.map(i => i.category).filter(Boolean) as string[])].sort();
@@ -445,6 +493,71 @@ export default function Inventory() {
         target={adjustTarget ? { kind: "product", id: adjustTarget.id, name: adjustTarget.name, unit: adjustTarget.unit, stock_quantity: Number(adjustTarget.stock_quantity) } : null}
         onSaved={load}
       />
+
+      {/* Non-dismissable progress while the import writes rows, so the user sees it's working. */}
+      <Dialog open={!!importProgress}>
+        <DialogContent className="[&>button]:hidden" onInteractOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle>Importing products…</DialogTitle>
+          </DialogHeader>
+          {importProgress && (() => {
+            const pct = importProgress.total ? Math.round((importProgress.done / importProgress.total) * 100) : 0;
+            return (
+              <div className="space-y-2">
+                <Progress value={pct} />
+                <p className="text-sm text-muted-foreground">{pct}% — {importProgress.done} of {importProgress.total} steps. Please keep this page open.</p>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!importResult} onOpenChange={(v) => !v && setImportResult(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Import results</DialogTitle>
+          </DialogHeader>
+          {importResult && (
+            <div className="space-y-3 text-sm">
+              <p className="font-medium text-success">
+                {importResult.added + importResult.restocked} row{importResult.added + importResult.restocked === 1 ? "" : "s"} imported
+                {importResult.added ? ` · ${importResult.added} added` : ""}
+                {importResult.restocked ? ` · ${importResult.restocked} restocked` : ""}
+              </p>
+              {importResult.failed.length === 0 ? (
+                <p className="text-muted-foreground">Every row was imported successfully.</p>
+              ) : (
+                <div className="space-y-2">
+                  <p className="font-medium text-danger">
+                    {importResult.failed.length} row{importResult.failed.length === 1 ? "" : "s"} not imported
+                  </p>
+                  <ul className="rounded-lg border border-border divide-y divide-border max-h-48 overflow-auto">
+                    {Object.entries(
+                      importResult.failed.reduce<Record<string, number>>((m, f) => { m[f.reason] = (m[f.reason] || 0) + 1; return m; }, {}),
+                    ).map(([reason, count]) => (
+                      <li key={reason} className="flex items-start justify-between gap-3 px-3 py-2">
+                        <span className="text-muted-foreground">{reason}</span>
+                        <span className="shrink-0 tabular-nums font-medium">{count}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-xs text-muted-foreground">
+                    Download the misses, fix the flagged columns, and re-upload just those rows.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            {!!importResult?.failed.length && (
+              <Button variant="outline" onClick={downloadFailedRows}>
+                <Download className="size-4 mr-2" /> Download not-imported ({importResult.failed.length})
+              </Button>
+            )}
+            <Button onClick={() => setImportResult(null)}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
