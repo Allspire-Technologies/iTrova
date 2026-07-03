@@ -8,7 +8,7 @@ import ConfirmDialog from "@/components/ConfirmDialog";
 import { TablePageSkeleton } from "@/components/Skeletons";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDateFormat } from "@/hooks/useDateFormat";
-import { listExportInvoices, downloadExportInvoicePdf, deleteExportInvoice, formatExportMoney, type ExportInvoiceRecord } from "@/lib/exportInvoice";
+import { listExportInvoices, downloadExportInvoicePdf, downloadExportInvoiceDocx, deleteExportInvoice, formatExportMoney, type ExportInvoiceRecord } from "@/lib/exportInvoice";
 
 export default function ExportInvoiceList() {
   const navigate = useNavigate();
@@ -77,6 +77,9 @@ export default function ExportInvoiceList() {
                 )}
                 <Button variant="outline" size="sm" onClick={() => downloadExportInvoicePdf(inv, `${inv.invoice_number.replace(/[^\w.-]+/g, "-")}.pdf`)}>
                   <FileDown className="size-4" /> PDF
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => downloadExportInvoiceDocx(inv, `${inv.invoice_number.replace(/[^\w.-]+/g, "-")}.docx`)}>
+                  <FileDown className="size-4" /> DOCX
                 </Button>
                 {isOwner && (
                   <Button variant="ghost" size="sm" onClick={() => setPendingDelete(inv)} aria-label={`Delete ${inv.invoice_number}`}>

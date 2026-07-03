@@ -37,6 +37,9 @@ test.describe("Export Invoice", () => {
     await page.getByLabel("Unit price 1").fill("168000");
     await expect(page.getByLabel("Line total 1")).toHaveValue("NGN 1,680,000.00");
     await expect(page.getByText(/Total cartons/)).toContainText("10");
+    // Both export formats are offered.
+    await expect(page.getByRole("button", { name: /Save & PDF/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Save & DOCX/ })).toBeVisible();
   });
 
   test("selecting a product fills its inventory price; a manager can't change it", async ({ page }) => {

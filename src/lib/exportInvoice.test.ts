@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 // The module imports the Supabase client (no env in CI) — stub it; these tests only touch pure helpers.
 vi.mock("@/integrations/supabase/client", () => ({ supabase: {} }));
 
-import { lineTotal, invoiceTotal, totalCartons, depletionQty, formatExportMoney, numberToWords, amountInWords, emptyItem } from "./exportInvoice";
+import { lineTotal, invoiceTotal, totalCartons, depletionQty, formatExportMoney, numberToWords, amountInWords, emptyItem, buildExportInvoiceDocx, type ExportInvoiceDraft } from "./exportInvoice";
 
 describe("lineTotal", () => {
   it("multiplies boxes by unit price", () => {
@@ -50,6 +50,23 @@ describe("numberToWords + amountInWords", () => {
   it("appends the currency word and Only", () => {
     expect(amountInWords(31927000, "NGN")).toBe("Thirty-One Million, Nine Hundred and Twenty-Seven Thousand Naira Only");
     expect(amountInWords(2500, "USD")).toBe("Two Thousand, Five Hundred US Dollars Only");
+  });
+});
+
+describe("buildExportInvoiceDocx", () => {
+  it("produces a non-empty Word document blob", async () => {
+    const draft: ExportInvoiceDraft = {
+      invoice_number: "ACME/EXP/2026/001", invoice_date: "2026-06-08", country_of_origin: "Nigeria", currency: "NGN",
+      seller: { name: "Acme", address: "1 Road", email: "", phone: "", rc: "RC123" },
+      buyer: { name: "Buyer Co", address: "", country: "Canada" },
+      shipping: { mode_of_shipment: "Sea Freight", delivery_terms: "EXW", packaging: "", payment_terms: "" },
+      bank: { bank_name: "Bank", account_name: "Acme", account_number: "000", swift: "" },
+      items: [{ ...emptyItem(), description: "Mixed Spices", units_per_box: 48, boxes: 10, unit_price: 168000 }],
+      notes: "",
+    };
+    const blob = await buildExportInvoiceDocx(draft);
+    expect(blob).toBeInstanceOf(Blob);
+    expect(blob.size).toBeGreaterThan(0);
   });
 });
 
