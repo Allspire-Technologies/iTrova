@@ -65,14 +65,24 @@ describe("buildImportPlan", () => {
     expect(plan.updates).toEqual([{ id: "e1", fields: expect.objectContaining({ sku: "s1" }), stock: 8 }]);
   });
 
-  it("merges duplicate SKUs within the same file (sums quantity, keeps last fields)", () => {
+  it("flags duplicate SKUs within the same file as failed (case-insensitive), importing neither", () => {
     const plan = buildImportPlan(
-      [full({ sku: "S1", stock_quantity: "5", name: "A" }), full({ sku: "s1", stock_quantity: "2", name: "B" })],
+      [full({ sku: "S1", name: "A" }), full({ sku: "s1", name: "B" }), full({ sku: "S2", name: "C" })],
       [], 0, null,
     );
-    expect(plan.inserts).toHaveLength(1);
-    expect(plan.inserts[0].stock_quantity).toBe(7);
-    expect(plan.inserts[0].name).toBe("B");
+    expect(plan.inserts).toHaveLength(1); // only the unique S2
+    expect(plan.inserts[0].name).toBe("C");
+    expect(plan.rejected).toHaveLength(2);
+    expect(plan.rejected.every(r => /duplicate sku/i.test(r.reason))).toBe(true);
+  });
+
+  it("still restocks an existing SKU that appears once in the file", () => {
+    const plan = buildImportPlan(
+      [full({ sku: "S1", stock_quantity: "5" })],
+      [{ id: "e1", sku: "S1", stock_quantity: 3 }], 1, null,
+    );
+    expect(plan.updates).toEqual([{ id: "e1", fields: expect.objectContaining({ sku: "S1" }), stock: 8 }]);
+    expect(plan.rejected).toHaveLength(0);
   });
 
   it("applies the plan limit to new products only, never to restocks", () => {

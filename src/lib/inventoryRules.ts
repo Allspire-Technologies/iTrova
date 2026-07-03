@@ -154,27 +154,31 @@ export function buildImportPlan(
     else valid.push({ raw, canon });
   }
 
-  // Aggregate valid rows by SKU: sum quantities, keep the last row's fields, and hold onto one raw
-  // row per SKU so a plan-limit rejection can still be reported/downloaded.
-  const agg = new Map<string, { fields: ProductFields; qty: number; raw: CsvRow }>();
-  for (const { raw, canon } of valid) {
-    const key = canon.sku!.trim().toLowerCase();
-    const prev = agg.get(key);
-    agg.set(key, {
-      fields: fieldsFromRow(canon),
-      qty: (prev?.qty || 0) + (parseImportNumber(canon.stock_quantity) || 0),
-      raw,
-    });
+  // Group valid rows by SKU (case-insensitive). A SKU that appears more than once in the file is
+  // ambiguous — two products must not share a SKU — so every row with a duplicated SKU is flagged
+  // as failed rather than silently merged. A SKU matching an existing product still restocks it.
+  const bySku = new Map<string, { raw: CsvRow; canon: CanonicalRow }[]>();
+  for (const v of valid) {
+    const key = v.canon.sku!.trim().toLowerCase();
+    const group = bySku.get(key);
+    if (group) group.push(v); else bySku.set(key, [v]);
   }
 
   const existingBySku = new Map(existing.filter(p => p.sku).map(p => [p.sku!.trim().toLowerCase(), p]));
 
   const updates: ImportPlan["updates"] = [];
   const allInserts: { insert: ProductFields & { stock_quantity: number }; raw: CsvRow }[] = [];
-  for (const [key, a] of agg) {
+  for (const [key, group] of bySku) {
+    if (group.length > 1) {
+      for (const g of group) rejected.push({ row: g.raw, reason: "Duplicate SKU in file — each product needs a unique SKU" });
+      continue;
+    }
+    const { raw, canon } = group[0];
+    const fields = fieldsFromRow(canon);
+    const qty = parseImportNumber(canon.stock_quantity) || 0;
     const ex = existingBySku.get(key);
-    if (ex) updates.push({ id: ex.id, fields: a.fields, stock: Number(ex.stock_quantity) + a.qty });
-    else allInserts.push({ insert: { ...a.fields, stock_quantity: a.qty }, raw: a.raw });
+    if (ex) updates.push({ id: ex.id, fields, stock: Number(ex.stock_quantity) + qty });
+    else allInserts.push({ insert: { ...fields, stock_quantity: qty }, raw });
   }
 
   let allowedInserts = allInserts;

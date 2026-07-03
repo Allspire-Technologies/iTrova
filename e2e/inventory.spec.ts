@@ -63,6 +63,21 @@ test.describe("Inventory", () => {
     await expect(page.getByRole("button", { name: /Download not-imported \(1\)/ })).toBeVisible();
   });
 
+  test("flags duplicate SKUs within the file as failed", async ({ page }) => {
+    const csv = [
+      "Name,SKU,Cost Price,Selling Price,Stock Quantity,Reorder Level",
+      "First,DUP-1,1,2,3,4",
+      "Second,dup-1,1,2,3,4", // same SKU (case-insensitive) -> both flagged
+      "Unique,UNQ-1,1,2,3,4",
+    ].join("\n");
+    await page.locator('input[type="file"]').setInputFiles({ name: "products.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
+
+    await expect(page.getByRole("heading", { name: "Import results" })).toBeVisible();
+    await expect(page.getByText(/1 row imported/)).toBeVisible();
+    await expect(page.getByText(/2 rows not imported/)).toBeVisible();
+    await expect(page.getByText(/Duplicate SKU/i)).toBeVisible();
+  });
+
   test("shows a progress bar while the import is writing rows", async ({ page }) => {
     // Hold the insert open so the progress dialog is observable, then let it complete.
     await page.route("**/rest/v1/products**", async (route) => {
