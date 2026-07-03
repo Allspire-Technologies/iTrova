@@ -74,6 +74,33 @@ test.describe("General Store", () => {
     await expect(page.getByRole("button", { name: "Delete Cordless Drill" })).toHaveCount(0);
   });
 
+  test("bulk-imports items from a CSV", async ({ page }) => {
+    await authenticate(page, { role: "owner" });
+    await stubStore(page);
+    let posted: unknown = null;
+    await page.route("**/rest/v1/store_items**", (r) => {
+      if (r.request().method() === "POST") { posted = r.request().postDataJSON(); return r.fulfill({ status: 201, contentType: "application/json", body: "[]" }); }
+      return r.fallback();
+    });
+    await page.goto("/general-store");
+    const csv = "Name,Kind,Stock Quantity,Reorder Level\nHammer,Borrowable,4,1\nNails,Consumable,900,100";
+    await page.locator("input[type=file]").first().setInputFiles({ name: "items.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
+    await expect(page.getByText(/Imported 2 items/)).toBeVisible();
+    expect(Array.isArray(posted) ? (posted as unknown[]).length : 0).toBe(2);
+  });
+
+  test("the bell shows a General Store alert", async ({ page }) => {
+    await authenticate(page, { role: "owner" });
+    await page.route("**/rest/v1/rpc/sync_notifications**", (r) => r.fulfill({ status: 200, contentType: "application/json", body: "null" }));
+    await page.route("**/rest/v1/notifications**", (r) => {
+      if (r.request().method() === "GET") return r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([{ id: "n1", type: "store_overdue", title: "Cordless Drill · Ayo", body: "Overdue since 01 Jul 2026", entity_type: "store_transaction", link: "/general-store", read_at: null, created_at: "2026-07-03T00:00:00Z" }]) });
+      return r.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+    });
+    await page.getByRole("button", { name: /Notifications/ }).click();
+    await expect(page.getByText("Cordless Drill · Ayo")).toBeVisible();
+    await expect(page.getByText("Overdue since 01 Jul 2026")).toBeVisible();
+  });
+
   test("a cashier cannot reach the module", async ({ page }) => {
     await authenticate(page, { role: "cashier" });
     await expect(page.getByRole("link", { name: "General Store" })).toHaveCount(0);

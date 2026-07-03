@@ -101,6 +101,60 @@ export async function returnBorrow(transactionId: string, quantity: number): Pro
   if (error) throw error;
 }
 
+// ---------------------------------------------------------------- CSV bulk import
+function normHeader(h: string): string { return h.trim().toLowerCase().replace(/[\s_-]+/g, " ").trim(); }
+function csvNumber(v: string | undefined): number { const n = Number(String(v ?? "").replace(/[^0-9.-]/g, "")); return Number.isFinite(n) ? n : 0; }
+
+const ITEM_ALIAS: Record<string, "name" | "category" | "unit" | "kind" | "stock" | "reorder"> = {
+  "name": "name", "item": "name", "item name": "name", "category": "category", "group": "category",
+  "unit": "unit", "uom": "unit", "kind": "kind", "type": "kind",
+  "stock": "stock", "stock quantity": "stock", "quantity": "stock", "qty": "stock", "opening stock": "stock",
+  "reorder": "reorder", "reorder level": "reorder", "min stock": "reorder",
+};
+export type ItemImportRow = { name: string; category: string | null; unit: string; kind: StoreItemKind; stock_quantity: number; reorder_level: number };
+export function parseStoreItemsCsv(rows: Record<string, string>[]): { inserts: ItemImportRow[]; skipped: number } {
+  const inserts: ItemImportRow[] = [];
+  let skipped = 0;
+  for (const raw of rows) {
+    const c: Partial<Record<"name" | "category" | "unit" | "kind" | "stock" | "reorder", string>> = {};
+    for (const [k, v] of Object.entries(raw)) { const key = ITEM_ALIAS[normHeader(k)]; if (key && c[key] === undefined) c[key] = v; }
+    const name = (c.name ?? "").trim();
+    if (!name) { skipped++; continue; }
+    const kind: StoreItemKind = /borrow|tool|return|lend/.test(normHeader(c.kind ?? "")) ? "borrowable" : "consumable";
+    inserts.push({ name, category: (c.category ?? "").trim() || null, unit: (c.unit ?? "").trim() || "pcs", kind, stock_quantity: csvNumber(c.stock), reorder_level: csvNumber(c.reorder) });
+  }
+  return { inserts, skipped };
+}
+
+const STAFF_ALIAS: Record<string, "name" | "role" | "phone" | "active"> = {
+  "name": "name", "full name": "name", "staff": "name", "staff name": "name",
+  "role": "role", "title": "role", "department": "role", "dept": "role", "job title": "role",
+  "phone": "phone", "phone number": "phone", "mobile": "phone", "active": "active", "status": "active",
+};
+export type StaffImportRow = { name: string; role: string | null; phone: string | null; active: boolean };
+export function parseStoreStaffCsv(rows: Record<string, string>[]): { inserts: StaffImportRow[]; skipped: number } {
+  const inserts: StaffImportRow[] = [];
+  let skipped = 0;
+  for (const raw of rows) {
+    const c: Partial<Record<"name" | "role" | "phone" | "active", string>> = {};
+    for (const [k, v] of Object.entries(raw)) { const key = STAFF_ALIAS[normHeader(k)]; if (key && c[key] === undefined) c[key] = v; }
+    const name = (c.name ?? "").trim();
+    if (!name) { skipped++; continue; }
+    const active = !/^(false|no|0|inactive)$/.test(normHeader(c.active ?? ""));
+    inserts.push({ name, role: (c.role ?? "").trim() || null, phone: (c.phone ?? "").trim() || null, active });
+  }
+  return { inserts, skipped };
+}
+
+export async function bulkInsertItems(businessId: string, items: ItemImportRow[]): Promise<void> {
+  const { error } = await sb.from("store_items").insert(items.map((i) => ({ ...i, business_id: businessId })));
+  if (error) throw error;
+}
+export async function bulkInsertStaff(businessId: string, staff: StaffImportRow[]): Promise<void> {
+  const { error } = await sb.from("store_staff").insert(staff.map((s) => ({ ...s, business_id: businessId })));
+  if (error) throw error;
+}
+
 /** Map an RPC error message to a friendly one (server raises typed prefixes). */
 export function friendlyStoreError(message: string | undefined, fallback: string): string {
   const m = message ?? "";
