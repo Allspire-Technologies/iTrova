@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { findSkuConflict, buildImportPlan, expiryAlert } from "./inventoryRules";
+import { findSkuConflict, buildImportPlan, expiryAlert, canonicalizeRow, normalizeHeader, parseImportNumber } from "./inventoryRules";
 
 describe("expiryAlert", () => {
   const today = "2026-06-30";
@@ -90,6 +90,58 @@ describe("buildImportPlan", () => {
     expect(plan.updates).toHaveLength(1); // S1 restock allowed
     expect(plan.inserts).toHaveLength(0); // no capacity for new
     expect(plan.overLimit).toBe(2);
+  });
+});
+
+describe("buildImportPlan header + number robustness", () => {
+  it("maps human/case-varied headers onto the right fields (prices are not zeroed)", () => {
+    const plan = buildImportPlan(
+      [{ "Name": "Garri", "SKU": "G1", "Cost Price": "6000", "Selling Price": "8500", "Stock Quantity": "20", "Reorder Level": "5" }],
+      [], 0, null,
+    );
+    expect(plan.inserts).toHaveLength(1);
+    expect(plan.inserts[0]).toMatchObject({
+      name: "Garri", sku: "G1", cost_price: 6000, selling_price: 8500, reorder_level: 5, stock_quantity: 20,
+    });
+  });
+
+  it("accepts common aliases (Product / Code / Price / Qty)", () => {
+    const plan = buildImportPlan(
+      [{ "Product": "Rice", "Code": "R1", "Price": "1200", "Qty": "3" }],
+      [], 0, null,
+    );
+    expect(plan.inserts[0]).toMatchObject({ name: "Rice", sku: "R1", selling_price: 1200, stock_quantity: 3 });
+  });
+
+  it("strips currency symbols and thousands separators from numbers", () => {
+    const plan = buildImportPlan(
+      [{ "name": "A", "sku": "A1", "cost_price": "₦1,500", "selling_price": " 2,000.50 ", "stock_quantity": "1,000" }],
+      [], 0, null,
+    );
+    expect(plan.inserts[0]).toMatchObject({ cost_price: 1500, selling_price: 2000.5 });
+    expect(plan.inserts[0].stock_quantity).toBe(1000);
+  });
+
+  it("leaves a truly missing price at 0 rather than NaN", () => {
+    const plan = buildImportPlan([{ "Name": "B", "SKU": "B1" }], [], 0, null);
+    expect(plan.inserts[0].cost_price).toBe(0);
+    expect(plan.inserts[0].selling_price).toBe(0);
+  });
+});
+
+describe("canonicalizeRow / parseImportNumber", () => {
+  it("normalises headers regardless of case, spaces, underscores and hyphens", () => {
+    expect(normalizeHeader("  Cost_Price ")).toBe("cost price");
+    expect(normalizeHeader("SELLING-PRICE")).toBe("selling price");
+    expect(canonicalizeRow({ "Cost  Price": "9", "sELLing price": "10" })).toEqual({ cost_price: "9", selling_price: "10" });
+  });
+
+  it("parses messy spreadsheet numbers and rejects blanks", () => {
+    expect(parseImportNumber("₦1,500")).toBe(1500);
+    expect(parseImportNumber("2,000.50")).toBe(2000.5);
+    expect(parseImportNumber("")).toBeNaN();
+    expect(parseImportNumber(undefined)).toBeNaN();
+    expect(parseImportNumber("abc")).toBeNaN();
   });
 });
 

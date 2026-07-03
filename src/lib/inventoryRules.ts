@@ -13,6 +13,63 @@ export type ProductFields = {
 type CsvRow = Record<string, string | undefined>;
 type ExistingProduct = { id: string; sku: string | null; stock_quantity: number };
 
+// The row shape the import expects, keyed by our canonical field names.
+type CanonicalRow = {
+  name?: string; category?: string; sku?: string; unit?: string;
+  selling_price?: string; cost_price?: string; stock_quantity?: string;
+  reorder_level?: string; expiry_date?: string;
+};
+
+// Import CSVs are hand-edited in spreadsheets, so headers vary in case, spacing and wording. Map the
+// common ways people label each column onto our canonical field names — keyed by the normalised
+// header (lowercase, and spaces/underscores/hyphens collapsed to a single space). Without this,
+// "Cost Price"/"cost price" miss the exact-match `cost_price` key and silently import as 0.
+const HEADER_ALIASES: Record<string, keyof CanonicalRow> = {
+  "name": "name", "product": "name", "product name": "name", "item": "name", "item name": "name",
+  "category": "category", "cat": "category", "type": "category", "group": "category",
+  "sku": "sku", "code": "sku", "product code": "sku", "item code": "sku", "barcode": "sku",
+  "unit": "unit", "units": "unit", "uom": "unit", "unit of measure": "unit",
+  "selling price": "selling_price", "sell price": "selling_price", "sale price": "selling_price",
+  "sales price": "selling_price", "price": "selling_price", "unit price": "selling_price",
+  "retail price": "selling_price", "selling": "selling_price",
+  "cost price": "cost_price", "cost": "cost_price", "buy price": "cost_price",
+  "buying price": "cost_price", "purchase price": "cost_price", "cost per unit": "cost_price",
+  "stock quantity": "stock_quantity", "stock": "stock_quantity", "quantity": "stock_quantity",
+  "qty": "stock_quantity", "stock qty": "stock_quantity", "quantity in stock": "stock_quantity",
+  "opening stock": "stock_quantity", "current stock": "stock_quantity", "in stock": "stock_quantity",
+  "reorder level": "reorder_level", "reorder": "reorder_level", "reorder point": "reorder_level",
+  "reorder qty": "reorder_level", "min stock": "reorder_level", "minimum stock": "reorder_level",
+  "low stock level": "reorder_level",
+  "expiry date": "expiry_date", "expiry": "expiry_date", "expiration date": "expiry_date",
+  "expiration": "expiry_date", "best before": "expiry_date", "exp date": "expiry_date", "expires": "expiry_date",
+};
+
+/** Normalise a CSV header for alias lookup: trim, lowercase, collapse spaces/underscores/hyphens. */
+export function normalizeHeader(h: string): string {
+  return h.trim().toLowerCase().replace(/[\s_-]+/g, " ").trim();
+}
+
+/** Re-key a parsed CSV row onto canonical field names via HEADER_ALIASES (first match per field wins). */
+export function canonicalizeRow(row: CsvRow): CanonicalRow {
+  const out: CanonicalRow = {};
+  for (const [rawKey, value] of Object.entries(row)) {
+    const key = HEADER_ALIASES[normalizeHeader(rawKey)];
+    if (key && out[key] === undefined) out[key] = value;
+  }
+  return out;
+}
+
+/**
+ * Parse a number out of a spreadsheet cell: strip currency symbols, thousands separators and stray
+ * spaces so "₦1,500" / "1,500.00" / " 1500 " all read as 1500. Returns NaN for blanks/non-numbers.
+ */
+export function parseImportNumber(v: string | undefined): number {
+  if (v == null) return NaN;
+  const cleaned = String(v).replace(/[^0-9.-]/g, "");
+  if (!cleaned || cleaned === "-" || cleaned === ".") return NaN;
+  return Number(cleaned);
+}
+
 export type ImportPlan = {
   inserts: (ProductFields & { stock_quantity: number })[];
   updates: { id: string; fields: ProductFields; stock: number }[];
@@ -31,15 +88,15 @@ export function findSkuConflict<T extends { id: string; sku: string | null }>(
   return products.find(p => p.id !== excludeId && (p.sku ?? "").trim().toLowerCase() === norm) ?? null;
 }
 
-function fieldsFromRow(r: CsvRow): ProductFields {
+function fieldsFromRow(r: CanonicalRow): ProductFields {
   return {
     name: (r.name ?? "").trim(),
-    category: r.category || null,
+    category: r.category?.trim() || null,
     sku: (r.sku ?? "").trim(),
-    unit: r.unit || "pcs",
-    selling_price: Number(r.selling_price) || 0,
-    cost_price: Number(r.cost_price) || 0,
-    reorder_level: Number(r.reorder_level) || 5,
+    unit: r.unit?.trim() || "pcs",
+    selling_price: parseImportNumber(r.selling_price) || 0,
+    cost_price: parseImportNumber(r.cost_price) || 0,
+    reorder_level: parseImportNumber(r.reorder_level) || 5,
     // Only touch expiry when the column is present, so importing an old CSV never wipes it.
     expiry_date: "expiry_date" in r ? ((r.expiry_date ?? "").trim() || null) : undefined,
   };
@@ -56,14 +113,16 @@ export function buildImportPlan(
   currentCount: number,
   limit: number | null,
 ): ImportPlan {
-  const usable = rows.filter(r => r.name?.trim() && r.sku?.trim());
-  const skippedNoSku = rows.filter(r => r.name?.trim() && !r.sku?.trim()).length;
+  // Re-key every row onto canonical field names first, so varied header casing/wording still maps.
+  const canon = rows.map(canonicalizeRow);
+  const usable = canon.filter(r => r.name?.trim() && r.sku?.trim());
+  const skippedNoSku = canon.filter(r => r.name?.trim() && !r.sku?.trim()).length;
 
   const agg = new Map<string, { fields: ProductFields; qty: number }>();
   for (const r of usable) {
     const key = r.sku!.trim().toLowerCase();
     const prev = agg.get(key);
-    agg.set(key, { fields: fieldsFromRow(r), qty: (prev?.qty || 0) + (Number(r.stock_quantity) || 0) });
+    agg.set(key, { fields: fieldsFromRow(r), qty: (prev?.qty || 0) + (parseImportNumber(r.stock_quantity) || 0) });
   }
 
   const existingBySku = new Map(existing.filter(p => p.sku).map(p => [p.sku!.trim().toLowerCase(), p]));

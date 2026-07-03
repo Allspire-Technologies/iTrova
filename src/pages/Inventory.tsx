@@ -113,23 +113,26 @@ export default function Inventory() {
     load();
   };
 
+  // Human-readable headers for the template/export. Import is case/spacing-insensitive and accepts
+  // these plus common aliases (see inventoryRules canonicalizeRow), so re-importing either an old
+  // snake_case export or this friendlier one both work.
+  const CSV_HEADERS = ["Name", "Category", "SKU", "Unit", "Selling Price", "Cost Price", "Stock Quantity", "Reorder Level", "Expiry Date"];
+
   const downloadTemplate = () => {
-    const headers = ["name", "category", "sku", "unit", "selling_price", "cost_price", "stock_quantity", "reorder_level", "expiry_date"];
     const example = ["Garri 50kg", "Foodstuff", "GAR-50", "bag", "8500", "6000", "20", "5", "2026-12-31"];
-    const csv = [headers.join(","), example.join(",")].join("\n");
+    const csv = [CSV_HEADERS.join(","), example.join(",")].join("\n");
     downloadCsv("products-template.csv", csv);
     toast.success("Template downloaded");
   };
 
   const exportCsv = () => {
     const rows = items.map(p => ({
-      name: p.name, category: p.category || "", sku: p.sku || "", unit: p.unit || "pcs",
-      selling_price: p.selling_price, cost_price: p.cost_price,
-      stock_quantity: p.stock_quantity, reorder_level: p.reorder_level,
-      expiry_date: p.expiry_date || "",
+      "Name": p.name, "Category": p.category || "", "SKU": p.sku || "", "Unit": p.unit || "pcs",
+      "Selling Price": p.selling_price, "Cost Price": p.cost_price,
+      "Stock Quantity": p.stock_quantity, "Reorder Level": p.reorder_level,
+      "Expiry Date": p.expiry_date || "",
     }));
-    downloadCsv(`products-${new Date().toISOString().slice(0, 10)}.csv`,
-      toCsv(rows, ["name", "category", "sku", "unit", "selling_price", "cost_price", "stock_quantity", "reorder_level", "expiry_date"]));
+    downloadCsv(`products-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(rows, CSV_HEADERS));
     toast.success(`Exported ${rows.length} product${rows.length === 1 ? "" : "s"}`);
   };
 
@@ -140,7 +143,7 @@ export default function Inventory() {
       const rows = parseCsv(text);
       const plan = buildImportPlan(rows, items, items.length, getLimit(business.subscription_tier, "products"));
       if (plan.inserts.length === 0 && plan.updates.length === 0) {
-        return toast.error("No valid rows. Required columns: name, sku");
+        return toast.error("No valid rows. Required columns: Name, SKU");
       }
 
       let updated = 0;
