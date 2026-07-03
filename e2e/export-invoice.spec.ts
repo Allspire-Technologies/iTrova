@@ -60,12 +60,30 @@ test.describe("Export Invoice", () => {
     await expect(page.getByPlaceholder("Importer company name")).toHaveValue("MR Cash and Carry");
   });
 
-  test("a manager sees no Edit action on the list", async ({ page }) => {
+  test("a manager sees no Edit or Delete action on the list", async ({ page }) => {
     await authenticate(page, { role: "manager" });
     await stubRows(page, "export_invoices", [REC]);
     await page.goto("/export-invoice");
     await expect(page.getByText("ACME/EXP/2026/001")).toBeVisible();
     await expect(page.getByRole("button", { name: "Edit" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Delete ACME/ })).toHaveCount(0);
+  });
+
+  test("owner can delete a saved invoice (returns stock)", async ({ page }) => {
+    await authenticate(page, { role: "owner" });
+    await stubRows(page, "export_invoices", [REC]);
+    let called = false;
+    await page.route("**/rest/v1/rpc/delete_export_invoice**", (r) => {
+      called = true;
+      return r.fulfill({ status: 200, contentType: "application/json", body: "null" });
+    });
+    await page.goto("/export-invoice");
+    await page.getByRole("button", { name: "Delete ACME/EXP/2026/001" }).click();
+    // Confirm dialog warns about returning stock, then deletes.
+    await expect(page.getByText(/returns the stock/i)).toBeVisible();
+    await page.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect(page.getByText("Export invoice ACME/EXP/2026/001 deleted")).toBeVisible();
+    expect(called).toBe(true);
   });
 
   test("a cashier cannot reach the module", async ({ page }) => {

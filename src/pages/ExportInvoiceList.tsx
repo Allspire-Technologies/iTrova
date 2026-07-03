@@ -1,25 +1,39 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Plus, FileDown, Ship, Pencil } from "lucide-react";
+import { Plus, FileDown, Ship, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import { TablePageSkeleton } from "@/components/Skeletons";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDateFormat } from "@/hooks/useDateFormat";
-import { listExportInvoices, downloadExportInvoicePdf, formatExportMoney, type ExportInvoiceRecord } from "@/lib/exportInvoice";
+import { listExportInvoices, downloadExportInvoicePdf, deleteExportInvoice, formatExportMoney, type ExportInvoiceRecord } from "@/lib/exportInvoice";
 
 export default function ExportInvoiceList() {
   const navigate = useNavigate();
   const isOwner = useAuth().role === "owner";
   const { fmtDate } = useDateFormat();
   const [items, setItems] = useState<ExportInvoiceRecord[] | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<ExportInvoiceRecord | null>(null);
 
   useEffect(() => {
     listExportInvoices()
       .then(setItems)
       .catch((e) => { toast.error(e?.message ?? "Couldn't load export invoices"); setItems([]); });
   }, []);
+
+  async function confirmDelete() {
+    const inv = pendingDelete;
+    if (!inv) return;
+    try {
+      await deleteExportInvoice(inv.id);
+      setItems((list) => (list ?? []).filter((i) => i.id !== inv.id));
+      toast.success(`Export invoice ${inv.invoice_number} deleted`);
+    } catch (e) {
+      toast.error((e as { message?: string })?.message ?? "Couldn't delete the invoice");
+    }
+  }
 
   if (items === null) return <TablePageSkeleton />;
 
@@ -64,11 +78,25 @@ export default function ExportInvoiceList() {
                 <Button variant="outline" size="sm" onClick={() => downloadExportInvoicePdf(inv, `${inv.invoice_number.replace(/[^\w.-]+/g, "-")}.pdf`)}>
                   <FileDown className="size-4" /> PDF
                 </Button>
+                {isOwner && (
+                  <Button variant="ghost" size="sm" onClick={() => setPendingDelete(inv)} aria-label={`Delete ${inv.invoice_number}`}>
+                    <Trash2 className="size-4 text-danger" />
+                  </Button>
+                )}
               </div>
             </div>
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!pendingDelete}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+        title={`Delete ${pendingDelete?.invoice_number ?? ""}?`}
+        description="This permanently deletes the invoice and returns the stock it depleted to inventory."
+        confirmLabel="Delete"
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }

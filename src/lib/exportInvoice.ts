@@ -166,6 +166,13 @@ export async function updateExportInvoice(id: string, businessId: string, draft:
   return { ...draft, items, invoice_number: res.invoice_number, id: res.id, subtotal: res.total, total: res.total, total_cartons: res.total_cartons, amount_in_words: words, created_at: new Date().toISOString() };
 }
 
+/** Delete a saved invoice, returning its depleted stock to inventory (atomic). */
+export async function deleteExportInvoice(id: string): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await supabase.rpc("delete_export_invoice" as any, { _id: id });
+  if (error) throw error;
+}
+
 /** Fetch one saved invoice by id (RLS scopes it to the caller's business). */
 export async function getExportInvoice(id: string): Promise<ExportInvoiceRecord | null> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
