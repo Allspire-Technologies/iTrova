@@ -1,5 +1,19 @@
 import { describe, it, expect, vi } from "vitest";
-import { retryImport } from "./lazyWithRetry";
+import { retryImport, isChunkLoadError } from "./lazyWithRetry";
+
+describe("isChunkLoadError", () => {
+  it("recognises the browser variants of a failed dynamic import", () => {
+    expect(isChunkLoadError(new Error("Failed to fetch dynamically imported module: /assets/POS-a.js"))).toBe(true);
+    expect(isChunkLoadError(new Error("error loading dynamically imported module"))).toBe(true);
+    expect(isChunkLoadError(Object.assign(new Error("x"), { name: "ChunkLoadError" }))).toBe(true);
+    expect(isChunkLoadError(new Error("Loading chunk 5 failed"))).toBe(true);
+  });
+  it("is false for unrelated errors and non-errors", () => {
+    expect(isChunkLoadError(new Error("Cannot read properties of undefined"))).toBe(false);
+    expect(isChunkLoadError(null)).toBe(false);
+    expect(isChunkLoadError(undefined)).toBe(false);
+  });
+});
 
 describe("retryImport", () => {
   it("returns the value on the first success", async () => {
