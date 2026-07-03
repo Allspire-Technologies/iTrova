@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import { Plus, Search, Package, Pencil, Upload, Download, SlidersHorizontal } from "lucide-react";
 import SearchableSelect from "@/components/SearchableSelect";
 import { toast } from "sonner";
@@ -59,6 +60,7 @@ export default function Inventory() {
   const [busy, setBusy] = useState(false);
   const [adjustTarget, setAdjustTarget] = useState<Product | null>(null);
   const [importResult, setImportResult] = useState<{ added: number; restocked: number; failed: FailedImportRow[] } | null>(null);
+  const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = async () => {
@@ -169,24 +171,37 @@ export default function Inventory() {
       // Start the misses with the rows that failed validation or the plan limit, then add any DB errors.
       const failed: FailedImportRow[] = plan.rejected.map(r => ({ values: templateValuesFromRaw(r.row), reason: r.reason }));
 
+      // Inserts go up in batches (kinder to large files) so we can advance a real progress bar: one
+      // step per restock plus one per insert batch. A failed batch only sinks its own rows.
+      const INSERT_BATCH = 100;
+      const insertBatches: (typeof plan.inserts)[] = [];
+      for (let i = 0; i < plan.inserts.length; i += INSERT_BATCH) insertBatches.push(plan.inserts.slice(i, i + INSERT_BATCH));
+      const totalSteps = plan.updates.length + insertBatches.length;
+      let done = 0;
+      const tick = () => setImportProgress({ done: ++done, total: totalSteps });
+      if (totalSteps > 0) setImportProgress({ done: 0, total: totalSteps });
+
       let restocked = 0;
       for (const u of plan.updates) {
         const { error } = await supabase.from("products").update({ ...u.fields, stock_quantity: u.stock }).eq("id", u.id);
         if (error) failed.push({ values: templateValuesFromFields(u.fields, u.stock), reason: `Update failed: ${error.message}` });
         else restocked++;
+        tick();
       }
 
       let added = 0;
-      if (plan.inserts.length > 0) {
-        // One bulk insert: if it errors the whole batch is rejected, so report every row in it.
-        const { error } = await supabase.from("products").insert(plan.inserts.map(i => ({ ...i, business_id: business.id })) as never);
-        if (error) plan.inserts.forEach(i => failed.push({ values: templateValuesFromFields(i, i.stock_quantity), reason: `Upload failed: ${error.message}` }));
-        else added = plan.inserts.length;
+      for (const batch of insertBatches) {
+        const { error } = await supabase.from("products").insert(batch.map(i => ({ ...i, business_id: business.id })) as never);
+        if (error) batch.forEach(i => failed.push({ values: templateValuesFromFields(i, i.stock_quantity), reason: `Upload failed: ${error.message}` }));
+        else added += batch.length;
+        tick();
       }
 
+      setImportProgress(null);
       setImportResult({ added, restocked, failed });
       load();
     } catch (e: any) {
+      setImportProgress(null);
       toast.error(e.message || "Import failed");
     } finally {
       if (fileRef.current) fileRef.current.value = "";
@@ -478,6 +493,24 @@ export default function Inventory() {
         target={adjustTarget ? { kind: "product", id: adjustTarget.id, name: adjustTarget.name, unit: adjustTarget.unit, stock_quantity: Number(adjustTarget.stock_quantity) } : null}
         onSaved={load}
       />
+
+      {/* Non-dismissable progress while the import writes rows, so the user sees it's working. */}
+      <Dialog open={!!importProgress}>
+        <DialogContent className="[&>button]:hidden" onInteractOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle>Importing products…</DialogTitle>
+          </DialogHeader>
+          {importProgress && (() => {
+            const pct = importProgress.total ? Math.round((importProgress.done / importProgress.total) * 100) : 0;
+            return (
+              <div className="space-y-2">
+                <Progress value={pct} />
+                <p className="text-sm text-muted-foreground">{pct}% — {importProgress.done} of {importProgress.total} steps. Please keep this page open.</p>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!importResult} onOpenChange={(v) => !v && setImportResult(null)}>
         <DialogContent>

@@ -62,4 +62,22 @@ test.describe("Inventory", () => {
     await expect(page.getByText(/Missing Cost Price/)).toBeVisible();
     await expect(page.getByRole("button", { name: /Download not-imported \(1\)/ })).toBeVisible();
   });
+
+  test("shows a progress bar while the import is writing rows", async ({ page }) => {
+    // Hold the insert open so the progress dialog is observable, then let it complete.
+    await page.route("**/rest/v1/products**", async (route) => {
+      if (route.request().method() === "POST") {
+        await new Promise((r) => setTimeout(r, 800));
+        return route.fulfill({ status: 201, contentType: "application/json", body: "[]" });
+      }
+      return route.fallback();
+    });
+    const csv = ["Name,SKU,Cost Price,Selling Price,Stock Quantity,Reorder Level", "A,A-1,1,2,3,4", "B,B-1,1,2,3,4", "C,C-1,1,2,3,4"].join("\n");
+    await page.locator('input[type="file"]').setInputFiles({ name: "products.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
+
+    await expect(page.getByRole("heading", { name: "Importing products…" })).toBeVisible();
+    await expect(page.getByRole("progressbar")).toBeVisible();
+    // …then it finishes and hands off to the results summary.
+    await expect(page.getByText(/3 rows imported/)).toBeVisible();
+  });
 });
