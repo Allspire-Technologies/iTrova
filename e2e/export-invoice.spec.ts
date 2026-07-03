@@ -1,30 +1,39 @@
 import { test, expect } from "@playwright/test";
-import { authenticate } from "./support/auth";
+import { authenticate, stubRows } from "./support/auth";
 
 test.describe("Export Invoice", () => {
-  test("owner sees the module in the nav", async ({ page }) => {
+  test("owner: the list has a New button that opens the form", async ({ page }) => {
     await authenticate(page, { role: "owner" });
     await expect(page.getByRole("link", { name: "Export Invoice" })).toBeVisible();
+    await page.goto("/export-invoice");
+    await expect(page.getByRole("heading", { name: "Export Invoices" })).toBeVisible();
+    await page.getByRole("button", { name: "New export invoice" }).first().click();
+    await expect(page).toHaveURL(/\/export-invoice\/new$/);
+    await expect(page.getByRole("heading", { name: "New Export Invoice" })).toBeVisible();
   });
 
-  test("prefills the seller, reserves a number, and computes line + grand totals", async ({ page }) => {
+  test("form prefills the seller and computes line, grand and carton totals", async ({ page }) => {
     await authenticate(page, { role: "owner" });
-    // Reserve-number RPC returns a JSON string.
-    await page.route("**/rest/v1/rpc/next_export_invoice_number**", (r) =>
-      r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify("ACME/EXP/2026/001") }),
-    );
-    await page.goto("/export-invoice");
-
-    await expect(page.getByRole("heading", { name: "Export Invoice" })).toBeVisible();
-    // Seller prefilled from the business; invoice number reserved from the RPC.
+    await page.goto("/export-invoice/new");
     await expect(page.getByPlaceholder("Exporter company name")).toHaveValue("Sunrise Stores");
-    await expect(page.getByLabel("Invoice number")).toHaveValue("ACME/EXP/2026/001");
 
-    // A line total and the grand total compute from boxes x unit price.
-    await page.getByLabel("Boxes 1").fill("6");
-    await page.getByLabel("Unit price 1").fill("128000");
-    await expect(page.getByLabel("Line total 1")).toHaveValue("NGN 768,000.00");
-    await expect(page.getByText("NGN 768,000.00").last()).toBeVisible();
+    // A custom line (no product) still computes: 10 boxes x 168,000 = 1,680,000.
+    await page.getByLabel("Description 1").fill("Mixed Spices");
+    await page.getByLabel("Units per box 1").fill("48");
+    await page.getByLabel("Boxes 1").fill("10");
+    await page.getByLabel("Unit price 1").fill("168000");
+    await expect(page.getByLabel("Line total 1")).toHaveValue("NGN 1,680,000.00");
+    await expect(page.getByText(/Total cartons/)).toContainText("10");
+    await expect(page.getByText("NGN 1,680,000.00")).toBeVisible();
+  });
+
+  test("selecting a product fills its inventory price; a manager can't change it", async ({ page }) => {
+    await authenticate(page, { role: "manager" });
+    await stubRows(page, "products", [{ id: "p1", name: "Mixed Spices", stock_quantity: 500, unit: "pcs", selling_price: 168000 }]);
+    await page.goto("/export-invoice/new");
+    await page.getByLabel("Product 1").selectOption({ label: "Mixed Spices" });
+    await expect(page.getByLabel("Unit price 1")).toHaveValue("168000");
+    await expect(page.getByLabel("Unit price 1")).toBeDisabled();
   });
 
   test("a cashier cannot reach the module", async ({ page }) => {

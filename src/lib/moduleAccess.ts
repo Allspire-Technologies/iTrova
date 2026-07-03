@@ -11,7 +11,7 @@ export function canAccessModule(planModules: string[] | null | undefined, key: s
 /** Known Free-tier modules — the safety baseline if the Free plan row is misconfigured. */
 export const FREE_MODULES = [
   "inventory", "pos", "suppliers", "raw_materials", "invoices",
-  "purchase_orders", "reports", "team", "csv_import", "csv_export", "export_invoices",
+  "purchase_orders", "reports", "team", "csv_import", "csv_export",
 ];
 
 /**
