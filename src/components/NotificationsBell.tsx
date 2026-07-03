@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, PackageX, AlertTriangle, CalendarClock, FileText, CreditCard, CheckCircle2 } from "lucide-react";
+import { Bell, PackageX, AlertTriangle, CalendarClock, FileText, CreditCard, CheckCircle2, Warehouse } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
-type NotifType = "low_stock" | "out_of_stock" | "overdue" | "invoice_edited" | "plan_expiring" | "plan_expired";
+type NotifType = "low_stock" | "out_of_stock" | "overdue" | "invoice_edited" | "plan_expiring" | "plan_expired" | "store_low_stock" | "store_out_of_stock" | "store_overdue" | "expiring";
 type Notif = {
   id: string;
   type: NotifType;
@@ -19,12 +19,16 @@ type Notif = {
 };
 
 const STYLE: Record<NotifType, { icon: typeof Bell; wrap: string }> = {
-  out_of_stock:   { icon: PackageX,      wrap: "bg-danger/10 text-danger" },
-  overdue:        { icon: CalendarClock, wrap: "bg-danger/10 text-danger" },
-  low_stock:      { icon: AlertTriangle, wrap: "bg-warning/10 text-warning" },
-  invoice_edited: { icon: FileText,      wrap: "bg-brand-light text-brand" },
-  plan_expired:   { icon: CreditCard,    wrap: "bg-danger/10 text-danger" },
-  plan_expiring:  { icon: CreditCard,    wrap: "bg-warning/10 text-warning" },
+  out_of_stock:       { icon: PackageX,      wrap: "bg-danger/10 text-danger" },
+  overdue:            { icon: CalendarClock, wrap: "bg-danger/10 text-danger" },
+  low_stock:          { icon: AlertTriangle, wrap: "bg-warning/10 text-warning" },
+  expiring:           { icon: CalendarClock, wrap: "bg-warning/10 text-warning" },
+  invoice_edited:     { icon: FileText,      wrap: "bg-brand-light text-brand" },
+  plan_expired:       { icon: CreditCard,    wrap: "bg-danger/10 text-danger" },
+  plan_expiring:      { icon: CreditCard,    wrap: "bg-warning/10 text-warning" },
+  store_out_of_stock: { icon: Warehouse,     wrap: "bg-danger/10 text-danger" },
+  store_overdue:      { icon: CalendarClock, wrap: "bg-danger/10 text-danger" },
+  store_low_stock:    { icon: Warehouse,     wrap: "bg-warning/10 text-warning" },
 };
 
 export default function NotificationsBell() {

@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, PackagePlus, Undo2, ArrowRightLeft } from "lucide-react";
+import { Plus, Pencil, Trash2, PackagePlus, Undo2, ArrowRightLeft, Upload, Download } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { Button } from "@/components/ui/button";
@@ -12,11 +12,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { TablePageSkeleton } from "@/components/Skeletons";
 import { cn } from "@/lib/utils";
+import { parseCsv, readFileText, downloadCsv } from "@/lib/csv";
 import {
   listItems, saveItem, addItemStock, deleteItem,
   listStaff, saveStaff, deleteStaff,
   listTransactions, checkout, returnBorrow,
   outstanding, isOverdue, itemStatus, friendlyStoreError,
+  parseStoreItemsCsv, parseStoreStaffCsv, bulkInsertItems, bulkInsertStaff,
   ITEM_KIND_LABEL, TXN_STATUS_LABEL,
   type StoreItem, type StoreStaff, type StoreTransaction, type StoreItemKind, type TxnKind,
 } from "@/lib/generalStore";
@@ -54,6 +56,8 @@ export default function GeneralStore() {
   const [returnForm, setReturnForm] = useState<{ txn: StoreTransaction; qty: string } | null>(null);
   const [confirm, setConfirm] = useState<{ title: string; description: string; onConfirm: () => void } | null>(null);
   const [busy, setBusy] = useState(false);
+  const itemFileRef = useRef<HTMLInputElement>(null);
+  const staffFileRef = useRef<HTMLInputElement>(null);
 
   const staffById = useMemo(() => new Map((staff ?? []).map((s) => [s.id, s])), [staff]);
 
@@ -110,6 +114,32 @@ export default function GeneralStore() {
     catch (e) { toast.error(friendlyStoreError((e as { message?: string })?.message, "Couldn't record the return")); } finally { setBusy(false); }
   }
 
+  // ---- CSV import
+  async function importItems(file: File) {
+    if (!business) return;
+    try {
+      const { inserts, skipped } = parseStoreItemsCsv(parseCsv(await readFileText(file)));
+      if (inserts.length === 0) return toast.error("No valid rows — each item needs a Name.");
+      await bulkInsertItems(business.id, inserts);
+      toast.success(`Imported ${inserts.length} item${inserts.length === 1 ? "" : "s"}${skipped ? ` · ${skipped} skipped` : ""}`);
+      reloadItems();
+    } catch (e) { toast.error((e as { message?: string })?.message ?? "Import failed"); }
+    finally { if (itemFileRef.current) itemFileRef.current.value = ""; }
+  }
+  async function importStaff(file: File) {
+    if (!business) return;
+    try {
+      const { inserts, skipped } = parseStoreStaffCsv(parseCsv(await readFileText(file)));
+      if (inserts.length === 0) return toast.error("No valid rows — each person needs a Name.");
+      await bulkInsertStaff(business.id, inserts);
+      toast.success(`Imported ${inserts.length} staff${skipped ? ` · ${skipped} skipped` : ""}`);
+      reloadStaff();
+    } catch (e) { toast.error((e as { message?: string })?.message ?? "Import failed"); }
+    finally { if (staffFileRef.current) staffFileRef.current.value = ""; }
+  }
+  const itemsTemplate = () => downloadCsv("general-store-items.csv", "Name,Category,Unit,Kind,Stock Quantity,Reorder Level\nCordless Drill,Tools,pcs,Borrowable,3,1\nWood Screws,Fasteners,box,Consumable,500,50");
+  const staffTemplate = () => downloadCsv("general-store-staff.csv", "Name,Role,Phone,Active\nAyo Bello,Machine Operator,08000000000,true");
+
   const loading = items === null || staff === null || txns === null;
   if (loading) return <TablePageSkeleton />;
 
@@ -138,7 +168,10 @@ export default function GeneralStore() {
       {/* ITEMS */}
       {tab === "items" && (
         <div className="space-y-3">
-          <div className="flex justify-end">
+          <div className="flex justify-end flex-wrap gap-2">
+            <input ref={itemFileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => e.target.files?.[0] && importItems(e.target.files[0])} />
+            <Button variant="outline" onClick={itemsTemplate}><Download className="size-4" /> CSV template</Button>
+            <Button variant="outline" onClick={() => itemFileRef.current?.click()}><Upload className="size-4" /> Import CSV</Button>
             <Button variant="outline" onClick={() => setItemForm({ ...emptyItemForm })}><Plus className="size-4" /> Add item</Button>
           </div>
           <div className="rounded-xl border border-border/60 bg-card overflow-x-auto">
@@ -176,7 +209,12 @@ export default function GeneralStore() {
       {/* STAFF */}
       {tab === "staff" && (
         <div className="space-y-3">
-          <div className="flex justify-end"><Button variant="outline" onClick={() => setStaffForm({ ...emptyStaffForm })}><Plus className="size-4" /> Add staff</Button></div>
+          <div className="flex justify-end flex-wrap gap-2">
+            <input ref={staffFileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => e.target.files?.[0] && importStaff(e.target.files[0])} />
+            <Button variant="outline" onClick={staffTemplate}><Download className="size-4" /> CSV template</Button>
+            <Button variant="outline" onClick={() => staffFileRef.current?.click()}><Upload className="size-4" /> Import CSV</Button>
+            <Button variant="outline" onClick={() => setStaffForm({ ...emptyStaffForm })}><Plus className="size-4" /> Add staff</Button>
+          </div>
           <div className="rounded-xl border border-border/60 bg-card overflow-x-auto">
             <Table>
               <TableHeader><TableRow className="hover:bg-transparent"><TableHead>Name</TableHead><TableHead>Role</TableHead><TableHead>Phone</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
