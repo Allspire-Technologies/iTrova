@@ -225,6 +225,14 @@ export default function Settings() {
   const [ownerName, setOwnerName] = useState("");
   const [profileBusy, setProfileBusy] = useState(false);
 
+  // Exporter profile (export invoices)
+  const [exportAddress, setExportAddress] = useState("");
+  const [exportEmail, setExportEmail] = useState("");
+  const [exportPhone, setExportPhone] = useState("");
+  const [exportCountry, setExportCountry] = useState("");
+  const [exportPrefix, setExportPrefix] = useState("");
+  const [exporterBusy, setExporterBusy] = useState(false);
+
   // Regional
   const [currency, setCurrency] = useState("NGN");
   const [timezone, setTimezone] = useState("Africa/Lagos");
@@ -265,6 +273,11 @@ export default function Settings() {
       setTimezone(business.timezone || "Africa/Lagos");
       setCurrentPlan(business.subscription_tier || "free");
       setWhatsapp(business.whatsapp_number || "");
+      setExportAddress(business.export_address || "");
+      setExportEmail(business.export_email || "");
+      setExportPhone(business.export_phone || "");
+      setExportCountry(business.export_country || "");
+      setExportPrefix(business.export_invoice_prefix || "");
     }
     if (profile) setOwnerName(profile.owner_name || "");
   }, [business, profile]);
@@ -301,6 +314,22 @@ export default function Settings() {
     if (e1 || e2) return toast.error((e1 || e2)!.message);
     await refresh();
     toast.success("Profile saved");
+  };
+
+  const saveExporter = async () => {
+    if (!business) return;
+    setExporterBusy(true);
+    const { error } = await supabase.from("businesses").update({
+      export_address: exportAddress.trim() || null,
+      export_email: exportEmail.trim() || null,
+      export_phone: exportPhone.trim() || null,
+      export_country: exportCountry.trim() || null,
+      export_invoice_prefix: exportPrefix.trim().toUpperCase() || null,
+    } as any).eq("id", business.id);
+    setExporterBusy(false);
+    if (error) return toast.error(error.message);
+    await refresh();
+    toast.success("Exporter profile saved");
   };
 
   const saveRegional = async () => {
@@ -376,6 +405,10 @@ export default function Settings() {
     [bizName, industry, industryOther, city, state, ownerName],
     [business?.name || "", business?.industry || "", business?.industry_other || "", business?.city || "", business?.state || "", profile?.owner_name || ""],
   );
+  const exporterDirty = isDirty(
+    [exportAddress, exportEmail, exportPhone, exportCountry, exportPrefix],
+    [business?.export_address || "", business?.export_email || "", business?.export_phone || "", business?.export_country || "", business?.export_invoice_prefix || ""],
+  );
   const regionalDirty = isDirty([currency, timezone], [business?.currency || "NGN", business?.timezone || "Africa/Lagos"]);
   const integrationsDirty = isDirty([whatsapp], [business?.whatsapp_number || ""]);
   const securityReady = isPasswordFormReady(newPassword, confirmPassword);
@@ -438,6 +471,55 @@ export default function Settings() {
             <div className="flex justify-end">
               <Button variant="brand" onClick={saveProfile} disabled={profileBusy || !profileDirty}>
                 {profileBusy ? "Saving..." : "Save profile"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Exporter Profile — owner only (prefills export invoices) */}
+      {isOwner && (
+        <Card className="shadow-card border-border/60">
+          <CardHeader className="pb-4">
+            <div className="flex items-center gap-3">
+              <div className="size-9 rounded-lg bg-brand-light grid place-items-center text-brand">
+                <Globe className="size-4" />
+              </div>
+              <div>
+                <CardTitle className="font-display text-lg">Exporter Profile</CardTitle>
+                <CardDescription>Seller details prefilled onto export (commercial) invoices. Only you (the owner) can edit these.</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>Exporter address</Label>
+              <Input value={exportAddress} onChange={e => setExportAddress(e.target.value)} placeholder="Street, area, city, state" />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Exporter email</Label>
+                <Input type="email" value={exportEmail} onChange={e => setExportEmail(e.target.value)} placeholder="exports@example.com" />
+              </div>
+              <div className="space-y-2">
+                <Label>Exporter phone</Label>
+                <Input value={exportPhone} onChange={e => setExportPhone(e.target.value)} placeholder="Phone number" />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Country of origin</Label>
+                <Input value={exportCountry} onChange={e => setExportCountry(e.target.value)} placeholder="Country" />
+              </div>
+              <div className="space-y-2">
+                <Label>Invoice number prefix</Label>
+                <Input value={exportPrefix} onChange={e => setExportPrefix(e.target.value)} placeholder="e.g. ABC" />
+                <p className="text-xs text-muted-foreground">Used in numbers like {(exportPrefix.trim().toUpperCase() || "PREFIX")}/EXP/{new Date().getFullYear()}/001.</p>
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <Button variant="brand" onClick={saveExporter} disabled={exporterBusy || !exporterDirty}>
+                {exporterBusy ? "Saving..." : "Save exporter profile"}
               </Button>
             </div>
           </CardContent>

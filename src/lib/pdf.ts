@@ -2,7 +2,7 @@ import { formatNaira } from "./format";
 
 // jsPDF (+autotable and its transitive html2canvas/dompurify chunks) is heavy — load it only when
 // someone actually exports a PDF, not at app startup (Experience Roadmap · Phase 1).
-async function loadPdf() {
+export async function loadPdf() {
   const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
     import("jspdf"),
     import("jspdf-autotable"),

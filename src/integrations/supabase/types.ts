@@ -103,6 +103,11 @@ export type Database = {
           city: string | null
           created_at: string
           currency: string
+          export_address: string | null
+          export_country: string | null
+          export_email: string | null
+          export_invoice_prefix: string | null
+          export_phone: string | null
           id: string
           industry: string | null
           industry_other: string | null
@@ -120,6 +125,11 @@ export type Database = {
           city?: string | null
           created_at?: string
           currency?: string
+          export_address?: string | null
+          export_country?: string | null
+          export_email?: string | null
+          export_invoice_prefix?: string | null
+          export_phone?: string | null
           id?: string
           industry?: string | null
           industry_other?: string | null
@@ -137,6 +147,11 @@ export type Database = {
           city?: string | null
           created_at?: string
           currency?: string
+          export_address?: string | null
+          export_country?: string | null
+          export_email?: string | null
+          export_invoice_prefix?: string | null
+          export_phone?: string | null
           id?: string
           industry?: string | null
           industry_other?: string | null

@@ -26,6 +26,11 @@ type Business = {
   state: string | null;
   currency: string;
   timezone: string | null;
+  export_address: string | null;
+  export_email: string | null;
+  export_phone: string | null;
+  export_country: string | null;
+  export_invoice_prefix: string | null;
   subscription_tier: string | null;
   subscription_renews_at: string | null;
   subscription_started_at: string | null;
