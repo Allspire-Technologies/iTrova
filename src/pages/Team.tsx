@@ -11,7 +11,7 @@ import ConfirmDialog from "@/components/ConfirmDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { UserPlus, Copy, Trash2, ShieldAlert, Users, TrendingUp, Search, Download, Upload, MoreHorizontal } from "lucide-react";
+import { UserPlus, Copy, Trash2, Users, TrendingUp, Search, Download, Upload, MoreHorizontal } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { toCsv, downloadCsv, parseCsv, readFileText } from "@/lib/csv";
 import Paginator, { usePagination } from "@/components/Paginator";
@@ -33,7 +33,7 @@ const ROLE_DESC: Record<AppRole, string> = {
 };
 
 export default function Team() {
-  const { business, user, role: myRole, hasModule } = useAuth();
+  const { business, user, hasModule, can } = useAuth();
   const { fmt } = useCurrency();
   const { fmtDate } = useDateFormat();
   const [members, setMembers] = useState<Member[]>([]);
@@ -49,7 +49,6 @@ export default function Team() {
   const [roleFilter, setRoleFilter] = useState("all");
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const isOwner = myRole === "owner";
   const tier = business?.subscription_tier;
   const staffLimit = getLimit(tier, "staff");
   const atStaffLimit = isAtLimit(members.length, tier, "staff");
@@ -233,16 +232,6 @@ export default function Team() {
     }
   };
 
-  if (!isOwner) {
-    return (
-      <div className="max-w-md mx-auto mt-24 text-center space-y-3 p-8 rounded-2xl bg-card border border-border/60 shadow-card">
-        <ShieldAlert className="size-10 mx-auto text-warning" />
-        <h1 className="font-display text-xl font-bold text-brand-dark">Owners only</h1>
-        <p className="text-sm text-muted-foreground">Only the business owner can manage teammates and invitations.</p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6 w-full">
       <div className="flex items-end justify-between flex-wrap gap-4">
@@ -256,13 +245,14 @@ export default function Team() {
           <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden"
             onChange={e => e.target.files?.[0] && importCsv(e.target.files[0])} />
           <Button variant="outline" onClick={downloadTemplate}><Download className="size-4" /> CSV Template</Button>
-          {hasModule("csv_import") && <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={atStaffLimit} title={atStaffLimit ? limitMessage("staff") : undefined}><Upload className="size-4" /> Import CSV</Button>}
+          {can("team", "invite") && hasModule("csv_import") && <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={atStaffLimit} title={atStaffLimit ? limitMessage("staff") : undefined}><Upload className="size-4" /> Import CSV</Button>}
           <Button variant="outline" onClick={exportMembers} disabled={members.length === 0}><Download className="size-4" /> Export</Button>
           {staffLimit !== null && members.length >= Math.floor(staffLimit * 0.8) && (
             <span className={`self-center text-xs font-medium ${atStaffLimit ? "text-destructive" : "text-amber-600"}`}>
               {members.length} / {staffLimit} seats
             </span>
           )}
+          {can("team", "invite") && (
           <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
           <DialogTrigger asChild>
             <Button variant="hero" disabled={atStaffLimit} title={atStaffLimit ? limitMessage("staff") : undefined}><UserPlus className="size-4" /> Invite teammate</Button>
@@ -296,6 +286,7 @@ export default function Team() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+          )}
         </div>
       </div>
 
@@ -354,6 +345,7 @@ export default function Team() {
               <div className="flex items-center gap-2">
                 {m.role !== "owner" && m.user_id !== user?.id && (
                   <>
+                    {can("team", "role_change") && (
                     <SearchableSelect
                       value={m.role}
                       onValueChange={(v) => changeRole(m, v as AppRole)}
@@ -363,6 +355,8 @@ export default function Team() {
                         { value: "cashier", label: "Cashier" },
                       ]}
                     />
+                    )}
+                    {can("team", "remove") && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="sm" aria-label={`More actions for ${m.owner_name || m.email || "member"}`}><MoreHorizontal className="size-4" /> More</Button>
@@ -371,6 +365,7 @@ export default function Team() {
                         <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => deactivateMember(m)}><Trash2 className="size-4 mr-2" /> Remove member</DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
+                    )}
                   </>
                 )}
               </div>

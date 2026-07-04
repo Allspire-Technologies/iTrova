@@ -48,10 +48,10 @@ const statusMeta: Record<string, { icon: any; cls: string; label: string }> = {
 };
 
 export default function OrdersPanel({ products, onStockChanged }: { products: Product[]; onStockChanged: () => void }) {
-  const { business, user, role } = useAuth();
+  const { business, user, can } = useAuth();
   const { fmt, symbol } = useCurrency();
   const { fmtDateTime } = useDateFormat();
-  const canManage = role === "owner" || role === "manager";
+  const canManage = can("pos", "orders_delete");
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>("all");

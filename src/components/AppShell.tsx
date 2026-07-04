@@ -21,20 +21,20 @@ import { toast } from "sonner";
 
 import type { AppRole } from "@/contexts/AuthContext";
 
-type NavItem = { to: string; label: string; icon: any; end?: boolean; soon?: boolean; allow?: AppRole[]; module?: string };
+type NavItem = { to: string; label: string; icon: any; end?: boolean; soon?: boolean; module?: string };
 
 const nav: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
-  { to: "/inventory", label: "Inventory", icon: Package, allow: ["owner", "manager"], module: "inventory" },
-  { to: "/pos", label: "Point of Sale", icon: ShoppingCart },
-  { to: "/suppliers", label: "Suppliers", icon: Truck, allow: ["owner", "manager"], module: "suppliers" },
-  { to: "/raw-materials", label: "Raw Materials", icon: Boxes, allow: ["owner", "manager"], module: "raw_materials" },
-  { to: "/general-store", label: "General Store", icon: Warehouse, allow: ["owner", "manager"], module: "general_store" },
+  { to: "/inventory", label: "Inventory", icon: Package, module: "inventory" },
+  { to: "/pos", label: "Point of Sale", icon: ShoppingCart, module: "pos" },
+  { to: "/suppliers", label: "Suppliers", icon: Truck, module: "suppliers" },
+  { to: "/raw-materials", label: "Raw Materials", icon: Boxes, module: "raw_materials" },
+  { to: "/general-store", label: "General Store", icon: Warehouse, module: "general_store" },
   { to: "/invoices", label: "Invoices", icon: FileText, module: "invoices" },
-  { to: "/export-invoice", label: "Export Invoice", icon: Ship, allow: ["owner", "manager"], module: "export_invoices" },
-  { to: "/purchase-orders", label: "Purchase Orders", icon: ClipboardList, allow: ["owner", "manager"], module: "purchase_orders" },
-  { to: "/team", label: "Team", icon: Users, allow: ["owner"], module: "team" },
-  { to: "/reports", label: "Reports", icon: BarChart3, allow: ["owner", "manager"], module: "reports" },
+  { to: "/export-invoice", label: "Export Invoice", icon: Ship, module: "export_invoices" },
+  { to: "/purchase-orders", label: "Purchase Orders", icon: ClipboardList, module: "purchase_orders" },
+  { to: "/team", label: "Team", icon: Users, module: "team" },
+  { to: "/reports", label: "Reports", icon: BarChart3, module: "reports" },
   { to: "/insights", label: "AI Insights", icon: Sparkles, soon: true, module: "insights" },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
@@ -43,10 +43,10 @@ const nav: NavItem[] = [
 // and non-navigable while offline.
 const OFFLINE_OK = new Set(["/", "/pos", "/inventory", "/invoices"]);
 
-function NavList({ onNavigate, role, hasModule, collapsed, online = true }: { onNavigate?: () => void; role: AppRole | null; hasModule: (key: string) => boolean; collapsed?: boolean; online?: boolean }) {
+function NavList({ onNavigate, can, hasModule, collapsed, online = true }: { onNavigate?: () => void; can: (module: string, action: string) => boolean; hasModule: (key: string) => boolean; collapsed?: boolean; online?: boolean }) {
+  // Visibility = plan grants the module AND the member's permissions include it (owner: always).
   const visible = nav.filter(item =>
-    (!item.allow || (role && item.allow.includes(role))) &&
-    (!item.module || hasModule(item.module))
+    !item.module || (hasModule(item.module) && can(item.module, "view"))
   );
   return (
     <nav className="flex-1 px-2 space-y-1 overflow-y-auto">
@@ -84,7 +84,7 @@ function NavList({ onNavigate, role, hasModule, collapsed, online = true }: { on
 }
 
 export default function AppShell() {
-  const { user, profile, business, role, subscription, hasModule, signOut, loading } = useAuth();
+  const { user, profile, business, role, subscription, hasModule, can, signOut, loading } = useAuth();
   const { online } = useOnline();
   const prewarm = usePrewarm();
   const navigate = useNavigate();
@@ -224,7 +224,7 @@ export default function AppShell() {
           )}
         </div>
 
-        <NavList role={role} hasModule={hasModule} collapsed={collapsed} online={online} />
+        <NavList can={can} hasModule={hasModule} collapsed={collapsed} online={online} />
 
         {/* Sign out */}
         <div className={`p-3 border-t border-sidebar-border shrink-0`}>
@@ -266,7 +266,7 @@ export default function AppShell() {
               <SheetContent side="left" className="p-0 w-72 bg-sidebar text-sidebar-foreground border-sidebar-border flex flex-col">
                 <SheetTitle className="sr-only">Navigation</SheetTitle>
                 {MobileBrand}
-                <NavList role={role} hasModule={hasModule} onNavigate={() => setMobileOpen(false)} online={online} />
+                <NavList can={can} hasModule={hasModule} onNavigate={() => setMobileOpen(false)} online={online} />
                 {MobileSignOut}
               </SheetContent>
             </Sheet>

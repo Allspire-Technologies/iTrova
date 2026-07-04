@@ -57,6 +57,10 @@ export interface CachedSession {
   staffId: string | null;
   role: string | null;
   planModules: string[] | null; // resolved plan modules, so hasModule() works offline
+  // RBAC (optional so pre-existing cached blobs still parse): the member's role map + override,
+  // so can() resolves offline the same way it did on the last online load.
+  roleMap?: Record<string, string[]> | null;
+  permissionOverride?: Record<string, string[]> | null;
   cachedAt: number;
 }
 

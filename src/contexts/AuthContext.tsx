@@ -5,6 +5,7 @@ import type { Database } from "@/integrations/supabase/types";
 import { registerPlanLimits, type PlanLimits } from "@/lib/planLimits";
 import type { BillingCycle } from "@/lib/planPricing";
 import { canAccessModule, planModules } from "@/lib/moduleAccess";
+import { resolvePermissions, type PermissionMap } from "@/lib/permissions";
 import { isExpired, daysRemaining, nextRenewal } from "@/lib/subscription";
 import { cacheSession, readCachedSession } from "@/lib/offlineStore";
 
@@ -91,6 +92,10 @@ type AuthContextValue = {
   plans: Plan[];
   plan: Plan | null;
   hasModule: (key: string) => boolean;
+  /** Permission check (RBAC v1): can the member use this module action? Owner always can. */
+  can: (module: string, action: string) => boolean;
+  /** Registry modules the member may see (already plan-intersected). */
+  permittedModules: string[];
   loading: boolean;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -109,6 +114,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
+  // RBAC inputs loaded per member: assigned/system role map + explicit member override.
+  const [access, setAccess] = useState<{ roleMap: PermissionMap | null; override: PermissionMap | null }>({ roleMap: null, override: null });
 
   const applyBusiness = (biz: Business) => {
     const rawTier = biz.subscription_tier || "free";
@@ -128,6 +135,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!cached?.business) return false;
       setProfile((cached.profile as Profile | null) ?? null);
       setRole((cached.role as AppRole | null) ?? null);
+      setAccess({
+        roleMap: (cached.roleMap as PermissionMap | null) ?? null,
+        override: (cached.permissionOverride as PermissionMap | null) ?? null,
+      });
       applyBusiness(cached.business as Business);
       return true;
     } catch {
@@ -154,11 +165,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       const list = ((roles as { role: AppRole }[] | null) || []).map(r => r.role);
       list.sort((a, b) => ROLE_RANK[a] - ROLE_RANK[b]);
-      setRole(list[0] ?? null);
+      const appRole = list[0] ?? null;
+      setRole(appRole);
+
+      // RBAC (best-effort, non-fatal): the member's assignment/override + this business's edited
+      // system defaults. Errors (e.g. migration not applied yet) resolve to nulls → code defaults,
+      // which reproduce pre-RBAC behavior exactly.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const sb = supabase as any;
+      const [{ data: ma }, { data: sysRoles }] = await Promise.all([
+        sb.from("member_access").select("permissions, team_role_id, team_roles(permissions)")
+          .eq("user_id", uid).eq("business_id", p.business_id).maybeSingle(),
+        sb.from("team_roles").select("system_key, permissions")
+          .eq("business_id", p.business_id).not("system_key", "is", null),
+      ]).catch(() => [{ data: null }, { data: null }]);
+      const assignedMap: PermissionMap | null = ma?.team_role_id ? (ma?.team_roles?.permissions ?? null) : null;
+      const systemMap: PermissionMap | null =
+        (appRole && appRole !== "owner"
+          ? (sysRoles as { system_key: string; permissions: PermissionMap }[] | null)?.find(r => r.system_key === appRole)?.permissions
+          : null) ?? null;
+      setAccess({ roleMap: assignedMap ?? systemMap, override: (ma?.permissions as PermissionMap | null) ?? null });
     } else {
       setBusiness(null);
       setSubscription(null);
       setRole(null);
+      setAccess({ roleMap: null, override: null });
     }
   };
 
@@ -178,6 +209,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setBusiness(null);
         setSubscription(null);
         setRole(null);
+        setAccess({ roleMap: null, override: null });
       }
     });
 
@@ -216,6 +248,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const hasModule = (key: string) => canAccessModule(planModules(plan), key);
 
+  // Effective permissions for the signed-in member (owner bypass inside resolvePermissions).
+  const permissions = useMemo(
+    () => resolvePermissions({ appRole: role, roleMap: access.roleMap, override: access.override, planModules: planModules(plan) }),
+    [role, access, plan]
+  );
+
   // Persist a minimal session snapshot whenever we have live data, so the next offline load can
   // rehydrate business/profile/role + plan modules without the network.
   useEffect(() => {
@@ -227,9 +265,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       staffId: user.id,
       role,
       planModules: plan?.modules ?? null,
+      roleMap: access.roleMap,
+      permissionOverride: access.override,
       cachedAt: Date.now(),
     }).catch(() => {});
-  }, [user, business, profile, role, plan]);
+  }, [user, business, profile, role, plan, access]);
 
   const signOut = async () => {
     await supabase.auth.signOut();
@@ -240,7 +280,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, profile, business, role, subscription, plans, plan, hasModule, loading, signOut, refresh }}>
+    <AuthContext.Provider value={{ user, session, profile, business, role, subscription, plans, plan, hasModule, can: permissions.can, permittedModules: permissions.modules, loading, signOut, refresh }}>
       {children}
     </AuthContext.Provider>
   );

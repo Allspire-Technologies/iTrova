@@ -32,13 +32,13 @@ const STYLE: Record<NotifType, { icon: typeof Bell; wrap: string }> = {
 };
 
 export default function NotificationsBell() {
-  const { business, user, role } = useAuth();
+  const { business, user, can } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [notifs, setNotifs] = useState<Notif[]>([]);
 
   const enabled = !!business && !!user;
-  const canManage = role === "owner" || role === "manager";
+  const canManage = can("pos", "review_offline"); // owner/manager by default (RBAC)
 
   const load = useCallback(async (doSync: boolean) => {
     if (!enabled) { setNotifs([]); return; }

@@ -11,7 +11,7 @@ import AppShell from "@/components/AppShell";
 import Auth from "./pages/Auth";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import PwaTitlebar from "@/components/PwaTitlebar";
-import { RoleGate } from "@/components/RoleGate";
+import { PermissionGate } from "@/components/PermissionGate";
 import { ModuleGate } from "@/components/ModuleGate";
 import { OfflineGate } from "@/components/OfflineGate";
 
@@ -68,19 +68,19 @@ const App = () => (
           <Route path="/invite-auth" element={<InviteAuth />} />
           <Route element={<AppShell />}>
             <Route path="/" element={<Dashboard />} />
-            <Route path="/pos" element={<POS />} />
-            <Route path="/inventory" element={<RoleGate allow={["owner","manager"]}><ModuleGate module="inventory"><Inventory /></ModuleGate></RoleGate>} />
-            <Route path="/general-store" element={<OfflineGate><RoleGate allow={["owner","manager"]}><ModuleGate module="general_store"><GeneralStore /></ModuleGate></RoleGate></OfflineGate>} />
-            <Route path="/export-invoice" element={<OfflineGate><RoleGate allow={["owner","manager"]}><ModuleGate module="export_invoices"><ExportInvoiceList /></ModuleGate></RoleGate></OfflineGate>} />
-            <Route path="/export-invoice/new" element={<OfflineGate><RoleGate allow={["owner","manager"]}><ModuleGate module="export_invoices"><ExportInvoice /></ModuleGate></RoleGate></OfflineGate>} />
-            <Route path="/export-invoice/:id" element={<OfflineGate><RoleGate allow={["owner","manager"]}><ModuleGate module="export_invoices"><ExportInvoiceView /></ModuleGate></RoleGate></OfflineGate>} />
-            <Route path="/export-invoice/:id/edit" element={<OfflineGate><RoleGate allow={["owner"]}><ModuleGate module="export_invoices"><ExportInvoice /></ModuleGate></RoleGate></OfflineGate>} />
-            <Route path="/suppliers" element={<OfflineGate><RoleGate allow={["owner","manager"]}><ModuleGate module="suppliers"><Suppliers /></ModuleGate></RoleGate></OfflineGate>} />
-            <Route path="/raw-materials" element={<OfflineGate><RoleGate allow={["owner","manager"]}><ModuleGate module="raw_materials"><RawMaterials /></ModuleGate></RoleGate></OfflineGate>} />
-            <Route path="/invoices" element={<ModuleGate module="invoices"><Invoices /></ModuleGate>} />
-            <Route path="/purchase-orders" element={<OfflineGate><RoleGate allow={["owner","manager"]}><ModuleGate module="purchase_orders"><PurchaseOrders /></ModuleGate></RoleGate></OfflineGate>} />
-            <Route path="/reports" element={<OfflineGate><RoleGate allow={["owner","manager"]}><ModuleGate module="reports"><Reports /></ModuleGate></RoleGate></OfflineGate>} />
-            <Route path="/team" element={<OfflineGate><RoleGate allow={["owner"]}><ModuleGate module="team"><Team /></ModuleGate></RoleGate></OfflineGate>} />
+            <Route path="/pos" element={<PermissionGate module="pos"><POS /></PermissionGate>} />
+            <Route path="/inventory" element={<PermissionGate module="inventory"><ModuleGate module="inventory"><Inventory /></ModuleGate></PermissionGate>} />
+            <Route path="/general-store" element={<OfflineGate><PermissionGate module="general_store"><ModuleGate module="general_store"><GeneralStore /></ModuleGate></PermissionGate></OfflineGate>} />
+            <Route path="/export-invoice" element={<OfflineGate><PermissionGate module="export_invoices"><ModuleGate module="export_invoices"><ExportInvoiceList /></ModuleGate></PermissionGate></OfflineGate>} />
+            <Route path="/export-invoice/new" element={<OfflineGate><PermissionGate module="export_invoices" action="create"><ModuleGate module="export_invoices"><ExportInvoice /></ModuleGate></PermissionGate></OfflineGate>} />
+            <Route path="/export-invoice/:id" element={<OfflineGate><PermissionGate module="export_invoices"><ModuleGate module="export_invoices"><ExportInvoiceView /></ModuleGate></PermissionGate></OfflineGate>} />
+            <Route path="/export-invoice/:id/edit" element={<OfflineGate><PermissionGate module="export_invoices" action="edit"><ModuleGate module="export_invoices"><ExportInvoice /></ModuleGate></PermissionGate></OfflineGate>} />
+            <Route path="/suppliers" element={<OfflineGate><PermissionGate module="suppliers"><ModuleGate module="suppliers"><Suppliers /></ModuleGate></PermissionGate></OfflineGate>} />
+            <Route path="/raw-materials" element={<OfflineGate><PermissionGate module="raw_materials"><ModuleGate module="raw_materials"><RawMaterials /></ModuleGate></PermissionGate></OfflineGate>} />
+            <Route path="/invoices" element={<PermissionGate module="invoices"><ModuleGate module="invoices"><Invoices /></ModuleGate></PermissionGate>} />
+            <Route path="/purchase-orders" element={<OfflineGate><PermissionGate module="purchase_orders"><ModuleGate module="purchase_orders"><PurchaseOrders /></ModuleGate></PermissionGate></OfflineGate>} />
+            <Route path="/reports" element={<OfflineGate><PermissionGate module="reports"><ModuleGate module="reports"><Reports /></ModuleGate></PermissionGate></OfflineGate>} />
+            <Route path="/team" element={<OfflineGate><PermissionGate module="team"><ModuleGate module="team"><Team /></ModuleGate></PermissionGate></OfflineGate>} />
             <Route path="/settings" element={<OfflineGate><Settings /></OfflineGate>} />
             <Route path="/legal/:slug" element={<LegalDoc />} />
           </Route>

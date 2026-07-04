@@ -13,7 +13,7 @@ import { listExportInvoices, downloadExportInvoicePdf, downloadExportInvoiceDocx
 
 export default function ExportInvoiceList() {
   const navigate = useNavigate();
-  const isOwner = useAuth().role === "owner";
+  const { can } = useAuth();
   const { fmtDate } = useDateFormat();
   const [items, setItems] = useState<ExportInvoiceRecord[] | null>(null);
   const [pendingDelete, setPendingDelete] = useState<ExportInvoiceRecord | null>(null);
@@ -87,12 +87,12 @@ export default function ExportInvoiceList() {
                     <DropdownMenuItem onClick={() => downloadExportInvoiceDocx(inv, `${inv.invoice_number.replace(/[^\w.-]+/g, "-")}.docx`)}>
                       <FileDown className="size-4 mr-2" /> Download DOCX
                     </DropdownMenuItem>
-                    {isOwner && (
+                    {can("export_invoices", "edit") && (
                       <DropdownMenuItem onClick={() => navigate(`/export-invoice/${inv.id}/edit`)}>
                         <Pencil className="size-4 mr-2" /> Edit
                       </DropdownMenuItem>
                     )}
-                    {isOwner && (
+                    {can("export_invoices", "delete") && (
                       <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setPendingDelete(inv)}>
                         <Trash2 className="size-4 mr-2" /> Delete
                       </DropdownMenuItem>

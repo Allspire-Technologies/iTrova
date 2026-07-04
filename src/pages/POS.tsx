@@ -37,7 +37,7 @@ const methods = [
 type EodData = { total: number; count: number; byMethod: Record<string, number>; topProduct: string };
 
 export default function POS() {
-  const { business, user, profile, role } = useAuth();
+  const { business, user, profile, can } = useAuth();
   const { online } = useOnline();
   const { fmt, symbol } = useCurrency();
   const { fmtDateTime } = useDateFormat();
@@ -545,12 +545,12 @@ export default function POS() {
             {lastSync && pending > 0 && (
               <span className="self-center text-xs text-muted-foreground">Last sync {fmtDateTime(new Date(lastSync).toISOString(), { hour: "2-digit", minute: "2-digit" })}</span>
             )}
-            {review.length > 0 && (role === "owner" || role === "manager") && (
+            {review.length > 0 && can("pos", "review_offline") && (
               <Button variant="outline" size="sm" className="border-red-300 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800" onClick={() => setReviewOpen(true)}>
                 <AlertTriangle className="size-4 mr-1" /> Needs review ({review.length})
               </Button>
             )}
-            {(role === "owner" || role === "manager") && (
+            {can("pos", "eod_report") && (
               <Button variant="outline" size="sm" onClick={openEod}>
                 <BarChart2 className="size-4 mr-1" /> End of Day
               </Button>
