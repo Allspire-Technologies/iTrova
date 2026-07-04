@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -48,17 +48,6 @@ const PAYMENT_METHODS = ["cash", "bank transfer", "card", "mobile money", "other
 /** A manual invoice still owing money — eligible for a deposit. POS invoices are paid at sale time. */
 function canTakePayment(i: { sale_id: string | null; status: string }): boolean {
   return !i.sale_id && (i.status === "issued" || i.status === "partial");
-}
-
-function IconBtn({ label, onClick, disabled, children }: { label: string; onClick: () => void; disabled?: boolean; children: ReactNode }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button variant="ghost" size="icon" disabled={disabled} aria-label={label} onClick={onClick}>{children}</Button>
-      </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
-  );
 }
 
 export default function Invoices() {
@@ -544,28 +533,39 @@ export default function Invoices() {
     </div>
   );
 
-  const RowActions = ({ i }: { i: Invoice }) => (
-    <div className="flex gap-1 justify-end">
-      <IconBtn label="View" onClick={() => openView(i)}><Eye className="size-4" /></IconBtn>
-      {canManage && canTakePayment(i) && <IconBtn label="Record payment" onClick={() => openPay(i)}><Wallet className="size-4" /></IconBtn>}
-      {canManage && <IconBtn label={i.status === "void" ? "Voided invoices can't be edited" : "Edit"} disabled={i.status === "void"} onClick={() => openEdit(i)}><Pencil className="size-4" /></IconBtn>}
-      {i.status === "paid" && <IconBtn label="Print" onClick={() => printReceipt(i)}><Printer className="size-4" /></IconBtn>}
-      <DropdownMenu>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" aria-label="More actions"><MoreHorizontal className="size-4" /></Button>
-            </DropdownMenuTrigger>
-          </TooltipTrigger>
-          <TooltipContent>More actions</TooltipContent>
-        </Tooltip>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => exportPdf(i)}><Download className="size-4 mr-2" /> Download</DropdownMenuItem>
-          {canManage && <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => remove(i)}><Trash2 className="size-4 mr-2" /> Delete</DropdownMenuItem>}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
-  );
+  // Max-3 rule: View + one contextual action stay visible (Payment when takeable, else Print when
+  // paid, else Edit); everything else lives in the More-actions menu.
+  const RowActions = ({ i }: { i: Invoice }) => {
+    const second: "pay" | "print" | "edit" | null =
+      canManage && canTakePayment(i) ? "pay"
+      : i.status === "paid" ? "print"
+      : canManage && i.status !== "void" ? "edit"
+      : null;
+    return (
+      <div className="flex gap-1 justify-end">
+        <Button variant="ghost" size="sm" onClick={() => openView(i)}><Eye className="size-4" /> View</Button>
+        {second === "pay" && <Button variant="ghost" size="sm" onClick={() => openPay(i)}><Wallet className="size-4" /> Payment</Button>}
+        {second === "print" && <Button variant="ghost" size="sm" onClick={() => printReceipt(i)}><Printer className="size-4" /> Print</Button>}
+        {second === "edit" && <Button variant="ghost" size="sm" onClick={() => openEdit(i)}><Pencil className="size-4" /> Edit</Button>}
+        <DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" aria-label="More actions"><MoreHorizontal className="size-4" /> More</Button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent>More actions</TooltipContent>
+          </Tooltip>
+          <DropdownMenuContent align="end">
+            {canManage && second !== "edit" && i.status !== "void" && <DropdownMenuItem onClick={() => openEdit(i)}><Pencil className="size-4 mr-2" /> Edit</DropdownMenuItem>}
+            {i.status === "paid" && second !== "print" && <DropdownMenuItem onClick={() => printReceipt(i)}><Printer className="size-4 mr-2" /> Print</DropdownMenuItem>}
+            <DropdownMenuItem onClick={() => exportPdf(i)}><Download className="size-4 mr-2" /> Download</DropdownMenuItem>
+            {canManage && <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => remove(i)}><Trash2 className="size-4 mr-2" /> Delete</DropdownMenuItem>}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    );
+  };
 
   const creatorName = (id: string | null) => (id ? (creators[id] || "Unknown") : "—");
   const creatorOptions = [
@@ -668,7 +668,8 @@ export default function Invoices() {
                     {i.status === "partial" && <div className="text-xs text-muted-foreground">{fmt(balanceOf(i))} left</div>}
                   </div>
                 </div>
-                <div className="flex items-center justify-between gap-2">
+                {/* Wraps so the Overdue badge + labeled actions never push past the viewport (mobile). */}
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <StatusControl i={i} />
                   <RowActions i={i} />
                 </div>
@@ -769,7 +770,7 @@ export default function Invoices() {
                     <div className="flex gap-2 sm:contents">
                       <Input className="flex-1 sm:col-span-2" type="number" min={0} placeholder="Qty" value={l.quantity} onChange={e => updateLine(idx, { quantity: Number(e.target.value) })} />
                       <Input className="flex-1 sm:col-span-3" type="number" min={0} placeholder="Unit price" value={l.unit_price || ""} disabled={posLocked} onChange={e => updateLine(idx, { unit_price: Number(e.target.value) })} />
-                      <Button variant="ghost" size="icon" className="shrink-0 sm:col-span-1" disabled={posLocked} onClick={() => removeLine(idx)}><Trash2 className="size-4" /></Button>
+                      <Button variant="ghost" size="icon" className="shrink-0 sm:col-span-1" aria-label="Remove line" disabled={posLocked} onClick={() => removeLine(idx)}><Trash2 className="size-4" /></Button>
                     </div>
                   </div>
                 );

@@ -285,7 +285,7 @@ export function OfflineInvoices() {
                           {queued > 0 && <span className="ml-2 text-xs text-muted-foreground">{queued} queued</span>}
                         </td>
                         <td className="px-4 py-3 text-right whitespace-nowrap">
-                          {canManage && <Button variant="ghost" size="icon" aria-label={`Record payment for ${inv.invoice_number}`} onClick={() => openPay(inv)}><Wallet className="size-4" /></Button>}
+                          {canManage && <Button variant="ghost" size="sm" aria-label={`Record payment for ${inv.invoice_number}`} onClick={() => openPay(inv)}><Wallet className="size-4" /> Payment</Button>}
                         </td>
                       </tr>
                     );

@@ -22,6 +22,17 @@ const paidInvoice = {
 };
 
 test.describe("Invoices", () => {
+  test("mobile: an overdue invoice card lays out without horizontal overflow", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await authenticate(page, { role: "owner" });
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+    await stubRows(page, "invoices", [{ ...paidInvoice, sale_id: null, status: "issued", due_date: yesterday }]);
+    await page.goto("/invoices");
+    await expect(page.getByText("Overdue").first()).toBeVisible();
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(1);
+  });
+
   test("owner sees the list with create and export actions", async ({ page }) => {
     await authenticate(page, { role: "owner" });
     await page.goto("/invoices");
@@ -83,7 +94,9 @@ test.describe("Invoices", () => {
       { id: "ii-1", invoice_id: "inv-1", description: "Garri 50kg", quantity: 1, unit_price: 25000, line_total: 25000 },
     ]);
     await page.goto("/invoices");
-    await page.getByRole("button", { name: "Edit", exact: true }).click();
+    // Paid invoice → Print holds the visible slot; Edit lives in the More-actions menu.
+    await page.getByRole("button", { name: "More actions" }).click();
+    await page.getByRole("menuitem", { name: "Edit" }).click();
     const dialog = page.getByRole("dialog");
     // Discount is editable even though the POS line items are locked.
     await expect(dialog.locator("#inv-discount")).toBeEnabled();

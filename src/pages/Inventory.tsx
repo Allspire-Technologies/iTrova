@@ -419,8 +419,8 @@ export default function Inventory() {
                     </div>
                     {online && (
                       <div className="flex gap-1 shrink-0">
-                        <Button variant="ghost" size="icon" title="Adjust stock" onClick={() => setAdjustTarget(p)}><SlidersHorizontal className="size-4" /></Button>
-                        <Button variant="ghost" size="icon" aria-label="Edit" onClick={() => openEdit(p)}><Pencil className="size-4" /></Button>
+                        <Button variant="ghost" size="sm" onClick={() => setAdjustTarget(p)}><SlidersHorizontal className="size-4" /> Adjust</Button>
+                        <Button variant="ghost" size="sm" onClick={() => openEdit(p)}><Pencil className="size-4" /> Edit</Button>
                       </div>
                     )}
                   </div>
@@ -469,8 +469,8 @@ export default function Inventory() {
                       <td className="px-4 py-3 text-right whitespace-nowrap">
                         {online ? (
                           <>
-                            <Button variant="ghost" size="icon" title="Adjust stock" onClick={() => setAdjustTarget(p)}><SlidersHorizontal className="size-4" /></Button>
-                            <Button variant="ghost" size="icon" onClick={() => openEdit(p)}><Pencil className="size-4" /></Button>
+                            <Button variant="ghost" size="sm" onClick={() => setAdjustTarget(p)}><SlidersHorizontal className="size-4" /> Adjust</Button>
+                            <Button variant="ghost" size="sm" onClick={() => openEdit(p)}><Pencil className="size-4" /> Edit</Button>
                           </>
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>

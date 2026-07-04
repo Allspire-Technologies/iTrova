@@ -150,11 +150,11 @@ export default function GeneralStore() {
   // House rule: max 3 visible actions per row; the rest live in a MoreHorizontal menu.
   const itemActions = (it: StoreItem) => (
     <>
-      <Button variant="ghost" size="sm" onClick={() => openCheckout(it.kind === "borrowable" ? "borrow" : "collect", it.id)}>{it.kind === "borrowable" ? "Lend" : "Give"}</Button>
-      <Button variant="ghost" size="icon" onClick={() => setAddStock({ item: it, qty: "" })} aria-label={`Add stock ${it.name}`}><PackagePlus className="size-4" /></Button>
+      <Button variant="ghost" size="sm" onClick={() => openCheckout(it.kind === "borrowable" ? "borrow" : "collect", it.id)}><ArrowRightLeft className="size-4" /> {it.kind === "borrowable" ? "Lend" : "Give"}</Button>
+      <Button variant="ghost" size="sm" onClick={() => setAddStock({ item: it, qty: "" })}><PackagePlus className="size-4" /> Add stock</Button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" aria-label={`More actions for ${it.name}`}><MoreHorizontal className="size-4" /></Button>
+          <Button variant="ghost" size="sm" aria-label={`More actions for ${it.name}`}><MoreHorizontal className="size-4" /> More</Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem onClick={() => setItemForm({ id: it.id, name: it.name, category: it.category ?? "", unit: it.unit ?? "pcs", kind: it.kind, stock_quantity: "", reorder_level: String(it.reorder_level) })}>
@@ -171,8 +171,19 @@ export default function GeneralStore() {
   );
   const staffActions = (s: StoreStaff) => (
     <>
-      <Button variant="ghost" size="icon" onClick={() => setStaffForm({ id: s.id, name: s.name, role: s.role ?? "", phone: s.phone ?? "", active: s.active })} aria-label={`Edit ${s.name}`}><Pencil className="size-4" /></Button>
-      {isOwner && <Button variant="ghost" size="icon" onClick={() => setConfirm({ title: `Delete ${s.name}?`, description: "This removes the staff member. Their past records stay.", onConfirm: async () => { await deleteStaff(s.id); reloadStaff(); toast.success("Staff deleted"); } })} aria-label={`Delete ${s.name}`}><Trash2 className="size-4 text-danger" /></Button>}
+      <Button variant="ghost" size="sm" onClick={() => setStaffForm({ id: s.id, name: s.name, role: s.role ?? "", phone: s.phone ?? "", active: s.active })}><Pencil className="size-4" /> Edit</Button>
+      {isOwner && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" aria-label={`More actions for ${s.name}`}><MoreHorizontal className="size-4" /> More</Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setConfirm({ title: `Delete ${s.name}?`, description: "This removes the staff member. Their past records stay.", onConfirm: async () => { await deleteStaff(s.id); reloadStaff(); toast.success("Staff deleted"); } })}>
+              <Trash2 className="size-4 mr-2" /> Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </>
   );
 

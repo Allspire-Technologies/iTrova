@@ -10,7 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import SearchableSelect from "@/components/SearchableSelect";
 import ConfirmDialog from "@/components/ConfirmDialog";
-import { Plus, Search, ClipboardList, Trash2, Download, Upload, Eye, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { Plus, Search, ClipboardList, Trash2, Download, Upload, Eye, ArrowUp, ArrowDown, ArrowUpDown, MoreHorizontal } from "lucide-react";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { downloadPdf } from "@/lib/pdf";
 import { toCsv, downloadCsv, parseCsv, readFileText } from "@/lib/csv";
@@ -331,9 +332,16 @@ export default function PurchaseOrders() {
   );
   const RowActions = ({ i }: { i: PO }) => (
     <div className="flex gap-1 justify-end">
-      <Button variant="ghost" size="icon" aria-label="View" onClick={() => openView(i)}><Eye className="size-4" /></Button>
-      <Button variant="ghost" size="icon" aria-label="Download PDF" onClick={() => exportPdf(i)}><Download className="size-4" /></Button>
-      <Button variant="ghost" size="icon" aria-label="Delete" onClick={() => remove(i)}><Trash2 className="size-4 text-destructive" /></Button>
+      <Button variant="ghost" size="sm" onClick={() => openView(i)}><Eye className="size-4" /> View</Button>
+      <Button variant="ghost" size="sm" onClick={() => exportPdf(i)}><Download className="size-4" /> PDF</Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="sm" aria-label={`More actions for ${i.po_number}`}><MoreHorizontal className="size-4" /> More</Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => remove(i)}><Trash2 className="size-4 mr-2" /> Delete</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 

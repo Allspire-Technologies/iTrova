@@ -42,12 +42,14 @@ async function openOrders(page: Page, role: "owner" | "manager" | "cashier") {
 test.describe("POS orders", () => {
   test("cashier cannot delete an order", async ({ page }) => {
     await openOrders(page, "cashier");
-    await expect(page.getByRole("button", { name: "Delete order" })).toHaveCount(0);
+    // No manage rights → no More-actions menu at all.
+    await expect(page.getByRole("button", { name: /More actions for/ })).toHaveCount(0);
   });
 
   test("owner can delete an order", async ({ page }) => {
     await openOrders(page, "owner");
-    await expect(page.getByRole("button", { name: "Delete order" })).toBeVisible();
+    await page.getByRole("button", { name: /More actions for/ }).first().click();
+    await expect(page.getByRole("menuitem", { name: "Delete order" })).toBeVisible();
   });
 
   test("cashier can edit a pending order", async ({ page }) => {
