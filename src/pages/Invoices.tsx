@@ -51,9 +51,13 @@ function canTakePayment(i: { sale_id: string | null; status: string }): boolean 
 }
 
 export default function Invoices() {
-  const { business, user, role, hasModule } = useAuth();
+  const { business, user, role, hasModule, can } = useAuth();
   const { online } = useOnline();
-  const canManage = role === "owner" || role === "manager";
+  void role;
+  const canEditInv = can("invoices", "edit");
+  const canStatus = can("invoices", "status_change");
+  const canPay = can("invoices", "record_payment");
+  const canDeleteInv = can("invoices", "delete");
   const { fmt, symbol } = useCurrency();
   const { timezone } = useDateFormat();
   const [searchParams] = useSearchParams();
@@ -518,7 +522,7 @@ export default function Invoices() {
   // Shared between the desktop table rows and the mobile cards so both stay in sync.
   const StatusControl = ({ i }: { i: Invoice }) => (
     <div className="flex items-center gap-2">
-      {canManage ? (
+      {canStatus ? (
         <SearchableSelect
           value={i.status}
           onValueChange={(v) => requestStatusChange(i, v)}
@@ -537,9 +541,9 @@ export default function Invoices() {
   // paid, else Edit); everything else lives in the More-actions menu.
   const RowActions = ({ i }: { i: Invoice }) => {
     const second: "pay" | "print" | "edit" | null =
-      canManage && canTakePayment(i) ? "pay"
+      canPay && canTakePayment(i) ? "pay"
       : i.status === "paid" ? "print"
-      : canManage && i.status !== "void" ? "edit"
+      : canEditInv && i.status !== "void" ? "edit"
       : null;
     return (
       <div className="flex gap-1 justify-end">
@@ -557,10 +561,10 @@ export default function Invoices() {
             <TooltipContent>More actions</TooltipContent>
           </Tooltip>
           <DropdownMenuContent align="end">
-            {canManage && second !== "edit" && i.status !== "void" && <DropdownMenuItem onClick={() => openEdit(i)}><Pencil className="size-4 mr-2" /> Edit</DropdownMenuItem>}
+            {canEditInv && second !== "edit" && i.status !== "void" && <DropdownMenuItem onClick={() => openEdit(i)}><Pencil className="size-4 mr-2" /> Edit</DropdownMenuItem>}
             {i.status === "paid" && second !== "print" && <DropdownMenuItem onClick={() => printReceipt(i)}><Printer className="size-4 mr-2" /> Print</DropdownMenuItem>}
             <DropdownMenuItem onClick={() => exportPdf(i)}><Download className="size-4 mr-2" /> Download</DropdownMenuItem>
-            {canManage && <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => remove(i)}><Trash2 className="size-4 mr-2" /> Delete</DropdownMenuItem>}
+            {canDeleteInv && <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => remove(i)}><Trash2 className="size-4 mr-2" /> Delete</DropdownMenuItem>}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -592,7 +596,7 @@ export default function Invoices() {
               <RefreshCw className={`size-4 mr-1 ${syncingDeposits ? "animate-spin" : ""}`} /> {syncingDeposits ? "Syncing…" : `Sync now (${offlinePending})`}
             </Button>
           )}
-          {canManage && hasModule("csv_export") && (
+          {can("invoices", "csv_export") && hasModule("csv_export") && (
             <Button variant="outline" onClick={exportCsv} disabled={filtered.length === 0}>
               <Download className="size-4 mr-1" /> Export CSV
             </Button>
@@ -859,7 +863,7 @@ export default function Invoices() {
                           <span className="text-muted-foreground"> · {p.method} · {p.created_at.slice(0, 10)}</span>
                           {p.note && <span className="text-muted-foreground"> · {p.note}</span>}
                         </div>
-                        {canManage && viewing.status === "partial" && (
+                        {canPay && viewing.status === "partial" && (
                           <Button variant="ghost" size="icon" className="size-7 shrink-0" aria-label="Remove payment" onClick={() => removePayment(p)}>
                             <Trash2 className="size-3.5" />
                           </Button>
@@ -871,7 +875,7 @@ export default function Invoices() {
                 {viewing.notes && <div className="text-muted-foreground">{viewing.notes}</div>}
               </div>
               <DialogFooter className="flex-wrap gap-2">
-                {canManage && canTakePayment(viewing) && (
+                {canPay && canTakePayment(viewing) && (
                   <Button variant="outline" className="mr-auto" onClick={() => { const inv = viewing; setViewing(null); openPay(inv); }}>
                     <Wallet className="size-4 mr-1" /> Record payment
                   </Button>

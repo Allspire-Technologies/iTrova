@@ -1,0 +1,95 @@
+import { describe, it, expect } from "vitest";
+import { resolvePermissions, toggleAction, toggleModule, DEFAULT_ROLE_PERMISSIONS, MODULE_ACTIONS } from "./permissions";
+
+const resolve = (over: Partial<Parameters<typeof resolvePermissions>[0]> = {}) =>
+  resolvePermissions({ appRole: "manager", roleMap: null, override: null, planModules: null, ...over });
+
+describe("resolvePermissions — owner", () => {
+  it("owner can do everything the plan permits", () => {
+    const r = resolve({ appRole: "owner" });
+    expect(r.can("invoices", "delete")).toBe(true);
+    expect(r.can("team", "remove")).toBe(true);
+    expect(r.modules).toEqual(MODULE_ACTIONS.map((m) => m.key));
+  });
+  it("plan intersection still hides non-plan modules from the owner", () => {
+    const r = resolve({ appRole: "owner", planModules: ["pos", "invoices"] });
+    expect(r.can("inventory", "view")).toBe(false);
+    expect(r.modules).toEqual(["pos", "invoices"]);
+  });
+});
+
+describe("resolvePermissions — defaults pin today's behavior", () => {
+  it("manager: full invoices/pos, no team, no owner-only bits", () => {
+    const r = resolve({ appRole: "manager" });
+    expect(r.can("invoices", "delete")).toBe(true);
+    expect(r.can("pos", "eod_report")).toBe(true);
+    expect(r.can("team", "view")).toBe(false);
+    expect(r.can("export_invoices", "edit")).toBe(false);
+    expect(r.can("export_invoices", "create")).toBe(true);
+    expect(r.can("general_store", "item_delete")).toBe(false);
+    expect(r.can("general_store", "item_manage")).toBe(true);
+  });
+  it("cashier: pos sell/orders + invoices view/create only", () => {
+    const r = resolve({ appRole: "cashier" });
+    expect(r.can("pos", "view")).toBe(true);
+    expect(r.can("pos", "orders_manage")).toBe(true);
+    expect(r.can("pos", "orders_delete")).toBe(false);
+    expect(r.can("invoices", "create")).toBe(true);
+    expect(r.can("invoices", "edit")).toBe(false);
+    expect(r.can("inventory", "view")).toBe(false);
+    expect(r.modules).toEqual(["pos", "invoices"]);
+  });
+  it("null role denies everything", () => {
+    const r = resolve({ appRole: null });
+    expect(r.can("pos", "view")).toBe(false);
+    expect(r.modules).toEqual([]);
+  });
+});
+
+describe("resolvePermissions — precedence", () => {
+  it("assigned role map beats defaults", () => {
+    const r = resolve({ appRole: "cashier", roleMap: { inventory: ["view"] } });
+    expect(r.can("inventory", "view")).toBe(true);
+    expect(r.can("pos", "view")).toBe(false); // role map replaces defaults entirely
+  });
+  it("member override beats the role map", () => {
+    const r = resolve({ appRole: "cashier", roleMap: { inventory: ["view"] }, override: { reports: ["view"] } });
+    expect(r.can("reports", "view")).toBe(true);
+    expect(r.can("inventory", "view")).toBe(false);
+  });
+  it("an empty override object is deny-all (distinct from null)", () => {
+    const r = resolve({ appRole: "manager", override: {} });
+    expect(r.can("invoices", "view")).toBe(false);
+    expect(r.modules).toEqual([]);
+  });
+});
+
+describe("resolvePermissions — plan + registry edges", () => {
+  it("a granted module still hides when the plan lacks it", () => {
+    const r = resolve({ appRole: "manager", planModules: ["pos"] });
+    expect(r.can("inventory", "view")).toBe(false);
+    expect(r.can("pos", "view")).toBe(true);
+  });
+  it("non-registry modules stay role-free (nav parity for e.g. insights)", () => {
+    const r = resolve({ appRole: "cashier" });
+    expect(r.can("insights", "view")).toBe(true);
+  });
+});
+
+describe("editor helpers", () => {
+  it("toggleAction adds view implicitly and clears the module when view is removed", () => {
+    let m = toggleAction({}, "inventory", "edit");
+    expect(m.inventory).toEqual(["view", "edit"]);
+    m = toggleAction(m, "inventory", "view");
+    expect(m.inventory).toBeUndefined();
+  });
+  it("toggleModule flips between all actions and none", () => {
+    const on = toggleModule({}, "reports");
+    expect(on.reports).toEqual(["view", "export"]);
+    expect(toggleModule(on, "reports").reports).toBeUndefined();
+  });
+  it("manager defaults contain every inventory action (sanity vs registry drift)", () => {
+    const inv = MODULE_ACTIONS.find((m) => m.key === "inventory")!;
+    expect(DEFAULT_ROLE_PERMISSIONS.manager.inventory).toEqual(inv.actions.map((x) => x.key));
+  });
+});

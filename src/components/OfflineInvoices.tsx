@@ -32,8 +32,12 @@ const EMPTY_NEW_INVOICE = { customerName: "", customerPhone: "", customerEmail: 
 // Invoices saved offline live in the device queue until they sync. This view lists them and lets the
 // user view / print / fully edit (customer + line qty/price + discount) the pending ones.
 export function OfflineInvoices() {
-  const { business, role } = useAuth();
-  const canManage = role === "owner" || role === "manager"; // same rule as the online Invoices page
+  const { business, can } = useAuth();
+  // Same permission rules as the online Invoices page (RBAC).
+  const canCreate = can("invoices", "create");
+  const canPay = can("invoices", "record_payment");
+  const canEditInv = can("invoices", "edit");
+  const canDeleteInv = can("invoices", "delete");
   const { fmt } = useCurrency();
   const { fmtDate } = useDateFormat();
   const [rows, setRows] = useState<Row[]>([]);
@@ -237,7 +241,7 @@ export function OfflineInvoices() {
           </h1>
           <p className="text-muted-foreground mt-1">Create invoices and record deposits on this device. They sync when you{"'"}re back online.</p>
         </div>
-        {canManage && <Button variant="brand" onClick={() => { setNewForm(EMPTY_NEW_INVOICE); setCreating(true); }}><Plus className="size-4" /> New invoice</Button>}
+        {canCreate && <Button variant="brand" onClick={() => { setNewForm(EMPTY_NEW_INVOICE); setCreating(true); }}><Plus className="size-4" /> New invoice</Button>}
       </div>
 
       {/* Awaiting payment — record deposits offline against already-synced invoices */}
@@ -285,7 +289,7 @@ export function OfflineInvoices() {
                           {queued > 0 && <span className="ml-2 text-xs text-muted-foreground">{queued} queued</span>}
                         </td>
                         <td className="px-4 py-3 text-right whitespace-nowrap">
-                          {canManage && <Button variant="ghost" size="sm" aria-label={`Record payment for ${inv.invoice_number}`} onClick={() => openPay(inv)}><Wallet className="size-4" /> Payment</Button>}
+                          {canPay && <Button variant="ghost" size="sm" aria-label={`Record payment for ${inv.invoice_number}`} onClick={() => openPay(inv)}><Wallet className="size-4" /> Payment</Button>}
                         </td>
                       </tr>
                     );
@@ -300,7 +304,7 @@ export function OfflineInvoices() {
               {paymentReviews.map((p) => (
                 <div key={p.paymentId} className="flex items-center justify-between gap-2 text-sm">
                   <span className="min-w-0"><span className="font-medium">{fmt(p.amount)}</span> · {p.invoiceNumber} · <span className="text-red-600">{p.reviewReason}</span></span>
-                  {canManage && <Button variant="ghost" size="icon" className="shrink-0" aria-label={`Discard deposit for ${p.invoiceNumber}`} onClick={() => discardPayment(p.paymentId)}><Trash2 className="size-4" /></Button>}
+                  {canPay && <Button variant="ghost" size="icon" className="shrink-0" aria-label={`Discard deposit for ${p.invoiceNumber}`} onClick={() => discardPayment(p.paymentId)}><Trash2 className="size-4" /></Button>}
                 </div>
               ))}
             </div>
@@ -340,8 +344,8 @@ export function OfflineInvoices() {
                       <Button variant="ghost" size="icon" aria-label={`View ${r.invoiceNumber}`} onClick={() => setViewing(r)}><Eye className="size-4" /></Button>
                       <Button variant="ghost" size="icon" aria-label={`Print ${r.invoiceNumber}`} onClick={() => printReceipt(r)}><Printer className="size-4" /></Button>
                       <Button variant="ghost" size="icon" aria-label={`Download ${r.invoiceNumber}`} onClick={() => download(r)}><Download className="size-4" /></Button>
-                      {canManage && !r.__review && <Button variant="ghost" size="icon" aria-label={`Edit ${r.invoiceNumber}`} onClick={() => openEdit(r)}><Pencil className="size-4" /></Button>}
-                      {canManage && <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive" aria-label={`Delete ${r.invoiceNumber}`} onClick={() => remove(r)}><Trash2 className="size-4" /></Button>}
+                      {canEditInv && !r.__review && <Button variant="ghost" size="icon" aria-label={`Edit ${r.invoiceNumber}`} onClick={() => openEdit(r)}><Pencil className="size-4" /></Button>}
+                      {canDeleteInv && <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive" aria-label={`Delete ${r.invoiceNumber}`} onClick={() => remove(r)}><Trash2 className="size-4" /></Button>}
                     </td>
                   </tr>
                 ))}

@@ -59,8 +59,9 @@ test.describe("Auth — login", () => {
     await page.locator("#lp").fill("correct-password");
     await page.getByRole("button", { name: "Sign in" }).click();
     await expect(page).toHaveURL("/");
-    // We left the auth screen and landed in the authenticated app shell.
-    await expect(page.getByRole("link", { name: "Point of Sale" }).first()).toBeVisible();
+    // We left the auth screen and landed in the authenticated app shell. (Dashboard is role-free;
+    // module nav items now need a resolved role under RBAC, and this stub returns no role rows.)
+    await expect(page.getByRole("link", { name: "Dashboard" }).first()).toBeVisible();
   });
 });
 

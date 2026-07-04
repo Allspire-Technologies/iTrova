@@ -21,6 +21,14 @@ import { cn } from "@/lib/utils";
 import { Link } from "react-router-dom";
 import { LEGAL_LINKS } from "@/lib/legalLinks";
 import { isEmailConfirmed, isValidEmail, normalizeEmail, verifyAction } from "@/lib/emailVerification";
+import { lazy, Suspense } from "react";
+
+const PermissionsAccessInner = lazy(() => import("@/components/settings/PermissionsAccess"));
+const PermissionsAccess = () => (
+  <Suspense fallback={<p className="py-8 text-center text-sm text-muted-foreground">Loading permissions…</p>}>
+    <PermissionsAccessInner />
+  </Suspense>
+);
 
 const TIMEZONES = [
   // Africa
@@ -279,7 +287,7 @@ export default function Settings() {
   useEffect(() => { setEmail(user?.email || ""); }, [user?.email]);
 
   // Sectioned layout: tabs + per-card view→edit. Data cards render read-only until Edit is pressed.
-  type SettingsTab = "business" | "preferences" | "billing" | "security";
+  type SettingsTab = "business" | "preferences" | "billing" | "permissions" | "security";
   const [tab, setTab] = useState<SettingsTab>("business");
   const [editProfile, setEditProfile] = useState(false);
   const [editExporter, setEditExporter] = useState(false);
@@ -288,6 +296,7 @@ export default function Settings() {
   // Non-owners have no Business/Billing cards — land them on Preferences.
   useEffect(() => {
     if (role && !isOwner && (tab === "business" || tab === "billing")) setTab("preferences");
+    if (role && role === "cashier" && tab === "permissions") setTab("preferences");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role, isOwner]);
 
@@ -472,8 +481,9 @@ export default function Settings() {
           { key: "business" as const, label: "Business", ownerOnly: true },
           { key: "preferences" as const, label: "Preferences", ownerOnly: false },
           { key: "billing" as const, label: "Billing", ownerOnly: true },
+          { key: "permissions" as const, label: "Permissions & Access", ownerOnly: false, adminOnly: true },
           { key: "security" as const, label: "Security & Legal", ownerOnly: false },
-        ]).filter(t => !t.ownerOnly || isOwner).map(t => (
+        ] as { key: SettingsTab; label: string; ownerOnly: boolean; adminOnly?: boolean }[]).filter(t => (!t.ownerOnly || isOwner) && (!t.adminOnly || isOwner || role === "manager")).map(t => (
           <button key={t.key} type="button" onClick={() => setTab(t.key)}
             className={cn("-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors", tab === t.key ? "border-brand text-brand-dark" : "border-transparent text-muted-foreground hover:text-foreground")}>
             {t.label}
@@ -879,6 +889,9 @@ export default function Settings() {
           </CardContent>
         </Card>
       )}
+
+      {/* Permissions & Access — owner + manager */}
+      {tab === "permissions" && (isOwner || role === "manager") && <PermissionsAccess />}
 
       {/* Account Security — all roles */}
       {tab === "security" && (

@@ -32,9 +32,9 @@ const emptyItemForm = { id: undefined as string | undefined, name: "", category:
 const emptyStaffForm = { id: undefined as string | undefined, name: "", role: "", phone: "", active: true };
 
 export default function GeneralStore() {
-  const { business, role, user } = useAuth();
+  const { business, user, can } = useAuth();
   void user;
-  const isOwner = role === "owner";
+
   const { fmtDate } = useDateFormat();
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
@@ -160,7 +160,7 @@ export default function GeneralStore() {
           <DropdownMenuItem onClick={() => setItemForm({ id: it.id, name: it.name, category: it.category ?? "", unit: it.unit ?? "pcs", kind: it.kind, stock_quantity: "", reorder_level: String(it.reorder_level) })}>
             <Pencil className="size-4 mr-2" /> Edit
           </DropdownMenuItem>
-          {isOwner && (
+          {can("general_store", "item_delete") && (
             <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setConfirm({ title: `Delete ${it.name}?`, description: "This removes the item. Its past records stay.", onConfirm: async () => { await deleteItem(it.id); reloadItems(); toast.success("Item deleted"); } })}>
               <Trash2 className="size-4 mr-2" /> Delete
             </DropdownMenuItem>
@@ -172,7 +172,7 @@ export default function GeneralStore() {
   const staffActions = (s: StoreStaff) => (
     <>
       <Button variant="ghost" size="sm" onClick={() => setStaffForm({ id: s.id, name: s.name, role: s.role ?? "", phone: s.phone ?? "", active: s.active })}><Pencil className="size-4" /> Edit</Button>
-      {isOwner && (
+      {can("general_store", "staff_delete") && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm" aria-label={`More actions for ${s.name}`}><MoreHorizontal className="size-4" /> More</Button>
