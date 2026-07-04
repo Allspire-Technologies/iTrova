@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Plus, FileDown, Ship, Pencil, Trash2, Eye } from "lucide-react";
+import { Plus, FileDown, Ship, Pencil, Trash2, Eye, MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Card, CardContent } from "@/components/ui/card";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { TablePageSkeleton } from "@/components/Skeletons";
@@ -67,28 +68,37 @@ export default function ExportInvoiceList() {
                 <p className="text-sm text-muted-foreground truncate">
                   {inv.buyer.name || "—"} · {fmtDate(inv.invoice_date)} · {inv.total_cartons} cartons
                 </p>
+                <p className="mt-0.5 font-medium text-brand-dark sm:hidden">{formatExportMoney(inv.total, inv.currency)}</p>
               </button>
+              {/* Max 3 visible actions (house rule) — View · PDF · ⋮ menu; extras never push the page wider. */}
               <div className="flex items-center gap-2">
-                <span className="mr-1 font-medium text-brand-dark">{formatExportMoney(inv.total, inv.currency)}</span>
+                <span className="mr-1 hidden font-medium text-brand-dark sm:inline">{formatExportMoney(inv.total, inv.currency)}</span>
                 <Button variant="ghost" size="sm" onClick={() => navigate(`/export-invoice/${inv.id}`)}>
                   <Eye className="size-4" /> View
                 </Button>
-                {isOwner && (
-                  <Button variant="ghost" size="sm" onClick={() => navigate(`/export-invoice/${inv.id}/edit`)}>
-                    <Pencil className="size-4" /> Edit
-                  </Button>
-                )}
                 <Button variant="outline" size="sm" onClick={() => downloadExportInvoicePdf(inv, `${inv.invoice_number.replace(/[^\w.-]+/g, "-")}.pdf`)}>
                   <FileDown className="size-4" /> PDF
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => downloadExportInvoiceDocx(inv, `${inv.invoice_number.replace(/[^\w.-]+/g, "-")}.docx`)}>
-                  <FileDown className="size-4" /> DOCX
-                </Button>
-                {isOwner && (
-                  <Button variant="ghost" size="sm" onClick={() => setPendingDelete(inv)} aria-label={`Delete ${inv.invoice_number}`}>
-                    <Trash2 className="size-4 text-danger" />
-                  </Button>
-                )}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" aria-label={`More actions for ${inv.invoice_number}`}><MoreHorizontal className="size-4" /></Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => downloadExportInvoiceDocx(inv, `${inv.invoice_number.replace(/[^\w.-]+/g, "-")}.docx`)}>
+                      <FileDown className="size-4 mr-2" /> Download DOCX
+                    </DropdownMenuItem>
+                    {isOwner && (
+                      <DropdownMenuItem onClick={() => navigate(`/export-invoice/${inv.id}/edit`)}>
+                        <Pencil className="size-4 mr-2" /> Edit
+                      </DropdownMenuItem>
+                    )}
+                    {isOwner && (
+                      <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setPendingDelete(inv)}>
+                        <Trash2 className="size-4 mr-2" /> Delete
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
           ))}
