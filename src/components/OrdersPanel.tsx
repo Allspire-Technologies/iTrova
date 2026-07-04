@@ -9,7 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Minus, Trash2, Pencil, Phone, Globe, Package, Truck, CheckCircle2, XCircle, Clock, FileText } from "lucide-react";
+import { Plus, Minus, Trash2, Pencil, Phone, Globe, Package, Truck, CheckCircle2, XCircle, Clock, FileText, MoreHorizontal } from "lucide-react";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { toast } from "sonner";
@@ -382,9 +383,9 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
                         <div className="text-sm font-medium truncate">{i.product_name}</div>
                         <div className="text-xs text-muted-foreground">{fmt(i.unit_price)} each</div>
                       </div>
-                      <Button variant="ghost" size="icon" className="size-7" disabled={itemsLocked} onClick={() => updateItemQty(i.product_id, -1)}><Minus className="size-3" /></Button>
+                      <Button variant="ghost" size="icon" className="size-7" aria-label="Decrease quantity" disabled={itemsLocked} onClick={() => updateItemQty(i.product_id, -1)}><Minus className="size-3" /></Button>
                       <Input type="number" min={1} value={i.quantity} disabled={itemsLocked} onChange={e => setItemQty(i.product_id, Number(e.target.value))} className="w-12 h-7 px-1 text-center text-sm font-medium" />
-                      <Button variant="ghost" size="icon" className="size-7" disabled={itemsLocked} onClick={() => updateItemQty(i.product_id, 1)}><Plus className="size-3" /></Button>
+                      <Button variant="ghost" size="icon" className="size-7" aria-label="Increase quantity" disabled={itemsLocked} onClick={() => updateItemQty(i.product_id, 1)}><Plus className="size-3" /></Button>
                       <div className="w-20 text-right text-sm font-semibold">{fmt(i.unit_price * i.quantity)}</div>
                     </div>
                   ))}
@@ -489,13 +490,21 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
                     className="h-9 w-[140px]"
                     options={orderStatusOptions(o.status).map(s => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) }))}
                   />
-                  <Button variant="ghost" size="icon" aria-label="Edit order" disabled={o.status === "delivered" || o.status === "cancelled"} title={o.status === "delivered" || o.status === "cancelled" ? "Delivered and cancelled orders can't be edited" : undefined} onClick={() => openEdit(o)}>
-                    <Pencil className="size-4" />
+                  {/* Max-3 rule: status select · Edit · ⋮ (destructive lives in the menu). */}
+                  <Button variant="ghost" size="sm" aria-label="Edit order" disabled={o.status === "delivered" || o.status === "cancelled"} title={o.status === "delivered" || o.status === "cancelled" ? "Delivered and cancelled orders can't be edited" : undefined} onClick={() => openEdit(o)}>
+                    <Pencil className="size-4" /> Edit
                   </Button>
                   {canManage && (
-                    <Button variant="ghost" size="icon" aria-label="Delete order" className="text-muted-foreground hover:text-destructive" onClick={() => deleteOrder(o)}>
-                      <Trash2 className="size-4" />
-                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm" aria-label={`More actions for ${o.customer_name}'s order`}><MoreHorizontal className="size-4" /> More</Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => deleteOrder(o)}>
+                          <Trash2 className="size-4 mr-2" /> Delete order
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   )}
                 </div>
               </Card>

@@ -81,7 +81,7 @@ export default function ExportInvoiceList() {
                 </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" aria-label={`More actions for ${inv.invoice_number}`}><MoreHorizontal className="size-4" /></Button>
+                    <Button variant="ghost" size="sm" aria-label={`More actions for ${inv.invoice_number}`}><MoreHorizontal className="size-4" /> More</Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem onClick={() => downloadExportInvoiceDocx(inv, `${inv.invoice_number.replace(/[^\w.-]+/g, "-")}.docx`)}>

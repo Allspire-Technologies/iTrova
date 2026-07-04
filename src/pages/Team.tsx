@@ -11,7 +11,8 @@ import ConfirmDialog from "@/components/ConfirmDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { UserPlus, Copy, Trash2, ShieldAlert, Users, TrendingUp, Search, Download, Upload } from "lucide-react";
+import { UserPlus, Copy, Trash2, ShieldAlert, Users, TrendingUp, Search, Download, Upload, MoreHorizontal } from "lucide-react";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { toCsv, downloadCsv, parseCsv, readFileText } from "@/lib/csv";
 import Paginator, { usePagination } from "@/components/Paginator";
 import { getLimit, isAtLimit, limitMessage } from "@/lib/planLimits";
@@ -362,9 +363,14 @@ export default function Team() {
                         { value: "cashier", label: "Cashier" },
                       ]}
                     />
-                    <Button variant="ghost" size="icon" onClick={() => deactivateMember(m)} aria-label="Remove member">
-                      <Trash2 className="size-4 text-destructive" />
-                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm" aria-label={`More actions for ${m.owner_name || m.email || "member"}`}><MoreHorizontal className="size-4" /> More</Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => deactivateMember(m)}><Trash2 className="size-4 mr-2" /> Remove member</DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </>
                 )}
               </div>

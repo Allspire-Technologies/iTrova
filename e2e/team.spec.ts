@@ -39,7 +39,8 @@ test.describe("Team", () => {
     await expect(page.getByRole("heading", { name: "Team" })).toBeVisible();
     await expect(page.getByText("Bola Staff")).toBeVisible();
 
-    await page.getByRole("button", { name: "Remove member" }).click();
+    await page.getByRole("button", { name: /More actions for Bola/ }).click();
+    await page.getByRole("menuitem", { name: "Remove member" }).click();
     await expect(page.getByText("Remove Bola Staff?")).toBeVisible();
     await page.getByRole("button", { name: "Confirm" }).click();
     await expect(page.getByText("Member removed")).toBeVisible();

@@ -58,14 +58,14 @@ test.describe("Invoice deposits", () => {
     await expect(page.locator("table").getByText("260629-1")).toBeVisible();
 
     // First deposit of 4,000 -> partial, 6,000 left.
-    await page.getByRole("button", { name: "Record payment" }).click();
+    await page.getByRole("button", { name: "Payment", exact: true }).click();
     const dialog = page.getByRole("dialog");
     await dialog.getByRole("spinbutton").fill("4000");
     await dialog.getByRole("button", { name: "Record payment" }).click();
     await expect(page.locator("table").getByText(/6,000.*left/)).toBeVisible();
 
     // Pay the remaining balance -> auto-flips to paid (Print action appears, no balance left).
-    await page.getByRole("button", { name: "Record payment" }).click();
+    await page.getByRole("button", { name: "Payment", exact: true }).click();
     await dialog.getByRole("button", { name: "Record payment" }).click();
     await expect(page.getByText(/left/)).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Print" })).toBeVisible();
@@ -81,7 +81,7 @@ test.describe("Invoice deposits", () => {
     await setupInvoice(page);
     await page.goto("/invoices");
 
-    await page.getByRole("button", { name: "Record payment" }).click();
+    await page.getByRole("button", { name: "Payment", exact: true }).click();
     const dialog = page.getByRole("dialog");
     await dialog.getByRole("spinbutton").fill("15000"); // > 10,000 balance
     await dialog.getByRole("button", { name: "Record payment" }).click();

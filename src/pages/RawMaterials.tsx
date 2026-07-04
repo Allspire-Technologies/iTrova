@@ -9,7 +9,8 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import SearchableSelect from "@/components/SearchableSelect";
-import { Plus, Search, Boxes, Pencil, PackagePlus, Upload, Download, SlidersHorizontal, MessageCircle, Truck } from "lucide-react";
+import { Plus, Search, Boxes, Pencil, PackagePlus, Upload, Download, SlidersHorizontal, MessageCircle, Truck, MoreHorizontal } from "lucide-react";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { toCsv, downloadCsv, parseCsv, readFileText } from "@/lib/csv";
@@ -274,10 +275,17 @@ export default function RawMaterials() {
                   <div className="flex items-center justify-between gap-2">
                     <Badge variant="outline" className={s.className}>{s.label}</Badge>
                     <div className="flex gap-1 shrink-0">
-                      <Button variant="ghost" size="icon" title="Record purchase" onClick={() => { setPurchaseFor(m); setPCost(Number(m.cost_per_unit) || 0); setPurchaseOpen(true); }}><PackagePlus className="size-4" /></Button>
-                      <Button variant="ghost" size="icon" title="Adjust stock" onClick={() => setAdjustTarget(m)}><SlidersHorizontal className="size-4" /></Button>
-                      <Button variant="ghost" size="icon" title="Reorder via WhatsApp" onClick={() => reorder(m)} disabled={!suppliers.find(x => x.id === m.supplier_id)?.phone}><MessageCircle className="size-4" /></Button>
-                      <Button variant="ghost" size="icon" aria-label="Edit" onClick={() => openEdit(m)}><Pencil className="size-4" /></Button>
+                      <Button variant="ghost" size="sm" onClick={() => { setPurchaseFor(m); setPCost(Number(m.cost_per_unit) || 0); setPurchaseOpen(true); }}><PackagePlus className="size-4" /> Purchase</Button>
+                      <Button variant="ghost" size="sm" onClick={() => setAdjustTarget(m)}><SlidersHorizontal className="size-4" /> Adjust</Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" aria-label={`More actions for ${m.name}`}><MoreHorizontal className="size-4" /> More</Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem disabled={!suppliers.find(x => x.id === m.supplier_id)?.phone} onClick={() => reorder(m)}><MessageCircle className="size-4 mr-2" /> Reorder via WhatsApp</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openEdit(m)}><Pencil className="size-4 mr-2" /> Edit</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
                 </div>
@@ -312,10 +320,17 @@ export default function RawMaterials() {
                       <td className="px-4 py-3 text-right font-display font-semibold text-brand-dark">{fmt(m.cost_per_unit)}</td>
                       <td className="px-4 py-3"><Badge variant="outline" className={s.className}>{s.label}</Badge></td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
-                        <Button variant="ghost" size="icon" title="Record purchase" onClick={() => { setPurchaseFor(m); setPCost(Number(m.cost_per_unit) || 0); setPurchaseOpen(true); }}><PackagePlus className="size-4" /></Button>
-                        <Button variant="ghost" size="icon" title="Adjust stock" onClick={() => setAdjustTarget(m)}><SlidersHorizontal className="size-4" /></Button>
-                        <Button variant="ghost" size="icon" title="Reorder via WhatsApp" onClick={() => reorder(m)} disabled={!suppliers.find(x => x.id === m.supplier_id)?.phone}><MessageCircle className="size-4" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => openEdit(m)}><Pencil className="size-4" /></Button>
+                        <Button variant="ghost" size="sm" onClick={() => { setPurchaseFor(m); setPCost(Number(m.cost_per_unit) || 0); setPurchaseOpen(true); }}><PackagePlus className="size-4" /> Purchase</Button>
+                        <Button variant="ghost" size="sm" onClick={() => setAdjustTarget(m)}><SlidersHorizontal className="size-4" /> Adjust</Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" aria-label={`More actions for ${m.name}`}><MoreHorizontal className="size-4" /> More</Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem disabled={!suppliers.find(x => x.id === m.supplier_id)?.phone} onClick={() => reorder(m)}><MessageCircle className="size-4 mr-2" /> Reorder via WhatsApp</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openEdit(m)}><Pencil className="size-4 mr-2" /> Edit</DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </td>
                     </tr>
                   );

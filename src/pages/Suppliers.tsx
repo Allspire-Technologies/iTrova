@@ -7,7 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { Plus, Search, Truck, Pencil, Trash2, Phone, Mail, Upload, Download, TrendingUp, Calendar } from "lucide-react";
+import { Plus, Search, Truck, Pencil, Trash2, Phone, Mail, Upload, Download, TrendingUp, Calendar, MoreHorizontal } from "lucide-react";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import StarRating from "@/components/StarRating";
 import { toCsv, downloadCsv, parseCsv, readFileText } from "@/lib/csv";
@@ -242,8 +243,15 @@ export default function Suppliers() {
                       {s.contact_name && <div className="text-sm text-muted-foreground truncate">{s.contact_name}</div>}
                     </div>
                     <div className="flex gap-1 shrink-0">
-                      <Button variant="ghost" size="icon" onClick={() => openEdit(s)}><Pencil className="size-4" /></Button>
-                      <Button variant="ghost" size="icon" onClick={() => remove(s)}><Trash2 className="size-4 text-danger" /></Button>
+                      <Button variant="ghost" size="sm" onClick={() => openEdit(s)}><Pencil className="size-4" /> Edit</Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" aria-label={`More actions for ${s.name}`}><MoreHorizontal className="size-4" /> More</Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => remove(s)}><Trash2 className="size-4 mr-2" /> Delete</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
                   <div className="mt-2">

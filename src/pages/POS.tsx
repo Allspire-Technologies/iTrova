@@ -443,12 +443,12 @@ export default function POS() {
             </div>
             <div className="flex items-center gap-2 ml-auto">
               <div className="flex items-center gap-1">
-                <Button variant="ghost" size="icon" className="size-7" onClick={() => updateQty(i.product.id, -1)}><Minus className="size-3" /></Button>
+                <Button variant="ghost" size="icon" className="size-7" aria-label={`Decrease ${i.product.name} quantity`} onClick={() => updateQty(i.product.id, -1)}><Minus className="size-3" /></Button>
                 <Input type="number" min={1} max={Number(i.product.stock_quantity)} value={i.qty} onChange={e => setQty(i.product.id, Number(e.target.value))} className="w-12 h-7 px-1 text-center text-sm font-medium" />
-                <Button variant="ghost" size="icon" className="size-7" onClick={() => updateQty(i.product.id, 1)}><Plus className="size-3" /></Button>
+                <Button variant="ghost" size="icon" className="size-7" aria-label={`Increase ${i.product.name} quantity`} onClick={() => updateQty(i.product.id, 1)}><Plus className="size-3" /></Button>
               </div>
               <div className="font-display font-semibold text-sm text-brand-dark text-right whitespace-nowrap">{fmt(i.qty * Number(i.product.selling_price))}</div>
-              <Button variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-destructive" onClick={() => remove(i.product.id)}><Trash2 className="size-3" /></Button>
+              <Button variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-destructive" aria-label={`Remove ${i.product.name} from cart`} onClick={() => remove(i.product.id)}><Trash2 className="size-3" /></Button>
             </div>
           </div>
         ))}
