@@ -70,7 +70,9 @@ test.describe("Export Invoice", () => {
     await stubRows(page, "export_invoices", [REC]);
     await page.goto("/export-invoice");
     await expect(page.getByText("ACME/EXP/2026/001")).toBeVisible();
-    await page.getByRole("button", { name: "Edit" }).click();
+    // Edit lives in the row's More-actions menu (max-3-actions rule).
+    await page.getByRole("button", { name: "More actions for ACME/EXP/2026/001" }).click();
+    await page.getByRole("menuitem", { name: "Edit" }).click();
     await expect(page).toHaveURL(/\/export-invoice\/ei-1\/edit$/);
     await expect(page.getByRole("heading", { name: "Edit Export Invoice" })).toBeVisible();
     await expect(page.getByLabel("Invoice number")).toHaveValue("ACME/EXP/2026/001");
@@ -82,8 +84,11 @@ test.describe("Export Invoice", () => {
     await stubRows(page, "export_invoices", [REC]);
     await page.goto("/export-invoice");
     await expect(page.getByText("ACME/EXP/2026/001")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Edit" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: /Delete ACME/ })).toHaveCount(0);
+    // The More-actions menu only offers DOCX for a manager — no Edit/Delete items.
+    await page.getByRole("button", { name: "More actions for ACME/EXP/2026/001" }).click();
+    await expect(page.getByRole("menuitem", { name: "Download DOCX" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Edit" })).toHaveCount(0);
+    await expect(page.getByRole("menuitem", { name: "Delete" })).toHaveCount(0);
   });
 
   test("owner can delete a saved invoice (returns stock)", async ({ page }) => {
@@ -95,7 +100,8 @@ test.describe("Export Invoice", () => {
       return r.fulfill({ status: 200, contentType: "application/json", body: "null" });
     });
     await page.goto("/export-invoice");
-    await page.getByRole("button", { name: "Delete ACME/EXP/2026/001" }).click();
+    await page.getByRole("button", { name: "More actions for ACME/EXP/2026/001" }).click();
+    await page.getByRole("menuitem", { name: "Delete" }).click();
     // Confirm dialog warns about returning stock, then deletes.
     await expect(page.getByText(/returns the stock/i)).toBeVisible();
     await page.getByRole("button", { name: "Delete", exact: true }).click();

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, PackagePlus, Undo2, ArrowRightLeft, Upload, Download } from "lucide-react";
+import { Plus, Pencil, Trash2, PackagePlus, Undo2, ArrowRightLeft, Upload, Download, MoreHorizontal } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { TablePageSkeleton } from "@/components/Skeletons";
 import { cn } from "@/lib/utils";
 import { parseCsv, readFileText, downloadCsv } from "@/lib/csv";
@@ -145,6 +146,36 @@ export default function GeneralStore() {
 
   const checkoutItems = (items ?? []).filter((i) => checkoutForm && (checkoutForm.kind === "borrow" ? i.kind === "borrowable" : i.kind === "consumable"));
 
+  // Shared action buttons — rendered in the desktop table cells AND the mobile cards.
+  // House rule: max 3 visible actions per row; the rest live in a MoreHorizontal menu.
+  const itemActions = (it: StoreItem) => (
+    <>
+      <Button variant="ghost" size="sm" onClick={() => openCheckout(it.kind === "borrowable" ? "borrow" : "collect", it.id)}>{it.kind === "borrowable" ? "Lend" : "Give"}</Button>
+      <Button variant="ghost" size="icon" onClick={() => setAddStock({ item: it, qty: "" })} aria-label={`Add stock ${it.name}`}><PackagePlus className="size-4" /></Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" aria-label={`More actions for ${it.name}`}><MoreHorizontal className="size-4" /></Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => setItemForm({ id: it.id, name: it.name, category: it.category ?? "", unit: it.unit ?? "pcs", kind: it.kind, stock_quantity: "", reorder_level: String(it.reorder_level) })}>
+            <Pencil className="size-4 mr-2" /> Edit
+          </DropdownMenuItem>
+          {isOwner && (
+            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setConfirm({ title: `Delete ${it.name}?`, description: "This removes the item. Its past records stay.", onConfirm: async () => { await deleteItem(it.id); reloadItems(); toast.success("Item deleted"); } })}>
+              <Trash2 className="size-4 mr-2" /> Delete
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </>
+  );
+  const staffActions = (s: StoreStaff) => (
+    <>
+      <Button variant="ghost" size="icon" onClick={() => setStaffForm({ id: s.id, name: s.name, role: s.role ?? "", phone: s.phone ?? "", active: s.active })} aria-label={`Edit ${s.name}`}><Pencil className="size-4" /></Button>
+      {isOwner && <Button variant="ghost" size="icon" onClick={() => setConfirm({ title: `Delete ${s.name}?`, description: "This removes the staff member. Their past records stay.", onConfirm: async () => { await deleteStaff(s.id); reloadStaff(); toast.success("Staff deleted"); } })} aria-label={`Delete ${s.name}`}><Trash2 className="size-4 text-danger" /></Button>}
+    </>
+  );
+
   return (
     <div className="space-y-6 w-full">
       <div className="flex items-end justify-between flex-wrap gap-4">
@@ -174,7 +205,8 @@ export default function GeneralStore() {
             <Button variant="outline" onClick={() => itemFileRef.current?.click()}><Upload className="size-4" /> Import CSV</Button>
             <Button variant="outline" onClick={() => setItemForm({ ...emptyItemForm })}><Plus className="size-4" /> Add item</Button>
           </div>
-          <div className="rounded-xl border border-border/60 bg-card overflow-x-auto">
+          {/* Desktop table */}
+          <div className="hidden rounded-xl border border-border/60 bg-card overflow-x-auto sm:block">
             <Table>
               <TableHeader><TableRow className="hover:bg-transparent">
                 <TableHead>Item</TableHead><TableHead>Type</TableHead><TableHead className="text-right">Available</TableHead><TableHead className="text-right">Actions</TableHead>
@@ -191,17 +223,35 @@ export default function GeneralStore() {
                         <span className={cn("font-medium", st === "out" ? "text-danger" : st === "low" ? "text-warning" : "text-brand-dark")}>{it.stock_quantity}</span>
                         <span className="text-muted-foreground"> {it.unit}</span>
                       </TableCell>
-                      <TableCell className="text-right whitespace-nowrap">
-                        <Button variant="ghost" size="sm" onClick={() => openCheckout(it.kind === "borrowable" ? "borrow" : "collect", it.id)}>{it.kind === "borrowable" ? "Lend" : "Give"}</Button>
-                        <Button variant="ghost" size="icon" onClick={() => setAddStock({ item: it, qty: "" })} aria-label={`Add stock ${it.name}`}><PackagePlus className="size-4" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => setItemForm({ id: it.id, name: it.name, category: it.category ?? "", unit: it.unit ?? "pcs", kind: it.kind, stock_quantity: "", reorder_level: String(it.reorder_level) })} aria-label={`Edit ${it.name}`}><Pencil className="size-4" /></Button>
-                        {isOwner && <Button variant="ghost" size="icon" onClick={() => setConfirm({ title: `Delete ${it.name}?`, description: "This removes the item. Its past records stay.", onConfirm: async () => { await deleteItem(it.id); reloadItems(); toast.success("Item deleted"); } })} aria-label={`Delete ${it.name}`}><Trash2 className="size-4 text-danger" /></Button>}
-                      </TableCell>
+                      <TableCell className="text-right whitespace-nowrap">{itemActions(it)}</TableCell>
                     </TableRow>
                   );
                 })}
               </TableBody>
             </Table>
+          </div>
+          {/* Cards (mobile) — table columns/actions would clip off-screen at phone widths (mobile audit). */}
+          <div className="space-y-2 sm:hidden">
+            {items.length === 0 && <p className="rounded-xl border border-dashed border-border bg-card/50 px-4 py-8 text-center text-sm text-muted-foreground">No items yet.</p>}
+            {items.map((it) => {
+              const st = itemStatus(it);
+              return (
+                <div key={it.id} className="rounded-xl border border-border/60 bg-card p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-medium text-brand-dark">{it.name}</p>
+                      {it.category && <p className="text-xs text-muted-foreground">{it.category}</p>}
+                    </div>
+                    <Badge variant="secondary" className="shrink-0">{ITEM_KIND_LABEL[it.kind]}</Badge>
+                  </div>
+                  <p className="mt-1.5 text-sm">
+                    <span className={cn("font-medium", st === "out" ? "text-danger" : st === "low" ? "text-warning" : "text-brand-dark")}>{it.stock_quantity}</span>
+                    <span className="text-muted-foreground"> {it.unit} available</span>
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-1 border-t border-border/50 pt-2">{itemActions(it)}</div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -215,7 +265,8 @@ export default function GeneralStore() {
             <Button variant="outline" onClick={() => staffFileRef.current?.click()}><Upload className="size-4" /> Import CSV</Button>
             <Button variant="outline" onClick={() => setStaffForm({ ...emptyStaffForm })}><Plus className="size-4" /> Add staff</Button>
           </div>
-          <div className="rounded-xl border border-border/60 bg-card overflow-x-auto">
+          {/* Desktop table */}
+          <div className="hidden rounded-xl border border-border/60 bg-card overflow-x-auto sm:block">
             <Table>
               <TableHeader><TableRow className="hover:bg-transparent"><TableHead>Name</TableHead><TableHead>Role</TableHead><TableHead>Phone</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
               <TableBody>
@@ -225,21 +276,33 @@ export default function GeneralStore() {
                     <TableCell><span className={cn("font-medium", s.active ? "text-brand-dark" : "text-muted-foreground line-through")}>{s.name}</span></TableCell>
                     <TableCell className="text-muted-foreground">{s.role || "—"}</TableCell>
                     <TableCell className="text-muted-foreground">{s.phone || "—"}</TableCell>
-                    <TableCell className="text-right whitespace-nowrap">
-                      <Button variant="ghost" size="icon" onClick={() => setStaffForm({ id: s.id, name: s.name, role: s.role ?? "", phone: s.phone ?? "", active: s.active })} aria-label={`Edit ${s.name}`}><Pencil className="size-4" /></Button>
-                      {isOwner && <Button variant="ghost" size="icon" onClick={() => setConfirm({ title: `Delete ${s.name}?`, description: "This removes the staff member. Their past records stay.", onConfirm: async () => { await deleteStaff(s.id); reloadStaff(); toast.success("Staff deleted"); } })} aria-label={`Delete ${s.name}`}><Trash2 className="size-4 text-danger" /></Button>}
-                    </TableCell>
+                    <TableCell className="text-right whitespace-nowrap">{staffActions(s)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
+          </div>
+          {/* Cards (mobile) */}
+          <div className="space-y-2 sm:hidden">
+            {staff.length === 0 && <p className="rounded-xl border border-dashed border-border bg-card/50 px-4 py-8 text-center text-sm text-muted-foreground">No staff yet.</p>}
+            {staff.map((s) => (
+              <div key={s.id} className="flex items-center justify-between gap-2 rounded-xl border border-border/60 bg-card p-3">
+                <div className="min-w-0">
+                  <p className={cn("font-medium", s.active ? "text-brand-dark" : "text-muted-foreground line-through")}>{s.name}</p>
+                  <p className="text-xs text-muted-foreground truncate">{[s.role, s.phone].filter(Boolean).join(" · ") || "—"}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">{staffActions(s)}</div>
+              </div>
+            ))}
           </div>
         </div>
       )}
 
       {/* RECORDS */}
       {tab === "records" && (
-        <div className="rounded-xl border border-border/60 bg-card overflow-x-auto">
+        <>
+        {/* Desktop table */}
+        <div className="hidden rounded-xl border border-border/60 bg-card overflow-x-auto sm:block">
           <Table>
             <TableHeader><TableRow className="hover:bg-transparent">
               <TableHead>Item</TableHead><TableHead>Staff</TableHead><TableHead>Action</TableHead>
@@ -272,6 +335,35 @@ export default function GeneralStore() {
             </TableBody>
           </Table>
         </div>
+        {/* Cards (mobile) — the 8-column ledger hid status/overdue/Return off-screen at phone widths (mobile audit). */}
+        <div className="space-y-2 sm:hidden">
+          {txns.length === 0 && <p className="rounded-xl border border-dashed border-border bg-card/50 px-4 py-8 text-center text-sm text-muted-foreground">No borrow or collect records yet.</p>}
+          {txns.map((t) => {
+            const out = outstanding(t);
+            const overdue = isOverdue(t, today);
+            return (
+              <div key={t.id} className="rounded-xl border border-border/60 bg-card p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-medium text-brand-dark">{t.item?.name ?? "—"}</p>
+                  <Badge variant={t.kind === "borrow" ? "outline" : "secondary"} className="shrink-0">{t.kind === "borrow" ? "Borrow" : "Collect"}</Badge>
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  <span>{t.staff?.name ?? (t.staff_id ? "—" : "Unassigned")}</span>
+                  <span>Qty {t.quantity}{t.kind === "borrow" ? ` · out ${out}` : ""}</span>
+                  <span>{TXN_STATUS_LABEL[t.status]}</span>
+                  {overdue && <Badge variant="destructive">Overdue</Badge>}
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">{fmtDate(t.created_at)}{t.due_date && t.kind === "borrow" ? ` · due ${fmtDate(t.due_date)}` : ""}</p>
+                {t.kind === "borrow" && out > 0 && (
+                  <Button variant="outline" size="sm" className="mt-2 w-full" onClick={() => setReturnForm({ txn: t, qty: String(out) })}>
+                    <Undo2 className="size-4" /> Return
+                  </Button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        </>
       )}
 
       {/* Item form dialog */}

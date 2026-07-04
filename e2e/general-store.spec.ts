@@ -42,12 +42,12 @@ test.describe("General Store", () => {
     await expect(itemSelect.locator("option", { hasText: "Cordless Drill" })).toHaveCount(1);
     await expect(itemSelect.locator("option", { hasText: "Wood Screws" })).toHaveCount(0);
     // Switch to collect → only consumables.
-    await page.getByLabel("Action").selectOption("collect");
+    await page.getByLabel("Action", { exact: true }).selectOption("collect");
     await expect(itemSelect.locator("option", { hasText: "Wood Screws" })).toHaveCount(1);
     await expect(itemSelect.locator("option", { hasText: "Cordless Drill" })).toHaveCount(0);
 
     // Complete a borrow.
-    await page.getByLabel("Action").selectOption("borrow");
+    await page.getByLabel("Action", { exact: true }).selectOption("borrow");
     await itemSelect.selectOption("i1");
     await page.getByLabel("Staff").selectOption("s1");
     await page.getByLabel("Quantity").fill("1");
@@ -61,9 +61,11 @@ test.describe("General Store", () => {
     await stubStore(page, { items: [DRILL], staff: [STAFFER], txns: [BORROW_TXN] });
     await page.goto("/general-store");
     await page.getByRole("button", { name: "Records" }).click();
-    await expect(page.getByRole("cell", { name: "Cordless Drill" })).toBeVisible();
-    await expect(page.getByText("Overdue")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Return" })).toBeVisible();
+    // Scope to the desktop table — the mobile card layout renders the same content (hidden at >=sm).
+    const table = page.getByRole("table");
+    await expect(table.getByRole("cell", { name: "Cordless Drill" })).toBeVisible();
+    await expect(table.getByText("Overdue")).toBeVisible();
+    await expect(table.getByRole("button", { name: "Return" })).toBeVisible();
   });
 
   test("a manager cannot delete items", async ({ page }) => {
@@ -71,7 +73,10 @@ test.describe("General Store", () => {
     await stubStore(page, { items: [DRILL] });
     await page.goto("/general-store");
     await expect(page.getByRole("cell", { name: "Cordless Drill · Tools" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Delete Cordless Drill" })).toHaveCount(0);
+    // Edit lives in the More-actions menu; Delete is owner-only so a manager's menu has no Delete item.
+    await page.getByRole("button", { name: "More actions for Cordless Drill" }).click();
+    await expect(page.getByRole("menuitem", { name: "Edit" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Delete" })).toHaveCount(0);
   });
 
   test("bulk-imports items from a CSV", async ({ page }) => {
