@@ -16,7 +16,8 @@ import { SETTINGS_PAGE_CLASS, SETTINGS_FIELD_GRID, SETTINGS_PLANS_GRID } from "@
 import { highestCataloguePlan, previousCataloguePlan, includesAll, featuresBeyond, planChangeAction, type PlanChange } from "@/lib/planFeatures";
 import { isDirty, isPasswordFormReady } from "@/lib/settingsForms";
 import { toast } from "sonner";
-import { Eye, EyeOff, Building2, Globe, Bell, Link2, CreditCard, Shield, CheckCircle2, Scale, ChevronRight } from "lucide-react";
+import { Eye, EyeOff, Building2, Globe, Bell, Link2, CreditCard, Shield, CheckCircle2, Scale, ChevronRight, Pencil } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Link } from "react-router-dom";
 import { LEGAL_LINKS } from "@/lib/legalLinks";
 import { isEmailConfirmed, isValidEmail, normalizeEmail, verifyAction } from "@/lib/emailVerification";
@@ -54,6 +55,16 @@ const TIMEZONES = [
   { value: "Australia/Sydney", label: "Australia/Sydney (UTC+10/+11) — Australia East" },
   { value: "Pacific/Auckland", label: "Pacific/Auckland (UTC+12/+13) — New Zealand" },
 ];
+
+/** Read-only value line for a settings card in View mode. */
+function ViewField({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <div className="space-y-0.5">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="text-sm font-medium text-brand-dark">{value?.trim() ? value : "—"}</p>
+    </div>
+  );
+}
 
 type NotifPrefs = { low_stock_alerts: boolean; overdue_invoice_alerts: boolean; expiry_alerts: boolean; general_store_alerts: boolean; daily_summary: boolean };
 const DEFAULT_PREFS: NotifPrefs = { low_stock_alerts: true, overdue_invoice_alerts: true, expiry_alerts: true, general_store_alerts: true, daily_summary: false };
@@ -267,7 +278,21 @@ export default function Settings() {
   const emailConfirmed = isEmailConfirmed(user);
   useEffect(() => { setEmail(user?.email || ""); }, [user?.email]);
 
+  // Sectioned layout: tabs + per-card view→edit. Data cards render read-only until Edit is pressed.
+  type SettingsTab = "business" | "preferences" | "billing" | "security";
+  const [tab, setTab] = useState<SettingsTab>("business");
+  const [editProfile, setEditProfile] = useState(false);
+  const [editExporter, setEditExporter] = useState(false);
+  const [editRegional, setEditRegional] = useState(false);
+  const [editIntegrations, setEditIntegrations] = useState(false);
+  // Non-owners have no Business/Billing cards — land them on Preferences.
   useEffect(() => {
+    if (role && !isOwner && (tab === "business" || tab === "billing")) setTab("preferences");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role, isOwner]);
+
+  // Hydrate the form state from the loaded business/profile — also used by Cancel to discard edits.
+  const hydrateFromBusiness = () => {
     if (business) {
       setBizName(business.name || "");
       setIndustry(business.industry || "");
@@ -290,7 +315,9 @@ export default function Settings() {
       setExportSwift(business.export_swift || "");
     }
     if (profile) setOwnerName(profile.owner_name || "");
-  }, [business, profile]);
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { hydrateFromBusiness(); }, [business, profile]);
 
   useEffect(() => {
     if (!user) return;
@@ -323,6 +350,7 @@ export default function Settings() {
     setProfileBusy(false);
     if (e1 || e2) return toast.error((e1 || e2)!.message);
     await refresh();
+    setEditProfile(false);
     toast.success("Profile saved");
   };
 
@@ -344,6 +372,7 @@ export default function Settings() {
     setExporterBusy(false);
     if (error) return toast.error(error.message);
     await refresh();
+    setEditExporter(false);
     toast.success("Exporter profile saved");
   };
 
@@ -357,6 +386,7 @@ export default function Settings() {
     setRegionalBusy(false);
     if (error) return toast.error(error.message);
     await refresh();
+    setEditRegional(false);
     toast.success("Regional settings saved");
   };
 
@@ -385,6 +415,7 @@ export default function Settings() {
       .eq("id", business.id);
     setIntegrationsBusy(false);
     if (error) return toast.error(error.message);
+    setEditIntegrations(false);
     toast.success("Integrations saved");
   };
 
@@ -435,20 +466,47 @@ export default function Settings() {
         <p className="text-muted-foreground mt-1">Manage your account and business preferences.</p>
       </div>
 
-      {/* Business Profile — owner only */}
-      {isOwner && (
+      {/* Section tabs — Business/Billing hold owner-only cards, so those tabs hide for other roles. */}
+      <div className="flex flex-wrap gap-1 border-b border-border/60">
+        {([
+          { key: "business" as const, label: "Business", ownerOnly: true },
+          { key: "preferences" as const, label: "Preferences", ownerOnly: false },
+          { key: "billing" as const, label: "Billing", ownerOnly: true },
+          { key: "security" as const, label: "Security & Legal", ownerOnly: false },
+        ]).filter(t => !t.ownerOnly || isOwner).map(t => (
+          <button key={t.key} type="button" onClick={() => setTab(t.key)}
+            className={cn("-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors", tab === t.key ? "border-brand text-brand-dark" : "border-transparent text-muted-foreground hover:text-foreground")}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Business Profile — owner only; View card until Edit is pressed */}
+      {tab === "business" && isOwner && (
         <Card className="shadow-card border-border/60">
           <CardHeader className="pb-4">
-            <div className="flex items-center gap-3">
-              <div className="size-9 rounded-lg bg-brand-light grid place-items-center text-brand">
-                <Building2 className="size-4" />
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="size-9 rounded-lg bg-brand-light grid place-items-center text-brand">
+                  <Building2 className="size-4" />
+                </div>
+                <div>
+                  <CardTitle className="font-display text-lg">Business Profile</CardTitle>
+                  <CardDescription>Your business name and owner details.</CardDescription>
+                </div>
               </div>
-              <div>
-                <CardTitle className="font-display text-lg">Business Profile</CardTitle>
-                <CardDescription>Update your business name and owner details.</CardDescription>
-              </div>
+              {!editProfile && <Button variant="ghost" size="sm" onClick={() => setEditProfile(true)}><Pencil className="size-4" /> Edit</Button>}
             </div>
           </CardHeader>
+          {!editProfile ? (
+            <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <ViewField label="Business name" value={bizName} />
+              <ViewField label="Industry" value={industry === "Other" ? (industryOther || "Other") : industry} />
+              <ViewField label="City" value={city} />
+              <ViewField label="State" value={state} />
+              <ViewField label="Owner name" value={ownerName} />
+            </CardContent>
+          ) : (
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label>Business name</Label>
@@ -483,29 +541,48 @@ export default function Settings() {
               <Label>Owner name</Label>
               <Input value={ownerName} onChange={e => setOwnerName(e.target.value)} placeholder="Enter your name" />
             </div>
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => { hydrateFromBusiness(); setEditProfile(false); }}>Cancel</Button>
               <Button variant="brand" onClick={saveProfile} disabled={profileBusy || !profileDirty}>
                 {profileBusy ? "Saving..." : "Save profile"}
               </Button>
             </div>
           </CardContent>
+          )}
         </Card>
       )}
 
-      {/* Exporter Profile — owner only (prefills export invoices) */}
-      {isOwner && (
+      {/* Exporter Profile — owner only (prefills export invoices); View card until Edit */}
+      {tab === "business" && isOwner && (
         <Card className="shadow-card border-border/60">
           <CardHeader className="pb-4">
-            <div className="flex items-center gap-3">
-              <div className="size-9 rounded-lg bg-brand-light grid place-items-center text-brand">
-                <Globe className="size-4" />
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="size-9 rounded-lg bg-brand-light grid place-items-center text-brand">
+                  <Globe className="size-4" />
+                </div>
+                <div>
+                  <CardTitle className="font-display text-lg">Exporter Profile</CardTitle>
+                  <CardDescription>Seller details prefilled onto export (commercial) invoices. Only you (the owner) can edit these.</CardDescription>
+                </div>
               </div>
-              <div>
-                <CardTitle className="font-display text-lg">Exporter Profile</CardTitle>
-                <CardDescription>Seller details prefilled onto export (commercial) invoices. Only you (the owner) can edit these.</CardDescription>
-              </div>
+              {!editExporter && <Button variant="ghost" size="sm" onClick={() => setEditExporter(true)}><Pencil className="size-4" /> Edit</Button>}
             </div>
           </CardHeader>
+          {!editExporter ? (
+            <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2"><ViewField label="Exporter address" value={exportAddress} /></div>
+              <ViewField label="Exporter email" value={exportEmail} />
+              <ViewField label="Exporter phone" value={exportPhone} />
+              <ViewField label="Country of origin" value={exportCountry} />
+              <ViewField label="Invoice number prefix" value={exportPrefix} />
+              <ViewField label="RC number" value={exportRc} />
+              <ViewField label="Bank name" value={exportBankName} />
+              <ViewField label="Account name" value={exportAccountName} />
+              <ViewField label="Account number" value={exportAccountNumber} />
+              <ViewField label="SWIFT / IBAN" value={exportSwift} />
+            </CardContent>
+          ) : (
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label>Exporter address</Label>
@@ -556,29 +633,40 @@ export default function Settings() {
               <Label>SWIFT / IBAN <span className="text-muted-foreground font-normal">(optional)</span></Label>
               <Input value={exportSwift} onChange={e => setExportSwift(e.target.value)} placeholder="SWIFT or IBAN" />
             </div>
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => { hydrateFromBusiness(); setEditExporter(false); }}>Cancel</Button>
               <Button variant="brand" onClick={saveExporter} disabled={exporterBusy || !exporterDirty}>
                 {exporterBusy ? "Saving..." : "Save exporter profile"}
               </Button>
             </div>
           </CardContent>
+          )}
         </Card>
       )}
 
-      {/* Currency & Region — owner only */}
-      {isOwner && (
+      {/* Currency & Region — owner only; View card until Edit */}
+      {tab === "preferences" && isOwner && (
         <Card className="shadow-card border-border/60">
           <CardHeader className="pb-4">
-            <div className="flex items-center gap-3">
-              <div className="size-9 rounded-lg bg-brand-light grid place-items-center text-brand">
-                <Globe className="size-4" />
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="size-9 rounded-lg bg-brand-light grid place-items-center text-brand">
+                  <Globe className="size-4" />
+                </div>
+                <div>
+                  <CardTitle className="font-display text-lg">Currency & Region</CardTitle>
+                  <CardDescription>Your local currency and timezone for reports and dates.</CardDescription>
+                </div>
               </div>
-              <div>
-                <CardTitle className="font-display text-lg">Currency & Region</CardTitle>
-                <CardDescription>Set your local currency and timezone for reports and dates.</CardDescription>
-              </div>
+              {!editRegional && <Button variant="ghost" size="sm" onClick={() => setEditRegional(true)}><Pencil className="size-4" /> Edit</Button>}
             </div>
           </CardHeader>
+          {!editRegional ? (
+            <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <ViewField label="Currency" value={CURRENCY_OPTIONS.find(c => c.value === currency)?.label || currency} />
+              <ViewField label="Timezone" value={TIMEZONES.find(t => t.value === timezone)?.label || timezone} />
+            </CardContent>
+          ) : (
           <CardContent className="space-y-4">
             <div className={SETTINGS_FIELD_GRID}>
               <div className="space-y-2">
@@ -600,16 +688,19 @@ export default function Settings() {
                 />
               </div>
             </div>
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => { hydrateFromBusiness(); setEditRegional(false); }}>Cancel</Button>
               <Button variant="brand" onClick={saveRegional} disabled={regionalBusy || !regionalDirty}>
                 {regionalBusy ? "Saving..." : "Save"}
               </Button>
             </div>
           </CardContent>
+          )}
         </Card>
       )}
 
       {/* Notification Preferences — all roles */}
+      {tab === "preferences" && (
       <Card className="shadow-card border-border/60">
         <CardHeader className="pb-4">
           <div className="flex items-center gap-3">
@@ -682,19 +773,23 @@ export default function Settings() {
           ))}
         </CardContent>
       </Card>
+      )}
 
-      {/* Integrations — owner only */}
-      {isOwner && (
+      {/* Integrations — owner only; View card until Edit */}
+      {tab === "preferences" && isOwner && (
         <Card className="shadow-card border-border/60">
           <CardHeader className="pb-4">
-            <div className="flex items-center gap-3">
-              <div className="size-9 rounded-lg bg-brand-light grid place-items-center text-brand">
-                <Link2 className="size-4" />
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="size-9 rounded-lg bg-brand-light grid place-items-center text-brand">
+                  <Link2 className="size-4" />
+                </div>
+                <div>
+                  <CardTitle className="font-display text-lg">Integrations</CardTitle>
+                  <CardDescription>Connect external services to your iTrova account.</CardDescription>
+                </div>
               </div>
-              <div>
-                <CardTitle className="font-display text-lg">Integrations</CardTitle>
-                <CardDescription>Connect external services to your iTrova account.</CardDescription>
-              </div>
+              {!editIntegrations && <Button variant="ghost" size="sm" onClick={() => setEditIntegrations(true)}><Pencil className="size-4" /> Edit</Button>}
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -705,6 +800,9 @@ export default function Settings() {
                   Your business WhatsApp number, used as the default for invoice and receipt sharing.
                 </p>
               </div>
+              {!editIntegrations ? (
+                <ViewField label="WhatsApp number" value={whatsapp} />
+              ) : (
               <div className="flex flex-col sm:flex-row gap-3">
                 <Input
                   value={whatsapp}
@@ -712,10 +810,12 @@ export default function Settings() {
                   placeholder="+234 801 234 5678"
                   className="w-full sm:max-w-xs"
                 />
+                <Button variant="outline" onClick={() => { hydrateFromBusiness(); setEditIntegrations(false); }} className="w-full sm:w-auto">Cancel</Button>
                 <Button variant="brand" onClick={saveIntegrations} disabled={integrationsBusy || !integrationsDirty} className="w-full sm:w-auto">
                   {integrationsBusy ? "Saving..." : "Save"}
                 </Button>
               </div>
+              )}
             </div>
             <div className="rounded-lg border border-border/60 p-4 flex items-center justify-between gap-3 bg-secondary/30">
               <div>
@@ -731,7 +831,7 @@ export default function Settings() {
       )}
 
       {/* Subscription Plan — owner only */}
-      {isOwner && (
+      {tab === "billing" && isOwner && (
         <Card className="shadow-card border-border/60">
           <CardHeader className="pb-4">
             <div className="flex items-center gap-3">
@@ -781,6 +881,7 @@ export default function Settings() {
       )}
 
       {/* Account Security — all roles */}
+      {tab === "security" && (
       <Card className="shadow-card border-border/60">
         <CardHeader className="pb-4">
           <div className="flex items-center gap-3">
@@ -885,8 +986,10 @@ export default function Settings() {
           </div>
         </CardContent>
       </Card>
+      )}
 
       {/* Legal & Compliance — all roles */}
+      {tab === "security" && (
       <Card className="shadow-card border-border/60">
         <CardHeader className="pb-4">
           <div className="flex items-center gap-3">
@@ -915,6 +1018,7 @@ export default function Settings() {
           ))}
         </CardContent>
       </Card>
+      )}
     </div>
   );
 }

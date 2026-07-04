@@ -19,18 +19,28 @@ const plans = [
 ];
 
 test.describe("Settings", () => {
-  test("owner sees business profile and subscription", async ({ page }) => {
+  test("owner sees sectioned tabs; Business tab is a View card until Edit", async ({ page }) => {
     await authenticate(page, { role: "owner", businessName: "Sunrise Stores" });
     await page.goto("/settings");
     await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+    // Tabs render; Business is the default tab, read-only until Edit.
+    for (const t of ["Business", "Preferences", "Billing", "Security & Legal"]) {
+      await expect(page.getByRole("button", { name: t, exact: true })).toBeVisible();
+    }
     await expect(page.getByText("Business name", { exact: true })).toBeVisible();
-    await expect(page.getByText("Subscription Plan", { exact: true })).toBeVisible();
+    await expect(page.getByPlaceholder("Enter your business name")).toHaveCount(0); // view mode: no inputs
+    // Edit flips the card into the form; Cancel returns to view.
+    await page.getByRole("button", { name: "Edit" }).first().click();
+    await expect(page.getByPlaceholder("Enter your business name")).toHaveValue("Sunrise Stores");
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expect(page.getByPlaceholder("Enter your business name")).toHaveCount(0);
   });
 
-  test("subscription plans come from the catalogue", async ({ page }) => {
+  test("subscription plans come from the catalogue (Billing tab)", async ({ page }) => {
     await authenticate(page, { role: "owner", businessName: "Sunrise Stores" });
     await stubRows(page, "plans", plans);
     await page.goto("/settings");
+    await page.getByRole("button", { name: "Billing", exact: true }).click();
     await expect(page.getByText("Subscription Plan", { exact: true })).toBeVisible();
     await expect(page.getByText("Pro", { exact: true })).toBeVisible();
     await expect(page.getByText("Current plan")).toBeVisible();
