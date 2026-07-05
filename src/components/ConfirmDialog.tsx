@@ -25,7 +25,7 @@ export default function ConfirmDialog({
   const Icon = isDestructive ? AlertTriangle : Info;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm">
+      <DialogContent variant="compact" className="max-w-sm">
         <DialogHeader>
           <div className="flex items-start gap-4">
             <div className={`mt-0.5 size-10 rounded-full grid place-items-center shrink-0 ${isDestructive ? "bg-destructive/10 text-destructive" : "bg-brand-light text-brand"}`}>

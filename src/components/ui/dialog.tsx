@@ -27,16 +27,30 @@ const DialogOverlay = React.forwardRef<
 ));
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
+// Mobile keyboard strategy: form dialogs ("full", the default) take over the whole screen below sm
+// and scroll within themselves, so the soft keyboard just shrinks the scroll area and the focused
+// input always comes into view. From sm up (and for variant="compact" — confirmations and other
+// input-less dialogs) the classic centered card applies, still viewport-capped and scrollable.
+const FULL_MOBILE =
+  "inset-0 h-full w-full max-w-none rounded-none " +
+  "sm:inset-auto sm:left-[50%] sm:top-[50%] sm:h-auto sm:max-w-lg sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-h-[calc(100dvh-2rem)] sm:rounded-lg " +
+  "data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom " +
+  "sm:data-[state=closed]:slide-out-to-left-1/2 sm:data-[state=closed]:slide-out-to-top-[48%] sm:data-[state=open]:slide-in-from-left-1/2 sm:data-[state=open]:slide-in-from-top-[48%] sm:data-[state=closed]:zoom-out-95 sm:data-[state=open]:zoom-in-95";
+const COMPACT =
+  "left-[50%] top-[50%] w-full max-w-lg translate-x-[-50%] translate-y-[-50%] max-h-[calc(100dvh-2rem)] rounded-lg " +
+  "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]";
+
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { variant?: "full" | "compact" }
+>(({ className, children, variant = "full", ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
+        "fixed z-50 grid gap-4 border bg-background p-6 shadow-lg overflow-y-auto overscroll-contain duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+        variant === "compact" ? COMPACT : FULL_MOBILE,
         className,
       )}
       {...props}

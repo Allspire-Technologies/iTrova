@@ -9,8 +9,11 @@ const KBD = { width: 390, height: 450 }; // phone with soft keyboard open
 async function checkDialog(page: Page, name: string, submitName: string | RegExp) {
   const dialog = page.getByRole("dialog");
   await dialog.waitFor();
+  await page.waitForTimeout(350); // let the open animation settle before measuring
   const box = await dialog.boundingBox();
   const fits = !!box && box.height <= KBD.height;
+  // Form dialogs are full-page takeovers on phones — the whole width, scrolling internally.
+  expect(box?.width, `${name} should span the full mobile width`).toBe(KBD.width);
   // The submit button must be reachable by scrolling within the dialog.
   const btn = dialog.getByRole("button", { name: submitName }).last();
   await btn.scrollIntoViewIfNeeded();
@@ -55,4 +58,39 @@ test("tall dialogs fit and scroll at keyboard-height viewport", async ({ page })
   await page.getByRole("button", { name: "Permissions & Access" }).click();
   await page.getByRole("button", { name: "New role" }).click();
   await checkDialog(page, "settings-role-editor", "Save role");
+});
+
+// iOS Safari auto-zooms when a focused text control is under 16px. Guard: on phones every
+// input/select/textarea (including the SearchableSelect search box) must be >=16px.
+test("no sub-16px text controls on phones (prevents iOS focus zoom)", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await authenticate(page, { role: "owner" });
+  const audit = () => page.evaluate(() => {
+    const bad: string[] = [];
+    document.querySelectorAll("input, select, textarea").forEach((el) => {
+      const fs = parseFloat(getComputedStyle(el).fontSize);
+      const visible = (el as HTMLElement).offsetParent !== null || getComputedStyle(el).position === "fixed";
+      if (visible && fs < 16) bad.push(`${el.tagName}[${(el as HTMLInputElement).placeholder || (el as HTMLElement).ariaLabel || ""}] ${fs}px`);
+    });
+    return bad;
+  });
+
+  await stubRows(page, "invoices", []);
+  await page.goto("/invoices");
+  await page.getByRole("button", { name: "New invoice" }).first().click();
+  await page.getByRole("dialog").waitFor();
+  expect(await audit(), "invoices dialog").toEqual([]);
+  await page.keyboard.press("Escape");
+
+  await page.goto("/export-invoice/new");
+  await page.getByRole("heading", { name: "New Export Invoice" }).waitFor();
+  expect(await audit(), "export invoice form").toEqual([]);
+
+  // SearchableSelect's popover search input.
+  await page.goto("/settings");
+  await page.getByRole("button", { name: "Business", exact: true }).click();
+  await page.getByRole("button", { name: "Edit" }).first().click();
+  await page.getByRole("combobox").first().click();
+  await page.waitForTimeout(300);
+  expect(await audit(), "searchable select").toEqual([]);
 });

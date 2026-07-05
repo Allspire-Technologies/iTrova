@@ -496,7 +496,7 @@ export default function Inventory() {
 
       {/* Non-dismissable progress while the import writes rows, so the user sees it's working. */}
       <Dialog open={!!importProgress}>
-        <DialogContent className="[&>button]:hidden" onInteractOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
+        <DialogContent variant="compact" className="[&>button]:hidden" onInteractOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle>Importing products…</DialogTitle>
           </DialogHeader>

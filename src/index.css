@@ -109,9 +109,15 @@
 
 @layer base {
   * { @apply border-border; }
+  html {
+    /* Keep text at authored size when phones rotate — no surprise inflation. */
+    -webkit-text-size-adjust: 100%;
+  }
   body {
     @apply bg-background text-foreground font-sans antialiased;
     font-feature-settings: "cv11", "ss01";
+    /* No accidental double-tap zoom on taps/buttons; pinch-zoom stays available (a11y). */
+    touch-action: manipulation;
   }
   h1, h2, h3, h4, h5 {
     font-family: 'Syne', system-ui, sans-serif;

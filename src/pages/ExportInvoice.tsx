@@ -28,8 +28,8 @@ import {
 const CURRENCIES = ["NGN", "USD", "EUR", "GBP", "GHS", "CAD", "ZAR", "KES"];
 type Product = { id: string; name: string; stock_quantity: number; unit: string | null; selling_price: number };
 
-const textareaCls = "min-h-[64px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-70";
-const selectCls = "h-10 w-full rounded-md border border-input bg-background px-2 text-sm";
+const textareaCls = "min-h-[64px] w-full rounded-md border border-input bg-background px-3 py-2 text-base md:text-sm disabled:cursor-not-allowed disabled:opacity-70";
+const selectCls = "h-10 w-full rounded-md border border-input bg-background px-2 text-base md:text-sm";
 
 export default function ExportInvoice() {
   const navigate = useNavigate();
