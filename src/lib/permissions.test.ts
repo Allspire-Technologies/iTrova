@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve as resolvePath } from "node:path";
 import { resolvePermissions, toggleAction, toggleModule, DEFAULT_ROLE_PERMISSIONS, MODULE_ACTIONS } from "./permissions";
 
 const resolve = (over: Partial<Parameters<typeof resolvePermissions>[0]> = {}) =>
@@ -73,6 +75,22 @@ describe("resolvePermissions — plan + registry edges", () => {
   it("non-registry modules stay role-free (nav parity for e.g. insights)", () => {
     const r = resolve({ appRole: "cashier" });
     expect(r.can("insights", "view")).toBe(true);
+  });
+});
+
+describe("server/client defaults drift guard", () => {
+  it("the SQL default_role_permissions JSON matches DEFAULT_ROLE_PERMISSIONS exactly", () => {
+    // Server-side enforcement (has_permission) embeds the same defaults in SQL. This test parses the
+    // migration so the two can never drift silently.
+    const sql = readFileSync(resolvePath(__dirname, "../../supabase/migrations/20260704150000_rbac_enforcement.sql"), "utf8");
+    const block = sql.split("RBAC_DEFAULTS_JSON_START")[1]?.split("RBAC_DEFAULTS_JSON_END")[0] ?? "";
+    const grab = (role: string) => {
+      const m = block.match(new RegExp(`when '${role}' then '([\\s\\S]*?)'::jsonb`));
+      expect(m, `missing ${role} defaults in migration`).toBeTruthy();
+      return JSON.parse(m![1]);
+    };
+    expect(grab("manager")).toEqual(DEFAULT_ROLE_PERMISSIONS.manager);
+    expect(grab("cashier")).toEqual(DEFAULT_ROLE_PERMISSIONS.cashier);
   });
 });
 

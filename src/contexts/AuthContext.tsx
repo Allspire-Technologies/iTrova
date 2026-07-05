@@ -146,6 +146,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // RBAC (best-effort, non-fatal): the member's assignment/override + this business's edited
+  // system defaults. Errors (e.g. migration not applied yet) resolve to nulls → code defaults,
+  // which reproduce pre-RBAC behavior exactly. Also re-run by the realtime subscription below.
+  const loadAccess = async (uid: string, businessId: string, appRole: AppRole | null) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sb = supabase as any;
+    const [{ data: ma }, { data: sysRoles }] = await Promise.all([
+      sb.from("member_access").select("permissions, team_role_id, team_roles(permissions)")
+        .eq("user_id", uid).eq("business_id", businessId).maybeSingle(),
+      sb.from("team_roles").select("system_key, permissions")
+        .eq("business_id", businessId).not("system_key", "is", null),
+    ]).catch(() => [{ data: null }, { data: null }]);
+    const assignedMap: PermissionMap | null = ma?.team_role_id ? (ma?.team_roles?.permissions ?? null) : null;
+    const systemMap: PermissionMap | null =
+      (appRole && appRole !== "owner"
+        ? (sysRoles as { system_key: string; permissions: PermissionMap }[] | null)?.find(r => r.system_key === appRole)?.permissions
+        : null) ?? null;
+    setAccess({ roleMap: assignedMap ?? systemMap, override: (ma?.permissions as PermissionMap | null) ?? null });
+  };
+
   const loadProfile = async (uid: string) => {
     const { data: p, error: pErr } = await supabase.from("profiles").select("*").eq("id", uid).maybeSingle();
     if (pErr) { await hydrateFromCache(); return; } // offline / unreachable
@@ -167,24 +187,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       list.sort((a, b) => ROLE_RANK[a] - ROLE_RANK[b]);
       const appRole = list[0] ?? null;
       setRole(appRole);
-
-      // RBAC (best-effort, non-fatal): the member's assignment/override + this business's edited
-      // system defaults. Errors (e.g. migration not applied yet) resolve to nulls → code defaults,
-      // which reproduce pre-RBAC behavior exactly.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const sb = supabase as any;
-      const [{ data: ma }, { data: sysRoles }] = await Promise.all([
-        sb.from("member_access").select("permissions, team_role_id, team_roles(permissions)")
-          .eq("user_id", uid).eq("business_id", p.business_id).maybeSingle(),
-        sb.from("team_roles").select("system_key, permissions")
-          .eq("business_id", p.business_id).not("system_key", "is", null),
-      ]).catch(() => [{ data: null }, { data: null }]);
-      const assignedMap: PermissionMap | null = ma?.team_role_id ? (ma?.team_roles?.permissions ?? null) : null;
-      const systemMap: PermissionMap | null =
-        (appRole && appRole !== "owner"
-          ? (sysRoles as { system_key: string; permissions: PermissionMap }[] | null)?.find(r => r.system_key === appRole)?.permissions
-          : null) ?? null;
-      setAccess({ roleMap: assignedMap ?? systemMap, override: (ma?.permissions as PermissionMap | null) ?? null });
+      await loadAccess(uid, p.business_id, appRole);
     } else {
       setBusiness(null);
       setSubscription(null);
@@ -240,6 +243,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         registerPlanLimits(rows);
       });
   }, [user]);
+
+  // Realtime permission push: when this member's access row or any of the business's roles change,
+  // re-resolve permissions live — no re-login needed. Best-effort (offline/websocket failures are
+  // silent; the next full load picks changes up anyway).
+  useEffect(() => {
+    if (!user || !business) return;
+    const reload = () => loadAccess(user.id, business.id, role);
+    const ch = supabase
+      .channel(`rbac-${business.id}-${user.id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "member_access", filter: `user_id=eq.${user.id}` }, reload)
+      .on("postgres_changes", { event: "*", schema: "public", table: "team_roles", filter: `business_id=eq.${business.id}` }, reload)
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, business?.id, role]);
 
   const plan = useMemo(
     () => plans.find(p => p.key === (business?.subscription_tier || "free")) ?? null,
