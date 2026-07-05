@@ -61,10 +61,11 @@ export default function ExportInvoiceView() {
   return (
     <div className="space-y-6 max-w-5xl">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/export-invoice")} aria-label="Back to export invoices"><ArrowLeft className="size-5" /></Button>
-          <div>
-            <h1 className="font-display text-2xl lg:text-3xl font-bold text-brand-dark">{inv.invoice_number}</h1>
+        {/* min-w-0 chain + break-words: long invoice numbers wrap on phones instead of overflowing. */}
+        <div className="flex items-start gap-3 min-w-0">
+          <Button variant="ghost" size="icon" className="shrink-0" onClick={() => navigate("/export-invoice")} aria-label="Back to export invoices"><ArrowLeft className="size-5" /></Button>
+          <div className="min-w-0">
+            <h1 className="font-display text-2xl lg:text-3xl font-bold text-brand-dark break-words">{inv.invoice_number}</h1>
             <p className="text-muted-foreground text-sm">{fmtDate(inv.invoice_date)}{inv.buyer.name ? ` · ${inv.buyer.name}` : ""}</p>
           </div>
         </div>

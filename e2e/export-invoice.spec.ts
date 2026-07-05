@@ -109,6 +109,16 @@ test.describe("Export Invoice", () => {
     expect(called).toBe(true);
   });
 
+  test("mobile: a long invoice number wraps on the view page without overflow", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await authenticate(page, { role: "owner" });
+    await stubRows(page, "export_invoices", [{ ...REC, invoice_number: "SUNRISESTORES/EXP/2026/001" }]);
+    await page.goto("/export-invoice/ei-1");
+    await expect(page.getByRole("heading", { name: /SUNRISESTORES/ })).toBeVisible();
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(1);
+  });
+
   test("a cashier cannot reach the module", async ({ page }) => {
     await authenticate(page, { role: "cashier" });
     await expect(page.getByRole("link", { name: "Export Invoice" })).toHaveCount(0);
