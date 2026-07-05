@@ -24,7 +24,7 @@ import {
   type StoreItem, type StoreStaff, type StoreTransaction, type StoreItemKind, type TxnKind,
 } from "@/lib/generalStore";
 
-const selectCls = "h-10 w-full rounded-md border border-input bg-background px-2 text-sm";
+const selectCls = "h-10 w-full rounded-md border border-input bg-background px-2 text-base md:text-sm";
 const TABS = [{ key: "items", label: "Items" }, { key: "staff", label: "Staff" }, { key: "records", label: "Records" }] as const;
 type TabKey = (typeof TABS)[number]["key"];
 

@@ -280,7 +280,7 @@ export default function PermissionsAccess() {
                   <div className="flex flex-wrap items-center gap-1.5">
                     {custom && <Badge variant="outline">Custom</Badge>}
                     <select
-                      className="h-9 rounded-md border border-input bg-background px-2 text-sm disabled:opacity-60"
+                      className="h-9 rounded-md border border-input bg-background px-2 text-base md:text-sm disabled:opacity-60"
                       disabled={rowLocked}
                       value={a?.team_role_id ?? ""}
                       onChange={(e) => assignRole(m, e.target.value || null)}
