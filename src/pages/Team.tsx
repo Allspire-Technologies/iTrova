@@ -23,7 +23,9 @@ type Member = { user_id: string; role: AppRole; owner_name: string | null; last_
 type Invitation = {
   id: string; email: string; role: AppRole; token: string;
   expires_at: string; accepted_at: string | null; created_at: string;
+  team_role_id?: string | null;
 };
+type CustomRole = { id: string; name: string };
 
 const ROLE_LABEL: Record<AppRole, string> = { owner: "Owner", manager: "Manager", cashier: "Cashier" };
 const ROLE_DESC: Record<AppRole, string> = {
@@ -41,7 +43,8 @@ export default function Team() {
   const [loading, setLoading] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState<AppRole>("cashier");
+  const [inviteRole, setInviteRole] = useState<string>("cashier"); // "manager" | "cashier" | custom team_roles.id
+  const [customRoles, setCustomRoles] = useState<CustomRole[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [pending, setPending] = useState<{ title: string; description: string; onConfirm: () => void } | null>(null);
   const [salesByStaff, setSalesByStaff] = useState<Record<string, { total: number; count: number }>>({});
@@ -66,12 +69,15 @@ export default function Team() {
   const load = async () => {
     if (!business) return;
     setLoading(true);
-    const [{ data: roles }, { data: invs }, { data: salesData }, { data: emailData }] = await Promise.all([
+    const [{ data: roles }, { data: invs }, { data: salesData }, { data: emailData }, { data: teamRoles }] = await Promise.all([
       supabase.from("user_roles").select("user_id, role").eq("business_id", business.id),
       supabase.from("invitations").select("*").eq("business_id", business.id).order("created_at", { ascending: false }),
       supabase.from("sales").select("staff_id, total_amount").eq("business_id", business.id).eq("voided", false),
       supabase.rpc("get_member_emails", { p_business_id: business.id }),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase as any).from("team_roles").select("id,name").eq("business_id", business.id).is("system_key", null).order("name"),
     ]);
+    setCustomRoles(((teamRoles ?? []) as CustomRole[]));
     const userIds = Array.from(new Set((roles || []).map(r => r.user_id)));
     let profiles: Record<string, string> = {};
     let lastSeenMap: Record<string, string | null> = {};
@@ -109,10 +115,14 @@ export default function Team() {
       return;
     }
     setSubmitting(true);
-    const { error } = await supabase.from("invitations").insert({
+    const custom = customRoles.find(r => r.id === inviteRole) ?? null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase as any).from("invitations").insert({
       business_id: business.id,
       email: inviteEmail.trim().toLowerCase(),
-      role: inviteRole,
+      // Custom roles ride on the least-privilege base role; permissions come from the team role.
+      role: custom ? "cashier" : inviteRole,
+      team_role_id: custom ? custom.id : null,
       invited_by: user?.id,
     });
     setSubmitting(false);
@@ -269,10 +279,11 @@ export default function Team() {
                 <Label>Role</Label>
                 <SearchableSelect
                   value={inviteRole}
-                  onValueChange={(v) => setInviteRole(v as AppRole)}
+                  onValueChange={setInviteRole}
                   options={[
                     { value: "manager", label: `Manager — ${ROLE_DESC.manager}` },
                     { value: "cashier", label: `Cashier — ${ROLE_DESC.cashier}` },
+                    ...customRoles.map(r => ({ value: r.id, label: `${r.name} — custom role` })),
                   ]}
                 />
               </div>
@@ -391,7 +402,7 @@ export default function Team() {
                 <div className="min-w-0">
                   <div className="font-medium truncate">{i.email}</div>
                   <div className="text-xs text-muted-foreground">
-                    {ROLE_LABEL[i.role]} · {expired ? "expired" : `expires ${fmtDate(i.expires_at)}`}
+                    {(i.team_role_id && customRoles.find(r => r.id === i.team_role_id)?.name) || ROLE_LABEL[i.role]} · {expired ? "expired" : `expires ${fmtDate(i.expires_at)}`}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">

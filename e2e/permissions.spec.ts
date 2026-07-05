@@ -61,6 +61,24 @@ test.describe("Permissions & Access", () => {
     await expect(page.getByRole("link", { name: "Team" })).toHaveCount(0); // team stays owner-only by default
   });
 
+  test("invite dialog offers custom roles and stamps team_role_id on the invitation", async ({ page }) => {
+    await authenticate(page, { role: "owner" });
+    await stubRows(page, "team_roles", [{ id: "tr-1", business_id: "biz-1", name: "Storekeeper", system_key: null, permissions: { general_store: ["view", "checkout"] } }]);
+    let posted: Record<string, unknown> | null = null;
+    await page.route("**/rest/v1/invitations**", (r) => {
+      if (r.request().method() === "POST") { posted = r.request().postDataJSON(); return r.fulfill({ status: 201, contentType: "application/json", body: "[]" }); }
+      return r.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+    });
+    await page.goto("/team");
+    await page.getByRole("button", { name: "Invite teammate" }).click();
+    await page.getByPlaceholder("name@example.com").fill("newbie@biz.test");
+    await page.getByRole("combobox").last().click();
+    await page.getByRole("option", { name: /Storekeeper — custom role/ }).click();
+    await page.getByRole("button", { name: "Create invite" }).click();
+    await expect(page.getByText("Invitation created — copy the link to share")).toBeVisible();
+    expect(posted).toMatchObject({ role: "cashier", team_role_id: "tr-1" });
+  });
+
   test("cashier has no Permissions tab", async ({ page }) => {
     await authenticate(page, { role: "cashier" });
     await page.goto("/settings");
