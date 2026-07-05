@@ -643,7 +643,7 @@ export default function POS() {
             </div>
           )}
           <Sheet open={cartOpen} onOpenChange={setCartOpen}>
-            <SheetContent side="bottom" className="lg:hidden p-0 gap-0 max-h-[88vh] flex flex-col rounded-t-2xl">
+            <SheetContent side="bottom" className="lg:hidden p-0 gap-0 max-h-[88dvh] flex flex-col rounded-t-2xl">
               <SheetTitle className="sr-only">Active sale</SheetTitle>
               {cartPanel}
             </SheetContent>
