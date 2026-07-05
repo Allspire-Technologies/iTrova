@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, Plus, Minus, Trash2, ShoppingCart, Banknote, Smartphone, CreditCard, CheckCircle2, ClipboardList, ScanLine, Printer, MessageCircle, BarChart2, AlertTriangle, PauseCircle, CloudOff } from "lucide-react";
+import { Search, Plus, Minus, Trash2, ShoppingCart, Banknote, Smartphone, CreditCard, CheckCircle2, ClipboardList, ScanLine, Printer, MessageCircle, BarChart2, AlertTriangle, PauseCircle, CloudOff, Check } from "lucide-react";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { toast } from "sonner";
@@ -594,12 +594,20 @@ export default function POS() {
                   <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
                     {paged.map(p => {
                       const low = Number(p.stock_quantity) <= Number(p.reorder_level);
+                      // Derived from the cart, so the badge clears automatically on complete/clear/hold
+                      // (they all empty the cart) and returns when a held sale is resumed.
+                      const inCartQty = cart.find(i => i.product.id === p.id)?.qty ?? 0;
                       return (
                       <button
                         key={p.id}
                         onClick={() => addToCart(p)}
-                        className={`group text-left p-4 rounded-xl bg-card border shadow-card hover:shadow-elevated hover:-translate-y-0.5 transition-all ${low ? "border-warning/40 hover:border-warning" : "border-border/60 hover:border-brand/40"}`}
+                        className={`group relative text-left p-4 rounded-xl bg-card border shadow-card hover:shadow-elevated hover:-translate-y-0.5 transition-all ${inCartQty > 0 ? "border-brand/60 hover:border-brand" : low ? "border-warning/40 hover:border-warning" : "border-border/60 hover:border-brand/40"}`}
                       >
+                        {inCartQty > 0 && (
+                          <Badge className="absolute right-2 top-2 gap-1 border-transparent bg-brand text-brand-foreground shadow-brand" aria-label={`${p.name} added to cart${inCartQty > 1 ? ` (${inCartQty})` : ""}`}>
+                            <Check className="size-3" /> Added{inCartQty > 1 ? ` ×${inCartQty}` : ""}
+                          </Badge>
+                        )}
                         <div className="size-12 rounded-lg bg-gradient-brand mb-3 grid place-items-center text-brand-foreground font-display font-bold text-lg">
                           {p.name.charAt(0).toUpperCase()}
                         </div>

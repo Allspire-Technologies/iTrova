@@ -34,6 +34,33 @@ test.describe("Point of Sale", () => {
     await expect(page.getByText("1 item", { exact: true }).filter({ visible: true })).toBeVisible();
   });
 
+  test("shows an Added badge on the product card, clearing on hold/clear and returning on resume", async ({ page }) => {
+    const second = { ...product, id: "prod-2", name: "Beans 25kg", sku: "BEA-25" };
+    await stubRows(page, "products", [product, second]);
+    await page.reload();
+
+    // Once in the cart, the qty/remove buttons also match /Garri 50kg/ — pin to the grid card via its price line.
+    const garriCard = page.getByRole("button", { name: /Garri 50kg/ }).filter({ hasText: /8,?500/ });
+    await garriCard.click();
+    await expect(garriCard.getByText("Added", { exact: false })).toBeVisible();
+    await garriCard.click();
+    await expect(garriCard.getByText("Added ×2")).toBeVisible();
+
+    // Clear all (needs 2 distinct lines) → badges disappear.
+    await page.getByRole("button", { name: /Beans 25kg/ }).click();
+    await page.getByRole("button", { name: "Clear all" }).first().click();
+    await page.getByRole("button", { name: "Clear all", exact: true }).last().click(); // confirm dialog
+    await expect(garriCard.getByText("Added", { exact: false })).toHaveCount(0);
+
+    // Hold → badge gone; resume → badge back (cart-derived).
+    await garriCard.click();
+    await page.getByRole("button", { name: "Hold sale", exact: true }).click();
+    await expect(garriCard.getByText("Added", { exact: false })).toHaveCount(0);
+    await page.getByRole("button", { name: /Held sales \(1\)/ }).click();
+    await page.getByRole("button", { name: "Resume" }).click();
+    await expect(garriCard.getByText("Added", { exact: false })).toBeVisible();
+  });
+
   test("holds a sale and resumes it from the held-sales modal", async ({ page }) => {
     await page.getByRole("button", { name: /Garri 50kg/ }).click();
     await expect(page.getByText("1 item", { exact: true }).filter({ visible: true })).toBeVisible();
