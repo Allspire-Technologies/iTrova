@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { LayoutDashboard, Package, ShoppingCart, Truck, FileText, ClipboardList, Users, BarChart3, Sparkles, Settings, LogOut, Store, Menu, Boxes, ChevronLeft, ChevronRight, AlertTriangle, Clock, WifiOff, Ship, Warehouse } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingCart, Truck, FileText, ClipboardList, Users, BarChart3, Sparkles, Settings, LogOut, Store, Menu, Boxes, ChevronLeft, ChevronRight, AlertTriangle, Clock, WifiOff, Ship, Warehouse, Factory } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
@@ -30,6 +30,7 @@ const nav: NavItem[] = [
   { to: "/suppliers", label: "Suppliers", icon: Truck, module: "suppliers" },
   { to: "/raw-materials", label: "Raw Materials", icon: Boxes, module: "raw_materials" },
   { to: "/general-store", label: "General Store", icon: Warehouse, module: "general_store" },
+  { to: "/production", label: "Production", icon: Factory, module: "production" },
   { to: "/invoices", label: "Invoices", icon: FileText, module: "invoices" },
   { to: "/export-invoice", label: "Export Invoice", icon: Ship, module: "export_invoices" },
   { to: "/purchase-orders", label: "Purchase Orders", icon: ClipboardList, module: "purchase_orders" },

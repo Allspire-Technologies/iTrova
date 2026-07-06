@@ -9,7 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import SearchableSelect from "@/components/SearchableSelect";
-import { Plus, Search, Boxes, Pencil, PackagePlus, Upload, Download, SlidersHorizontal, MessageCircle, Truck, MoreHorizontal } from "lucide-react";
+import { Plus, Search, Boxes, Pencil, PackagePlus, Upload, Download, SlidersHorizontal, MessageCircle, Truck, MoreHorizontal, Factory } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
@@ -21,6 +21,7 @@ import Paginator, { usePagination } from "@/components/Paginator";
 import { buildReorderMessage, toWaNumber, isValidWaNumber, waLink } from "@/lib/whatsapp";
 import WhatsAppShareDialog from "@/components/WhatsAppShareDialog";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import RecipeEditorDialog from "@/components/RecipeEditorDialog";
 import { TablePageSkeleton } from "@/components/Skeletons";
 import { getLimit, isAtLimit, limitMessage } from "@/lib/planLimits";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -39,7 +40,7 @@ type Purchase = {
 const empty = { name: "", sku: "", unit: "kg", stock_quantity: "", reorder_level: 5, cost_per_unit: "", supplier_id: "", notes: "" };
 
 export default function RawMaterials() {
-  const { business, hasModule } = useAuth();
+  const { business, hasModule, can } = useAuth();
   const { fmt, symbol } = useCurrency();
   const { fmtDate } = useDateFormat();
   const [items, setItems] = useState<Material[]>([]);
@@ -53,6 +54,9 @@ export default function RawMaterials() {
   const [form, setForm] = useState<any>(empty);
   const [busy, setBusy] = useState(false);
   const [adjustTarget, setAdjustTarget] = useState<Material | null>(null);
+  // Production module entry point: link this material into a product's recipe.
+  const [linkMaterial, setLinkMaterial] = useState<Material | null>(null);
+  const canLinkProduct = hasModule("production") && can("production", "recipes_manage");
   const fileRef = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState<{ title: string; description: string; onConfirm: () => void } | null>(null);
   const [importResult, setImportResult] = useState<ImportOutcome | null>(null);
@@ -317,6 +321,7 @@ export default function RawMaterials() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem disabled={!suppliers.find(x => x.id === m.supplier_id)?.phone} onClick={() => reorder(m)}><MessageCircle className="size-4 mr-2" /> Reorder via WhatsApp</DropdownMenuItem>
                           <DropdownMenuItem onClick={() => openEdit(m)}><Pencil className="size-4 mr-2" /> Edit</DropdownMenuItem>
+                          {canLinkProduct && <DropdownMenuItem onClick={() => setLinkMaterial(m)}><Factory className="size-4 mr-2" /> Link to product</DropdownMenuItem>}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
@@ -362,6 +367,7 @@ export default function RawMaterials() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem disabled={!suppliers.find(x => x.id === m.supplier_id)?.phone} onClick={() => reorder(m)}><MessageCircle className="size-4 mr-2" /> Reorder via WhatsApp</DropdownMenuItem>
                             <DropdownMenuItem onClick={() => openEdit(m)}><Pencil className="size-4 mr-2" /> Edit</DropdownMenuItem>
+                            {canLinkProduct && <DropdownMenuItem onClick={() => setLinkMaterial(m)}><Factory className="size-4 mr-2" /> Link to product</DropdownMenuItem>}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </td>
@@ -511,6 +517,13 @@ export default function RawMaterials() {
         onOpenChange={(v) => !v && setAdjustTarget(null)}
         target={adjustTarget ? { kind: "raw_material", id: adjustTarget.id, name: adjustTarget.name, unit: adjustTarget.unit, stock_quantity: Number(adjustTarget.stock_quantity) } : null}
         onSaved={load}
+      />
+
+      <RecipeEditorDialog
+        open={!!linkMaterial}
+        onClose={() => setLinkMaterial(null)}
+        onSaved={() => setLinkMaterial(null)}
+        seedMaterialId={linkMaterial?.id ?? null}
       />
 
       <ConfirmDialog

@@ -74,8 +74,8 @@ function ViewField({ label, value }: { label: string; value?: string | null }) {
   );
 }
 
-type NotifPrefs = { low_stock_alerts: boolean; overdue_invoice_alerts: boolean; expiry_alerts: boolean; general_store_alerts: boolean; daily_summary: boolean };
-const DEFAULT_PREFS: NotifPrefs = { low_stock_alerts: true, overdue_invoice_alerts: true, expiry_alerts: true, general_store_alerts: true, daily_summary: false };
+type NotifPrefs = { low_stock_alerts: boolean; overdue_invoice_alerts: boolean; expiry_alerts: boolean; general_store_alerts: boolean; production_alerts: boolean; daily_summary: boolean };
+const DEFAULT_PREFS: NotifPrefs = { low_stock_alerts: true, overdue_invoice_alerts: true, expiry_alerts: true, general_store_alerts: true, production_alerts: true, daily_summary: false };
 
 function PlanCard({ plan, inheritsFrom, action, currentPlan, businessName }: { plan: Plan; inheritsFrom: { name: string; features: string[] } | null; action: PlanChange; currentPlan: string; businessName: string }) {
   const active = plan.key === currentPlan;
@@ -750,6 +750,13 @@ export default function Settings() {
               key: "general_store_alerts" as const,
               label: "General Store alerts",
               desc: "Get notified about low-stock store items and overdue borrowed items",
+              disabled: false,
+              soon: false,
+            },
+            {
+              key: "production_alerts" as const,
+              label: "Production alerts",
+              desc: "Get notified about material requests awaiting approval and decisions on yours",
               disabled: false,
               soon: false,
             },

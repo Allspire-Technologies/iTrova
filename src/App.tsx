@@ -26,6 +26,7 @@ const InviteAuth = lazy(() => import("./pages/InviteAuth"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Inventory = lazy(() => import("./pages/Inventory"));
 const GeneralStore = lazy(() => import("./pages/GeneralStore"));
+const Production = lazy(() => import("./pages/Production"));
 const ExportInvoiceList = lazy(() => import("./pages/ExportInvoiceList"));
 const ExportInvoiceView = lazy(() => import("./pages/ExportInvoiceView"));
 const ExportInvoice = lazy(() => import("./pages/ExportInvoice"));
@@ -77,6 +78,7 @@ const App = () => (
             <Route path="/export-invoice/:id/edit" element={<OfflineGate><PermissionGate module="export_invoices" action="edit"><ModuleGate module="export_invoices"><ExportInvoice /></ModuleGate></PermissionGate></OfflineGate>} />
             <Route path="/suppliers" element={<OfflineGate><PermissionGate module="suppliers"><ModuleGate module="suppliers"><Suppliers /></ModuleGate></PermissionGate></OfflineGate>} />
             <Route path="/raw-materials" element={<OfflineGate><PermissionGate module="raw_materials"><ModuleGate module="raw_materials"><RawMaterials /></ModuleGate></PermissionGate></OfflineGate>} />
+            <Route path="/production" element={<OfflineGate><PermissionGate module="production"><ModuleGate module="production"><Production /></ModuleGate></PermissionGate></OfflineGate>} />
             <Route path="/invoices" element={<PermissionGate module="invoices"><ModuleGate module="invoices"><Invoices /></ModuleGate></PermissionGate>} />
             <Route path="/purchase-orders" element={<OfflineGate><PermissionGate module="purchase_orders"><ModuleGate module="purchase_orders"><PurchaseOrders /></ModuleGate></PermissionGate></OfflineGate>} />
             <Route path="/reports" element={<OfflineGate><PermissionGate module="reports"><ModuleGate module="reports"><Reports /></ModuleGate></PermissionGate></OfflineGate>} />

@@ -28,6 +28,16 @@ test.describe("Raw Materials", () => {
     await expect(page.locator("table").getByText("Cassava flour")).toBeVisible();
   });
 
+  test("More menu links a material to a product via the recipe editor", async ({ page }) => {
+    await stubRows(page, "products", [{ id: "p1", business_id: "biz-1", name: "Garri 50kg", unit: "bag" }]);
+    await stubRows(page, "product_materials", []);
+    await page.getByRole("button", { name: "More actions for Cassava flour", exact: true }).last().click(); // desktop copy
+    await page.getByRole("menuitem", { name: "Link to product" }).click();
+    // Editor opens seeded with this material on the first line.
+    await expect(page.getByRole("dialog").getByText("Link materials to a product")).toBeVisible();
+    await expect(page.getByRole("dialog").getByText("Cassava flour")).toBeVisible();
+  });
+
   test("shows the materials and deliveries tabs", async ({ page }) => {
     await expect(page.getByRole("tab", { name: /Materials/ })).toBeVisible();
     await expect(page.getByRole("tab", { name: /Deliveries/ })).toBeVisible();
