@@ -23,7 +23,7 @@ import {
   listRecipes, listRequisitions, listRuns, saveRecipe,
   createRequisition, updateRequisition, deleteRequisition,
   approveRequisition, rejectRequisition, cancelRequisition, recordProductionRun,
-  requisitionShortfalls, validateLines, friendlyProductionError, canTransition,
+  validateLines, friendlyProductionError, canTransition,
   REQUISITION_STATUS_LABEL, REQUISITION_STATUS_CLASS,
   type Recipe, type Requisition, type Run,
 } from "@/lib/production";
@@ -59,6 +59,7 @@ export default function Production() {
   const [reqLines, setReqLines] = useState<QtyLine[]>([{ key_id: "", quantity: "" }]);
   const [reqNotes, setReqNotes] = useState("");
   const [approving, setApproving] = useState<Requisition | null>(null);
+  const [approveQtys, setApproveQtys] = useState<Record<string, string>>({});
   const [rejecting, setRejecting] = useState<Requisition | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [cancelling, setCancelling] = useState<Requisition | null>(null);
@@ -92,6 +93,25 @@ export default function Production() {
   const matName = (id: string) => materials.find(m => m.id === id)?.name ?? "Material";
   const matUnit = (id: string) => materials.find(m => m.id === id)?.unit || "";
   const approvedReqs = useMemo(() => requisitions.filter(r => r.status === "approved"), [requisitions]);
+
+  // The trail shown on a request: what was actually issued (when reduced at approval) and — once
+  // production ran against it — which raw materials the run consumed.
+  const issuedTrail = (r: Requisition): string | null => {
+    if (r.status !== "approved" && r.status !== "completed") return null;
+    const reduced = r.production_requisition_items.filter(i => i.quantity_issued != null && Number(i.quantity_issued) !== Number(i.quantity_requested));
+    if (!reduced.length) return null;
+    return "Issued: " + r.production_requisition_items
+      .map(i => `${i.raw_materials?.name ?? "Material"} × ${Number(i.quantity_issued ?? i.quantity_requested)}`)
+      .join(" · ");
+  };
+  const usageTrail = (r: Requisition): string | null => {
+    if (r.status !== "completed") return null;
+    const used = runs.filter(run => run.requisition_id === r.id).flatMap(run => run.production_run_materials);
+    if (!used.length) return null;
+    return "Used in production: " + used
+      .map(m => `${m.raw_materials?.name ?? matName(m.raw_material_id)} × ${Number(m.quantity_used)}${m.raw_materials?.unit ? ` ${m.raw_materials.unit}` : ""}`)
+      .join(" · ");
+  };
 
   // ------------------------------------------------ requests
   const openNewRequest = () => {
@@ -142,11 +162,26 @@ export default function Production() {
     }
   };
 
-  const doApprove = async (r: Requisition) => {
+  const openApprove = (r: Requisition) => {
+    setApproving(r);
+    // Approver can reduce per-material quantities; default = what was requested.
+    setApproveQtys(Object.fromEntries(r.production_requisition_items.map(i => [i.raw_material_id, String(i.quantity_requested)])));
+  };
+
+  const doApprove = async () => {
+    if (!approving) return;
+    const items = approving.production_requisition_items.map(i => ({
+      raw_material_id: i.raw_material_id,
+      quantity: Number(approveQtys[i.raw_material_id]),
+    }));
+    if (items.some(i => !(i.quantity > 0))) return toast.error("Approved quantities must be above zero.");
+    const over = approving.production_requisition_items.find(i => Number(approveQtys[i.raw_material_id]) > Number(i.quantity_requested));
+    if (over) return toast.error("Approved quantities can't exceed what was requested.");
     setBusy(true);
     try {
-      await approveRequisition(r.id);
+      await approveRequisition(approving.id, items);
       toast.success("Approved — materials issued");
+      setApproving(null);
       load();
     } catch (e) {
       toast.error(friendlyProductionError(e instanceof Error ? e.message : undefined, "Couldn't approve"));
@@ -279,13 +314,6 @@ export default function Production() {
 
   if (loading) return <TablePageSkeleton />;
 
-  const shortfalls = approving
-    ? requisitionShortfalls(
-        approving.production_requisition_items.map(i => ({ raw_material_id: i.raw_material_id, quantity_requested: Number(i.quantity_requested) })),
-        materials,
-      )
-    : [];
-
   return (
     <div className="space-y-6 w-full">
       <div className="flex items-end justify-between flex-wrap gap-4">
@@ -408,6 +436,8 @@ export default function Production() {
                           {r.production_requisition_items.map(i => `${i.raw_materials?.name ?? "Material"} × ${i.quantity_requested}${i.raw_materials?.unit ? ` ${i.raw_materials.unit}` : ""}`).join(" · ")}
                           {r.notes ? <span className="block text-xs">{r.notes}</span> : null}
                           {r.status === "rejected" && r.decision_note ? <span className="block text-xs text-danger">Reason: {r.decision_note}</span> : null}
+                          {issuedTrail(r) && <span className="block text-xs text-brand-dark">{issuedTrail(r)}</span>}
+                          {usageTrail(r) && <span className="block text-xs text-brand-dark">{usageTrail(r)}</span>}
                         </TableCell>
                         <TableCell><Badge variant="outline" className={REQUISITION_STATUS_CLASS[r.status]}>{REQUISITION_STATUS_LABEL[r.status]}</Badge></TableCell>
                         <TableCell className="text-right"><RequestActions r={r} /></TableCell>
@@ -426,6 +456,8 @@ export default function Production() {
                     <p className="text-sm text-muted-foreground">
                       {r.production_requisition_items.map(i => `${i.raw_materials?.name ?? "Material"} × ${i.quantity_requested}`).join(" · ")}
                     </p>
+                    {issuedTrail(r) && <p className="text-xs text-brand-dark">{issuedTrail(r)}</p>}
+                    {usageTrail(r) && <p className="text-xs text-brand-dark">{usageTrail(r)}</p>}
                     <RequestActions r={r} />
                   </div>
                 ))}
@@ -538,19 +570,42 @@ export default function Production() {
         </DialogContent>
       </Dialog>
 
-      <ConfirmDialog
-        open={!!approving}
-        onOpenChange={(o) => !o && setApproving(null)}
-        variant="default"
-        title="Approve and issue materials?"
-        description={
-          shortfalls.length
-            ? `Warning — not enough stock: ${shortfalls.map(s => `${s.name} (${s.available} of ${s.requested})`).join(", ")}. Approval will fail until stock is topped up.`
-            : "The requested quantities will be deducted from raw-material stock immediately."
-        }
-        confirmLabel="Approve"
-        onConfirm={() => approving && doApprove(approving)}
-      />
+      {/* Approve: the raw-materials custodian can reduce quantities before issuing. */}
+      <Dialog open={!!approving} onOpenChange={(o) => !o && setApproving(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle className="font-display">Approve and issue materials</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Approved quantities are deducted from raw-material stock immediately. Reduce any line to issue less than requested.
+            </p>
+            {approving?.production_requisition_items.map((i, idx) => {
+              const stock = materials.find(m => m.id === i.raw_material_id);
+              const short = stock && Number(stock.stock_quantity) < Number(approveQtys[i.raw_material_id] || 0);
+              return (
+                <div key={i.id} className="flex items-center gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-brand-dark truncate">{i.raw_materials?.name ?? "Material"}</p>
+                    <p className={`text-xs ${short ? "text-danger" : "text-muted-foreground"}`}>
+                      Requested {i.quantity_requested}{i.raw_materials?.unit ? ` ${i.raw_materials.unit}` : ""} · {Number(stock?.stock_quantity ?? 0)} in stock
+                    </p>
+                  </div>
+                  <Input
+                    type="number" min="0" max={Number(i.quantity_requested)} step="any" className="w-24"
+                    aria-label={`Approve quantity ${idx + 1}`}
+                    value={approveQtys[i.raw_material_id] ?? ""}
+                    onChange={(e) => setApproveQtys(prev => ({ ...prev, [i.raw_material_id]: e.target.value }))}
+                  />
+                  <span className="w-10 shrink-0 text-xs text-muted-foreground">{i.raw_materials?.unit ?? ""}</span>
+                </div>
+              );
+            })}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setApproving(null)}>Cancel</Button>
+            <Button variant="brand" onClick={doApprove} disabled={busy}>{busy ? "Approving..." : "Approve & issue"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!rejecting} onOpenChange={(o) => { if (!o) { setRejecting(null); setRejectReason(""); } }}>
         <DialogContent variant="compact" className="max-w-sm">
@@ -629,7 +684,9 @@ export default function Production() {
 
   // Row actions for a requisition — max 3 visible, extras under More (DLS).
   function RequestActions({ r }: { r: Requisition }) {
-    const canApprove = can("production", "approve");
+    // Requests flow FROM production TO the raw-materials custodian: approval rights come from
+    // the Raw Materials module (stock movement), not from the production module.
+    const canApprove = can("raw_materials", "adjust_stock");
     const isRequester = r.requested_by === user?.id;
     const showApprove = canApprove && canTransition(r.status, "approve");
     const showProduce = can("production", "produce") && canTransition(r.status, "produce");
@@ -653,7 +710,7 @@ export default function Production() {
       <div className="flex gap-1 justify-end">
         {showApprove && (
           <>
-            <Button variant="ghost" size="sm" onClick={() => setApproving(r)}><Check className="size-4" /> Approve</Button>
+            <Button variant="ghost" size="sm" onClick={() => openApprove(r)}><Check className="size-4" /> Approve</Button>
             <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={() => setRejecting(r)}><X className="size-4" /> Reject</Button>
           </>
         )}

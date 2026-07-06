@@ -51,9 +51,12 @@ export const MODULE_ACTIONS: ModuleDef[] = [
     a("staff_manage", "Manage staff"), a("staff_delete", "Delete staff"),
     a("checkout", "Give out items"), a("return", "Record returns"), a("csv_import", "Import CSV"),
   ]},
+  // Approving/rejecting material requests is deliberately NOT a production action — it belongs to
+  // whoever manages Raw Materials stock (raw_materials.adjust_stock): requests flow FROM
+  // production TO the raw-materials custodian.
   { key: "production", label: "Production", actions: [
     a("view", "View"), a("recipes_manage", "Manage recipes"), a("request", "Request materials"),
-    a("approve", "Approve requests"), a("produce", "Record production"),
+    a("produce", "Record production"),
   ]},
   { key: "reports", label: "Reports", actions: [a("view", "View"), a("export", "Export")] },
   { key: "team", label: "Team", actions: [

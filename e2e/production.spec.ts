@@ -86,7 +86,7 @@ test.describe("Production", () => {
     expect(payload).toEqual({ _business_id: "biz-1", _items: [{ raw_material_id: "m1", quantity: 10 }], _notes: null });
   });
 
-  test("approve flow calls the RPC; INSUFFICIENT_STOCK maps to a friendly toast", async ({ page }) => {
+  test("approver can reduce a quantity before approving; INSUFFICIENT_STOCK maps to a friendly toast", async ({ page }) => {
     await authenticate(page, { role: "owner" });
     await stubProduction(page, { reqs: [PENDING_REQ] });
     let approvePayload: any = null;
@@ -97,11 +97,33 @@ test.describe("Production", () => {
     await page.goto("/production?tab=requests");
     await expect(page.getByRole("table").getByText("Pending")).toBeVisible();
     await page.getByRole("button", { name: "Approve" }).first().click();
-    // Confirm dialog: no shortfall warning (50kg in stock vs 10 requested) → standard copy.
-    await expect(page.getByText("Approve and issue materials?")).toBeVisible();
-    await page.getByRole("dialog").getByRole("button", { name: "Approve" }).click();
+    // Approve dialog: prefilled with the requested amount; the custodian reduces it to 6.
+    await expect(page.getByText("Approve and issue materials")).toBeVisible();
+    await expect(page.getByLabel("Approve quantity 1")).toHaveValue("10");
+    await page.getByLabel("Approve quantity 1").fill("6");
+    await page.getByRole("button", { name: "Approve & issue" }).click();
     await expect(page.getByText("Not enough Cassava Flour in stock for this.")).toBeVisible();
-    expect(approvePayload).toEqual({ _requisition_id: "rq1" });
+    expect(approvePayload).toEqual({ _requisition_id: "rq1", _items: [{ raw_material_id: "m1", quantity: 6 }] });
+  });
+
+  test("completed requests show the trail of raw materials used in production", async ({ page }) => {
+    await authenticate(page, { role: "owner" });
+    const COMPLETED_REQ = {
+      ...APPROVED_REQ, id: "rq3", status: "completed",
+      production_requisition_items: [
+        { id: "ri3", raw_material_id: "m1", quantity_requested: 10, quantity_issued: 8, raw_materials: { name: "Cassava Flour", unit: "kg" } },
+      ],
+    };
+    const RUN = {
+      id: "run1", business_id: "biz-1", requisition_id: "rq3", produced_by: "user-1", notes: null, created_at: "2026-07-06T02:00:00Z",
+      production_run_outputs: [{ product_id: "p1", quantity: 3, products: { name: "Garri 50kg", unit: "bag" } }],
+      production_run_materials: [{ raw_material_id: "m1", quantity_used: 7, raw_materials: { name: "Cassava Flour", unit: "kg" } }],
+    };
+    await stubProduction(page, { reqs: [COMPLETED_REQ], runs: [RUN] });
+    await page.goto("/production?tab=requests");
+    // Issued (reduced at approval) + used-in-production trails, scoped to the desktop table.
+    await expect(page.getByRole("table").getByText("Issued: Cassava Flour × 8")).toBeVisible();
+    await expect(page.getByRole("table").getByText("Used in production: Cassava Flour × 7 kg")).toBeVisible();
   });
 
   test("record production from an approved request prefills materials and sends the run RPC", async ({ page }) => {

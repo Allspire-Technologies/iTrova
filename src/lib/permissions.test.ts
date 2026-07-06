@@ -82,8 +82,8 @@ describe("server/client defaults drift guard", () => {
   it("the SQL default_role_permissions JSON matches DEFAULT_ROLE_PERMISSIONS exactly", () => {
     // Server-side enforcement (has_permission) embeds the same defaults in SQL. This test parses the
     // LATEST migration that re-declares default_role_permissions so the two can never drift silently.
-    // (Superseded declarations: 20260704150000 → 20260707110000.)
-    const sql = readFileSync(resolvePath(__dirname, "../../supabase/migrations/20260707110000_production_rbac.sql"), "utf8");
+    // (Superseded declarations: 20260704150000 → 20260707110000 → 20260707150000.)
+    const sql = readFileSync(resolvePath(__dirname, "../../supabase/migrations/20260707150000_production_approval_by_raw_materials.sql"), "utf8");
     const block = sql.split("RBAC_DEFAULTS_JSON_START")[1]?.split("RBAC_DEFAULTS_JSON_END")[0] ?? "";
     const grab = (role: string) => {
       const m = block.match(new RegExp(`when '${role}' then '([\\s\\S]*?)'::jsonb`));

@@ -135,6 +135,7 @@ export function friendlyProductionError(message: string | undefined, fallback: s
   }
   if (msg.includes("REQUISITION_NOT_PENDING")) return "This request has already been decided.";
   if (msg.includes("NOT_YOUR_REQUEST")) return "Only the person who made this request can change it.";
+  if (msg.includes("APPROVE_QTY_INVALID")) return "Approved quantities must be above zero and no more than what was requested.";
   if (msg.includes("REQUISITION_NOT_APPROVED")) return "Only an approved request can be used for production.";
   if (msg.includes("REQUISITION_NOT_CANCELLABLE")) return "This request can no longer be cancelled.";
   if (msg.includes("EMPTY_ITEMS")) return "Add at least one material.";
@@ -216,8 +217,9 @@ export async function deleteRequisition(id: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
-export async function approveRequisition(id: string): Promise<void> {
-  const { error } = await sb.rpc("approve_requisition", { _requisition_id: id });
+/** Approve and issue — the approver may reduce quantities (0 < qty ≤ requested) per material. */
+export async function approveRequisition(id: string, items: { raw_material_id: string; quantity: number }[]): Promise<void> {
+  const { error } = await sb.rpc("approve_requisition", { _requisition_id: id, _items: items });
   if (error) throw new Error(error.message);
 }
 
