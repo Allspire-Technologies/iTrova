@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
+import { ImportProgressDialog, ImportResultDialog, type FailedImportRow, type ImportOutcome, type ImportProgress } from "@/components/ImportDialogs";
 import { Plus, Search, Package, Pencil, Upload, Download, SlidersHorizontal } from "lucide-react";
 import SearchableSelect from "@/components/SearchableSelect";
 import { toast } from "sonner";
@@ -38,10 +38,6 @@ type Product = {
 
 const empty = { name: "", category: "", sku: "", unit: "pcs", selling_price: "", cost_price: "", stock_quantity: "", reorder_level: 5, expiry_date: "" };
 
-// A row the import couldn't apply — its values keyed by the template columns, plus why it failed.
-// Kept so we can summarise and re-download the misses in the standard template format.
-type FailedImportRow = { values: Record<string, string>; reason: string };
-
 export default function Inventory() {
   const { business, hasModule } = useAuth();
   const { online } = useOnline();
@@ -59,8 +55,8 @@ export default function Inventory() {
   const [form, setForm] = useState<any>(empty);
   const [busy, setBusy] = useState(false);
   const [adjustTarget, setAdjustTarget] = useState<Product | null>(null);
-  const [importResult, setImportResult] = useState<{ added: number; restocked: number; failed: FailedImportRow[] } | null>(null);
-  const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
+  const [importResult, setImportResult] = useState<ImportOutcome | null>(null);
+  const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = async () => {
@@ -198,7 +194,8 @@ export default function Inventory() {
       }
 
       setImportProgress(null);
-      setImportResult({ added, restocked, failed });
+      const detail = [added ? `${added} added` : "", restocked ? `${restocked} restocked` : ""].filter(Boolean).join(" · ");
+      setImportResult({ imported: added + restocked, detail: detail || undefined, failed });
       load();
     } catch (e: any) {
       setImportProgress(null);
@@ -494,70 +491,8 @@ export default function Inventory() {
         onSaved={load}
       />
 
-      {/* Non-dismissable progress while the import writes rows, so the user sees it's working. */}
-      <Dialog open={!!importProgress}>
-        <DialogContent variant="compact" className="[&>button]:hidden" onInteractOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
-          <DialogHeader>
-            <DialogTitle>Importing products…</DialogTitle>
-          </DialogHeader>
-          {importProgress && (() => {
-            const pct = importProgress.total ? Math.round((importProgress.done / importProgress.total) * 100) : 0;
-            return (
-              <div className="space-y-2">
-                <Progress value={pct} />
-                <p className="text-sm text-muted-foreground">{pct}% — {importProgress.done} of {importProgress.total} steps. Please keep this page open.</p>
-              </div>
-            );
-          })()}
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!importResult} onOpenChange={(v) => !v && setImportResult(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Import results</DialogTitle>
-          </DialogHeader>
-          {importResult && (
-            <div className="space-y-3 text-sm">
-              <p className="font-medium text-success">
-                {importResult.added + importResult.restocked} row{importResult.added + importResult.restocked === 1 ? "" : "s"} imported
-                {importResult.added ? ` · ${importResult.added} added` : ""}
-                {importResult.restocked ? ` · ${importResult.restocked} restocked` : ""}
-              </p>
-              {importResult.failed.length === 0 ? (
-                <p className="text-muted-foreground">Every row was imported successfully.</p>
-              ) : (
-                <div className="space-y-2">
-                  <p className="font-medium text-danger">
-                    {importResult.failed.length} row{importResult.failed.length === 1 ? "" : "s"} not imported
-                  </p>
-                  <ul className="rounded-lg border border-border divide-y divide-border max-h-48 overflow-auto">
-                    {Object.entries(
-                      importResult.failed.reduce<Record<string, number>>((m, f) => { m[f.reason] = (m[f.reason] || 0) + 1; return m; }, {}),
-                    ).map(([reason, count]) => (
-                      <li key={reason} className="flex items-start justify-between gap-3 px-3 py-2">
-                        <span className="text-muted-foreground">{reason}</span>
-                        <span className="shrink-0 tabular-nums font-medium">{count}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="text-xs text-muted-foreground">
-                    Download the misses, fix the flagged columns, and re-upload just those rows.
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-          <DialogFooter>
-            {!!importResult?.failed.length && (
-              <Button variant="outline" onClick={downloadFailedRows}>
-                <Download className="size-4 mr-2" /> Download not-imported ({importResult.failed.length})
-              </Button>
-            )}
-            <Button onClick={() => setImportResult(null)}>Done</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ImportProgressDialog progress={importProgress} noun="products" />
+      <ImportResultDialog result={importResult} onClose={() => setImportResult(null)} onDownloadFailed={downloadFailedRows} />
     </div>
   );
 }

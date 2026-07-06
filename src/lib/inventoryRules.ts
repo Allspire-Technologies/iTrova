@@ -44,10 +44,10 @@ const HEADER_ALIASES: Record<string, keyof CanonicalRow> = {
   "expiration": "expiry_date", "best before": "expiry_date", "exp date": "expiry_date", "expires": "expiry_date",
 };
 
-/** Normalise a CSV header for alias lookup: trim, lowercase, collapse spaces/underscores/hyphens. */
-export function normalizeHeader(h: string): string {
-  return h.trim().toLowerCase().replace(/[\s_-]+/g, " ").trim();
-}
+// The generic header/number helpers moved to csvImport.ts (shared by every import surface);
+// re-exported here so existing imports keep working.
+import { normalizeHeader, parseImportNumber } from "./csvImport";
+export { normalizeHeader, parseImportNumber };
 
 /** Re-key a parsed CSV row onto canonical field names via HEADER_ALIASES (first match per field wins). */
 export function canonicalizeRow(row: CsvRow): CanonicalRow {
@@ -57,17 +57,6 @@ export function canonicalizeRow(row: CsvRow): CanonicalRow {
     if (key && out[key] === undefined) out[key] = value;
   }
   return out;
-}
-
-/**
- * Parse a number out of a spreadsheet cell: strip currency symbols, thousands separators and stray
- * spaces so "₦1,500" / "1,500.00" / " 1500 " all read as 1500. Returns NaN for blanks/non-numbers.
- */
-export function parseImportNumber(v: string | undefined): number {
-  if (v == null) return NaN;
-  const cleaned = String(v).replace(/[^0-9.-]/g, "");
-  if (!cleaned || cleaned === "-" || cleaned === ".") return NaN;
-  return Number(cleaned);
 }
 
 /** A CSV row that couldn't be imported, kept verbatim alongside a human reason for the summary. */

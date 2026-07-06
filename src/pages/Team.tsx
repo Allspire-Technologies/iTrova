@@ -14,6 +14,8 @@ import { toast } from "sonner";
 import { UserPlus, Copy, Trash2, Users, TrendingUp, Search, Download, Upload, MoreHorizontal } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { toCsv, downloadCsv, parseCsv, readFileText } from "@/lib/csv";
+import { buildTeamImportPlan, TEAM_FIELDS, templateHeaders, templateValues } from "@/lib/csvImport";
+import { ImportProgressDialog, ImportResultDialog, type FailedImportRow, type ImportOutcome, type ImportProgress } from "@/components/ImportDialogs";
 import Paginator, { usePagination } from "@/components/Paginator";
 import { getLimit, isAtLimit, limitMessage } from "@/lib/planLimits";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -50,6 +52,8 @@ export default function Team() {
   const [salesByStaff, setSalesByStaff] = useState<Record<string, { total: number; count: number }>>({});
   const [q, setQ] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
+  const [importResult, setImportResult] = useState<ImportOutcome | null>(null);
+  const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const tier = business?.subscription_tier;
@@ -186,8 +190,10 @@ export default function Team() {
   const { paged: pagedMembers, page: memPage, setPage: setMemPage, pageSize: memPageSize,
     setPageSize: setMemPageSize, pageCount: memPageCount, total: memTotal } = usePagination(filteredMembers, 10);
 
+  const CSV_HEADERS = templateHeaders(TEAM_FIELDS);
+
   const downloadTemplate = () => {
-    downloadCsv("team-template.csv", ["email,role", "adaeze@example.com,cashier"].join("\n"));
+    downloadCsv("team-template.csv", [CSV_HEADERS.join(","), "adaeze@example.com,cashier"].join("\n"));
     toast.success("Template downloaded");
   };
 
@@ -210,36 +216,59 @@ export default function Team() {
 
   const importCsv = async (file: File) => {
     if (!business) return;
-    if (isAtLimit(members.length, business.subscription_tier, "staff")) {
-      toast.error(limitMessage("staff"));
-      if (fileRef.current) fileRef.current.value = "";
-      return;
-    }
     try {
       const text = await readFileText(file);
       const rows = parseCsv(text);
-      const valid = rows.filter(r =>
-        r.email?.trim() && ["manager", "cashier"].includes((r.role || "").trim().toLowerCase())
+      const plan = buildTeamImportPlan(
+        rows,
+        members.map(m => m.email || ""),
+        invites.filter(i => !i.accepted_at).map(i => i.email),
+        members.length,
+        getLimit(business.subscription_tier, "staff"),
       );
-      if (valid.length === 0)
-        return toast.error("No valid rows. Required columns: email, role (manager or cashier)");
+      if (plan.invites.length === 0 && plan.rejected.length === 0) {
+        return toast.error("No rows found in the file.");
+      }
+
+      const failed: FailedImportRow[] = plan.rejected.map(r => ({ values: templateValues(r.row, TEAM_FIELDS), reason: r.reason }));
+
+      const totalSteps = plan.invites.length;
+      let done = 0;
+      if (totalSteps > 0) setImportProgress({ done: 0, total: totalSteps });
+
       let created = 0;
-      for (const r of valid) {
+      for (const inv of plan.invites) {
         const { error } = await supabase.from("invitations").insert({
           business_id: business.id,
-          email: r.email.trim().toLowerCase(),
-          role: r.role.trim().toLowerCase() as AppRole,
+          email: inv.email,
+          role: inv.role as AppRole,
           invited_by: user?.id,
         });
-        if (!error) created++;
+        if (error) failed.push({ values: { "Email": inv.email, "Role": inv.role }, reason: `Upload failed: ${error.message}` });
+        else created++;
+        setImportProgress({ done: ++done, total: totalSteps });
       }
-      if (created > 0) { toast.success(`Created ${created} invitation${created === 1 ? "" : "s"}`); load(); }
-      else toast.error("No invitations could be created");
+
+      setImportProgress(null);
+      setImportResult({
+        imported: created,
+        detail: created ? `${created} invitation${created === 1 ? "" : "s"} created — share the links below` : undefined,
+        failed,
+      });
+      load();
     } catch (e: any) {
+      setImportProgress(null);
       toast.error(e.message || "Import failed");
     } finally {
       if (fileRef.current) fileRef.current.value = "";
     }
+  };
+
+  const downloadFailedRows = () => {
+    if (!importResult?.failed.length) return;
+    const cols = [...CSV_HEADERS, "Reason"];
+    const rows = importResult.failed.map(f => ({ ...f.values, "Reason": f.reason }));
+    downloadCsv(`team-not-imported-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(rows, cols));
   };
 
   return (
@@ -426,6 +455,8 @@ export default function Team() {
         confirmLabel="Confirm"
         onConfirm={pending?.onConfirm ?? (() => {})}
       />
+      <ImportProgressDialog progress={importProgress} noun="team invitations" />
+      <ImportResultDialog result={importResult} onClose={() => setImportResult(null)} onDownloadFailed={downloadFailedRows} />
     </div>
   );
 }

@@ -12,6 +12,8 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { toast } from "sonner";
 import StarRating from "@/components/StarRating";
 import { toCsv, downloadCsv, parseCsv, readFileText } from "@/lib/csv";
+import { buildSupplierImportPlan, SUPPLIER_FIELDS, templateHeaders, templateValues } from "@/lib/csvImport";
+import { ImportProgressDialog, ImportResultDialog, type FailedImportRow, type ImportOutcome, type ImportProgress } from "@/components/ImportDialogs";
 import Paginator, { usePagination } from "@/components/Paginator";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { TablePageSkeleton } from "@/components/Skeletons";
@@ -41,6 +43,8 @@ export default function Suppliers() {
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState<{ title: string; description: string; onConfirm: () => void } | null>(null);
+  const [importResult, setImportResult] = useState<ImportOutcome | null>(null);
+  const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
 
   const load = async () => {
     const [{ data, error }, { data: purchases }] = await Promise.all([
@@ -109,54 +113,78 @@ export default function Suppliers() {
     setItems(prev => prev.map(x => x.id === s.id ? { ...x, rating: value || null } : x));
   };
 
+  // Human-readable headers for the template/export. Import is case/spacing-insensitive and accepts
+  // these plus common aliases (see SUPPLIER_FIELDS), so old snake_case exports still import fine.
+  const CSV_HEADERS = templateHeaders(SUPPLIER_FIELDS);
+
   const downloadTemplate = () => {
-    const headers = ["name", "contact_name", "phone", "email", "address", "notes", "rating"];
     const example = ["Olu Farms Ltd", "Olusegun Bello", "08012345678", "olufarms@example.com", "12 Market Road, Lagos", "Reliable cereal supplier", "5"];
-    downloadCsv("suppliers-template.csv", [headers.join(","), example.join(",")].join("\n"));
+    downloadCsv("suppliers-template.csv", [CSV_HEADERS.join(","), example.join(",")].join("\n"));
     toast.success("Template downloaded");
   };
 
   const exportCsv = () => {
     const rows = items.map(s => ({
-      name: s.name, contact_name: s.contact_name || "", phone: s.phone || "",
-      email: s.email || "", address: s.address || "", notes: s.notes || "", rating: s.rating ?? "",
+      "Name": s.name, "Contact Name": s.contact_name || "", "Phone": s.phone || "",
+      "Email": s.email || "", "Address": s.address || "", "Notes": s.notes || "", "Rating": s.rating ?? "",
     }));
-    downloadCsv(`suppliers-${new Date().toISOString().slice(0, 10)}.csv`,
-      toCsv(rows, ["name", "contact_name", "phone", "email", "address", "notes", "rating"]));
+    downloadCsv(`suppliers-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(rows, CSV_HEADERS));
     toast.success(`Exported ${rows.length} supplier${rows.length === 1 ? "" : "s"}`);
   };
 
   const importCsv = async (file: File) => {
     if (!business) return;
-    if (isAtLimit(items.length, business.subscription_tier, "suppliers")) {
-      toast.error(limitMessage("suppliers"));
-      if (fileRef.current) fileRef.current.value = "";
-      return;
-    }
     try {
       const text = await readFileText(file);
       const rows = parseCsv(text);
-      const valid = rows.filter(r => r.name?.trim());
-      if (valid.length === 0) return toast.error("No valid rows. Required column: name");
-      const payload = valid.map(r => ({
-        business_id: business.id,
-        name: r.name.trim(),
-        contact_name: r.contact_name || null,
-        phone: r.phone || null,
-        email: r.email || null,
-        address: r.address || null,
-        notes: r.notes || null,
-        rating: r.rating ? Math.max(1, Math.min(5, Number(r.rating))) : null,
-      }));
-      const { error } = await supabase.from("suppliers").insert(payload);
-      if (error) return toast.error(error.message);
-      toast.success(`Imported ${payload.length} supplier${payload.length === 1 ? "" : "s"}`);
+      const plan = buildSupplierImportPlan(rows, items, items.length, getLimit(business.subscription_tier, "suppliers"));
+      if (plan.inserts.length === 0 && plan.updates.length === 0 && plan.rejected.length === 0) {
+        return toast.error("No rows found in the file.");
+      }
+
+      const failed: FailedImportRow[] = plan.rejected.map(r => ({ values: templateValues(r.row, SUPPLIER_FIELDS), reason: r.reason }));
+
+      const INSERT_BATCH = 100;
+      const insertBatches: (typeof plan.inserts)[] = [];
+      for (let i = 0; i < plan.inserts.length; i += INSERT_BATCH) insertBatches.push(plan.inserts.slice(i, i + INSERT_BATCH));
+      const totalSteps = plan.updates.length + insertBatches.length;
+      let done = 0;
+      const tick = () => setImportProgress({ done: ++done, total: totalSteps });
+      if (totalSteps > 0) setImportProgress({ done: 0, total: totalSteps });
+
+      let updated = 0;
+      for (const u of plan.updates) {
+        const { error } = await supabase.from("suppliers").update(u.fields).eq("id", u.id);
+        if (error) failed.push({ values: { "Name": items.find(s => s.id === u.id)?.name ?? "" }, reason: `Update failed: ${error.message}` });
+        else updated++;
+        tick();
+      }
+
+      let added = 0;
+      for (const batch of insertBatches) {
+        const { error } = await supabase.from("suppliers").insert(batch.map(i => ({ ...i, business_id: business.id })));
+        if (error) batch.forEach(i => failed.push({ values: { "Name": i.name, "Contact Name": i.contact_name ?? "", "Phone": i.phone ?? "", "Email": i.email ?? "", "Address": i.address ?? "", "Notes": i.notes ?? "", "Rating": i.rating == null ? "" : String(i.rating) }, reason: `Upload failed: ${error.message}` }));
+        else added += batch.length;
+        tick();
+      }
+
+      setImportProgress(null);
+      const detail = [added ? `${added} added` : "", updated ? `${updated} updated` : ""].filter(Boolean).join(" · ");
+      setImportResult({ imported: added + updated, detail: detail || undefined, failed });
       load();
     } catch (e: any) {
+      setImportProgress(null);
       toast.error(e.message || "Import failed");
     } finally {
       if (fileRef.current) fileRef.current.value = "";
     }
+  };
+
+  const downloadFailedRows = () => {
+    if (!importResult?.failed.length) return;
+    const cols = [...CSV_HEADERS, "Reason"];
+    const rows = importResult.failed.map(f => ({ ...f.values, "Reason": f.reason }));
+    downloadCsv(`suppliers-not-imported-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(rows, cols));
   };
 
   const filtered = items.filter(i => !q || i.name.toLowerCase().includes(q.toLowerCase()) || i.contact_name?.toLowerCase().includes(q.toLowerCase()));
@@ -290,6 +318,8 @@ export default function Suppliers() {
         description={pending?.description}
         onConfirm={pending?.onConfirm ?? (() => {})}
       />
+      <ImportProgressDialog progress={importProgress} noun="suppliers" />
+      <ImportResultDialog result={importResult} onClose={() => setImportResult(null)} onDownloadFailed={downloadFailedRows} />
     </div>
   );
 }

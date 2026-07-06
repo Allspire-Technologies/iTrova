@@ -51,4 +51,24 @@ test.describe("Team", () => {
     await page.goto("/team");
     await expect(page.getByRole("heading", { name: "No access" })).toBeVisible();
   });
+
+  test("CSV import creates invitations and rejects bad emails/roles with reasons", async ({ page }) => {
+    await authenticate(page, { role: "owner" });
+    await page.goto("/team");
+    await expect(page.getByRole("heading", { name: "Team" })).toBeVisible();
+
+    const csv = [
+      "Email,Role",
+      "ada@new.co,cashier", // valid -> invitation created
+      "bad-email,cashier",  // malformed address -> rejected
+      "x@y.co,owner",       // owner isn't an invitable role -> rejected
+    ].join("\n");
+    await page.locator('input[type="file"]').setInputFiles({ name: "team.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
+
+    await expect(page.getByRole("heading", { name: "Import results" })).toBeVisible();
+    await expect(page.getByText(/1 row imported · 1 invitation created/)).toBeVisible();
+    await expect(page.getByText(/2 rows not imported/)).toBeVisible();
+    await expect(page.getByText(/Invalid Email/)).toBeVisible();
+    await expect(page.getByText(/Invalid Role — use manager or cashier/)).toBeVisible();
+  });
 });

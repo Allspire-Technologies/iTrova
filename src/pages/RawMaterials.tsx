@@ -14,6 +14,8 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { toCsv, downloadCsv, parseCsv, readFileText } from "@/lib/csv";
+import { buildMaterialImportPlan, MATERIAL_FIELDS, templateHeaders, templateValues } from "@/lib/csvImport";
+import { ImportProgressDialog, ImportResultDialog, type FailedImportRow, type ImportOutcome, type ImportProgress } from "@/components/ImportDialogs";
 import StockAdjustDialog from "@/components/StockAdjustDialog";
 import Paginator, { usePagination } from "@/components/Paginator";
 import { buildReorderMessage, toWaNumber, isValidWaNumber, waLink } from "@/lib/whatsapp";
@@ -53,7 +55,8 @@ export default function RawMaterials() {
   const [adjustTarget, setAdjustTarget] = useState<Material | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState<{ title: string; description: string; onConfirm: () => void } | null>(null);
-
+  const [importResult, setImportResult] = useState<ImportOutcome | null>(null);
+  const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
 
   // Purchase dialog
   const [purchaseOpen, setPurchaseOpen] = useState(false);
@@ -117,61 +120,87 @@ export default function RawMaterials() {
     setPurchaseOpen(false); setPQty(0); setPCost(0); load();
   };
 
+  // Human-readable headers for the template/export. Import is case/spacing-insensitive and accepts
+  // these plus common aliases (see MATERIAL_FIELDS), so old snake_case exports still import fine.
+  const CSV_HEADERS = templateHeaders(MATERIAL_FIELDS);
+
   const downloadTemplate = () => {
-    const headers = ["name", "sku", "unit", "stock_quantity", "reorder_level", "cost_per_unit", "supplier", "notes"];
     const example = ["Cassava Flour", "CF-001", "kg", "50", "10", "1200", "Olu Farms Ltd", "Grade A white cassava"];
-    downloadCsv("raw-materials-template.csv", [headers.join(","), example.join(",")].join("\n"));
+    downloadCsv("raw-materials-template.csv", [CSV_HEADERS.join(","), example.join(",")].join("\n"));
     toast.success("Template downloaded");
   };
 
   const exportCsv = () => {
     const rows = items.map(m => ({
-      name: m.name, sku: m.sku || "", unit: m.unit,
-      stock_quantity: m.stock_quantity, reorder_level: m.reorder_level,
-      cost_per_unit: m.cost_per_unit,
-      supplier: suppliers.find(s => s.id === m.supplier_id)?.name || "",
-      notes: m.notes || "",
+      "Name": m.name, "SKU": m.sku || "", "Unit": m.unit,
+      "Stock Quantity": m.stock_quantity, "Reorder Level": m.reorder_level,
+      "Cost Per Unit": m.cost_per_unit,
+      "Supplier": suppliers.find(s => s.id === m.supplier_id)?.name || "",
+      "Notes": m.notes || "",
     }));
-    downloadCsv(`raw-materials-${new Date().toISOString().slice(0, 10)}.csv`,
-      toCsv(rows, ["name", "sku", "unit", "stock_quantity", "reorder_level", "cost_per_unit", "supplier", "notes"]));
+    downloadCsv(`raw-materials-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(rows, CSV_HEADERS));
     toast.success(`Exported ${rows.length} material${rows.length === 1 ? "" : "s"}`);
   };
 
   const importCsv = async (file: File) => {
     if (!business) return;
-    if (isAtLimit(items.length, business.subscription_tier, "rawMaterials")) {
-      toast.error(limitMessage("rawMaterials"));
-      if (fileRef.current) fileRef.current.value = "";
-      return;
-    }
     try {
       const text = await readFileText(file);
       const rows = parseCsv(text);
-      const valid = rows.filter(r => r.name?.trim());
-      if (valid.length === 0) return toast.error("No valid rows. Required column: name");
-      const payload = valid.map(r => {
-        const supp = r.supplier ? suppliers.find(s => s.name.toLowerCase() === r.supplier.toLowerCase()) : null;
-        return {
-          business_id: business.id,
-          name: r.name.trim(),
-          sku: r.sku || null,
-          unit: r.unit || "kg",
-          stock_quantity: Number(r.stock_quantity) || 0,
-          reorder_level: Number(r.reorder_level) || 5,
-          cost_per_unit: Number(r.cost_per_unit) || 0,
-          supplier_id: supp?.id || null,
-          notes: r.notes || null,
-        };
+      const plan = buildMaterialImportPlan(rows, items, suppliers, items.length, getLimit(business.subscription_tier, "rawMaterials"));
+      if (plan.inserts.length === 0 && plan.updates.length === 0 && plan.rejected.length === 0) {
+        return toast.error("No rows found in the file.");
+      }
+
+      const failed: FailedImportRow[] = plan.rejected.map(r => ({ values: templateValues(r.row, MATERIAL_FIELDS), reason: r.reason }));
+
+      const materialValues = (f: typeof plan.updates[number]["fields"], stock: number): Record<string, string> => ({
+        "Name": f.name, "SKU": f.sku ?? "", "Unit": f.unit, "Stock Quantity": String(stock),
+        "Reorder Level": String(f.reorder_level), "Cost Per Unit": String(f.cost_per_unit),
+        "Supplier": suppliers.find(s => s.id === f.supplier_id)?.name ?? "", "Notes": f.notes ?? "",
       });
-      const { error } = await supabase.from("raw_materials").insert(payload);
-      if (error) return toast.error(error.message);
-      toast.success(`Imported ${payload.length} material${payload.length === 1 ? "" : "s"}`);
+
+      const INSERT_BATCH = 100;
+      const insertBatches: (typeof plan.inserts)[] = [];
+      for (let i = 0; i < plan.inserts.length; i += INSERT_BATCH) insertBatches.push(plan.inserts.slice(i, i + INSERT_BATCH));
+      const totalSteps = plan.updates.length + insertBatches.length;
+      let done = 0;
+      const tick = () => setImportProgress({ done: ++done, total: totalSteps });
+      if (totalSteps > 0) setImportProgress({ done: 0, total: totalSteps });
+
+      let restocked = 0;
+      for (const u of plan.updates) {
+        const { error } = await supabase.from("raw_materials").update({ ...u.fields, stock_quantity: u.stock }).eq("id", u.id);
+        if (error) failed.push({ values: materialValues(u.fields, u.stock), reason: `Update failed: ${error.message}` });
+        else restocked++;
+        tick();
+      }
+
+      let added = 0;
+      for (const batch of insertBatches) {
+        const { error } = await supabase.from("raw_materials").insert(batch.map(i => ({ ...i, business_id: business.id })));
+        if (error) batch.forEach(i => failed.push({ values: materialValues(i, i.stock_quantity), reason: `Upload failed: ${error.message}` }));
+        else added += batch.length;
+        tick();
+      }
+
+      setImportProgress(null);
+      const detail = [added ? `${added} added` : "", restocked ? `${restocked} restocked` : ""].filter(Boolean).join(" · ");
+      setImportResult({ imported: added + restocked, detail: detail || undefined, failed });
       load();
     } catch (e: any) {
+      setImportProgress(null);
       toast.error(e.message || "Import failed");
     } finally {
       if (fileRef.current) fileRef.current.value = "";
     }
+  };
+
+  const downloadFailedRows = () => {
+    if (!importResult?.failed.length) return;
+    const cols = [...CSV_HEADERS, "Reason"];
+    const rows = importResult.failed.map(f => ({ ...f.values, "Reason": f.reason }));
+    downloadCsv(`raw-materials-not-imported-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(rows, cols));
   };
 
   const reorder = (m: Material) => {
@@ -496,6 +525,8 @@ export default function RawMaterials() {
         defaultPhone={waShare?.phone}
         recipientLabel="Supplier"
       />
+      <ImportProgressDialog progress={importProgress} noun="raw materials" />
+      <ImportResultDialog result={importResult} onClose={() => setImportResult(null)} onDownloadFailed={downloadFailedRows} />
     </div>
   );
 }
