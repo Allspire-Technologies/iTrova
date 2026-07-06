@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -63,9 +63,18 @@ export default function Dashboard() {
     }
   }, [business, online]);
 
+  // Refetch on window focus only when the snapshot is stale (audit F5): alt-tabbing back and
+  // forth used to re-download the whole dashboard every time, which hurts on flaky connections.
+  const STALE_MS = 60_000;
+  const lastLoadedAt = useRef(0);
   useEffect(() => {
+    lastLoadedAt.current = Date.now();
     loadDashboard();
-    const onFocus = () => loadDashboard();
+    const onFocus = () => {
+      if (Date.now() - lastLoadedAt.current < STALE_MS) return;
+      lastLoadedAt.current = Date.now();
+      loadDashboard();
+    };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [loadDashboard]);

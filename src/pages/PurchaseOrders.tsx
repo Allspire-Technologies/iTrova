@@ -63,7 +63,9 @@ export default function PurchaseOrders() {
 
   const load = async () => {
     const [{ data: pos }, { data: sup }, { data: mat }, { data: prod }] = await Promise.all([
-      supabase.from("purchase_orders").select("*").order("created_at", { ascending: false }),
+      supabase.from("purchase_orders")
+        .select("id,po_number,supplier_id,status,expected_date,total_amount,notes,created_at")
+        .order("created_at", { ascending: false }),
       supabase.from("suppliers").select("id, name, phone, email, address"),
       supabase.from("raw_materials").select("id, name, unit, cost_per_unit"),
       supabase.from("products").select("id, name, unit, cost_price").order("name"),

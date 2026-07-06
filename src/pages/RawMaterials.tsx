@@ -66,9 +66,13 @@ export default function RawMaterials() {
 
   const load = async () => {
     const [{ data: m }, { data: s }, { data: pur }] = await Promise.all([
-      supabase.from("raw_materials").select("*").order("created_at", { ascending: false }),
+      supabase.from("raw_materials")
+        .select("id,name,sku,unit,stock_quantity,reorder_level,cost_per_unit,supplier_id,notes")
+        .order("created_at", { ascending: false }),
       supabase.from("suppliers").select("id,name,phone,contact_name").order("name"),
-      supabase.from("material_purchases").select("*").order("created_at", { ascending: false }),
+      supabase.from("material_purchases")
+        .select("id,created_at,quantity,unit_cost,total_cost,raw_material_id,supplier_id,notes")
+        .order("created_at", { ascending: false }),
     ]);
     setItems((m as Material[]) || []);
     setSuppliers((s as Supplier[]) || []);

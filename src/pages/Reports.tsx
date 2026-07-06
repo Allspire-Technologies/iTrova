@@ -63,7 +63,16 @@ export default function Reports() {
       const [s, p, pr, mp, sup, prevS, prof] = await Promise.all([
         supabase.from("sales").select("id,total_amount,created_at,staff_id").eq("business_id", business.id).eq("voided", false).gte("created_at", fromIso).lte("created_at", toIso),
         supabase.from("products").select("id,name,stock_quantity,reorder_level,cost_price,selling_price").eq("business_id", business.id),
-        supabase.from("sale_items").select("sale_id,product_id,quantity,unit_price"),
+        // Only the items whose sale falls in the report window (previous period start → current
+        // period end — the two ranges are adjacent). The !inner join makes the sales filters
+        // restrictive server-side; before this, every sale_item ever was downloaded and filtered
+        // in memory (audit F5).
+        supabase.from("sale_items")
+          .select("sale_id,product_id,quantity,unit_price,sales!inner(id)")
+          .eq("sales.business_id", business.id)
+          .eq("sales.voided", false)
+          .gte("sales.created_at", prevFromIso)
+          .lte("sales.created_at", toIso),
         supabase.from("material_purchases").select("supplier_id,total_cost,created_at").eq("business_id", business.id).gte("created_at", fromIso).lte("created_at", toIso),
         supabase.from("suppliers").select("id,name").eq("business_id", business.id),
         supabase.from("sales").select("id,total_amount").eq("business_id", business.id).eq("voided", false).gte("created_at", prevFromIso).lte("created_at", prevToIso),

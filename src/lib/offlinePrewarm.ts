@@ -27,15 +27,19 @@ async function warmDashboard(businessId: string): Promise<void> {
 }
 
 async function warmInvoices(businessId: string): Promise<void> {
-  const { data, error } = await supabase.from("invoices").select("*").order("created_at", { ascending: false });
+  // Same eligibility as the Invoices page — manual invoices that can still take a deposit — but
+  // filtered server-side: this used to download the business's entire invoice history to keep
+  // only the eligible handful (audit F5/F6).
+  const { data, error } = await supabase.from("invoices")
+    .select("id,invoice_number,customer_name,total,amount_paid,status")
+    .is("sale_id", null)
+    .in("status", ["issued", "partial"])
+    .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
-  // Same eligibility as the Invoices page: manual invoices that can still take a deposit.
-  const eligible: CachedInvoice[] = (data ?? [])
-    .filter((i) => !i.sale_id && (i.status === "issued" || i.status === "partial"))
-    .map((i) => ({
-      id: i.id, business_id: businessId, invoice_number: i.invoice_number, customer_name: i.customer_name,
-      total: Number(i.total), amount_paid: Number(i.amount_paid), status: i.status, cachedAt: Date.now(),
-    }));
+  const eligible: CachedInvoice[] = (data ?? []).map((i) => ({
+    id: i.id, business_id: businessId, invoice_number: i.invoice_number, customer_name: i.customer_name,
+    total: Number(i.total), amount_paid: Number(i.amount_paid), status: i.status, cachedAt: Date.now(),
+  }));
   await cacheInvoices(businessId, eligible);
 }
 

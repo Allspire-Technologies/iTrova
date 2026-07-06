@@ -48,7 +48,9 @@ export default function Suppliers() {
 
   const load = async () => {
     const [{ data, error }, { data: purchases }] = await Promise.all([
-      supabase.from("suppliers").select("*").order("created_at", { ascending: false }),
+      supabase.from("suppliers")
+        .select("id,name,contact_name,phone,email,address,notes,rating")
+        .order("created_at", { ascending: false }),
       supabase.from("material_purchases").select("supplier_id,total_cost,created_at"),
     ]);
     if (error) return toast.error(error.message);

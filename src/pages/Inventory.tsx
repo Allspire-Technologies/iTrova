@@ -68,7 +68,9 @@ export default function Inventory() {
       setLoading(false);
       return;
     }
-    const { data, error } = await supabase.from("products").select("*").order("created_at", { ascending: false });
+    const { data, error } = await supabase.from("products")
+      .select("id,name,category,sku,unit,selling_price,cost_price,stock_quantity,reorder_level,expiry_date")
+      .order("created_at", { ascending: false });
     if (error) return toast.error(error.message);
     const rows = (data as Product[]) || [];
     setItems(rows);
