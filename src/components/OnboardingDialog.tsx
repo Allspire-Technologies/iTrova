@@ -7,14 +7,14 @@ import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { Store, Package, Truck, Sparkles, LayoutGrid, Gauge, Check } from "lucide-react";
-import { getCurrencySymbol, CURRENCY_OPTIONS } from "@/lib/format";
+import { Store, Sparkles, LayoutGrid, Gauge, Check } from "lucide-react";
+import { CURRENCY_OPTIONS } from "@/lib/format";
 import SearchableSelect from "@/components/SearchableSelect";
 import { MODULE_CHOICES, SCALE_QUESTIONS, recommendPlan, type ScaleAnswers } from "@/lib/planRecommend";
 import { effectivePrice } from "@/lib/planPricing";
 import ConfirmDialog from "@/components/ConfirmDialog";
 
-// Onboarding: business basics → module picker → scale bands → first product → first supplier →
+// Onboarding: business basics → module picker → scale bands →
 // plan recommendation (with an optional one-off 7-day trial) → done. The module/scale selection is
 // informational — it drives the recommendation and is stored on the business for follow-up, but
 // never gates the UI (the plan does that).
@@ -32,14 +32,7 @@ export default function OnboardingDialog({ open, onClose }: { open: boolean; onC
   const [trialStarted, setTrialStarted] = useState(false);
   const [closeConfirm, setCloseConfirm] = useState(false);
 
-  const [pName, setPName] = useState("");
-  const [pPrice, setPPrice] = useState("");
-  const [pStock, setPStock] = useState("");
-
-  const [sName, setSName] = useState("");
-  const [sPhone, setSPhone] = useState("");
-
-  const total = 6;
+  const total = 4;
   const pct = Math.round((step / (total - 1)) * 100);
 
   const reco = useMemo(() => recommendPlan(picked, scale, plans), [picked, scale, plans]);
@@ -119,25 +112,6 @@ export default function OnboardingDialog({ open, onClose }: { open: boolean; onC
           .eq("id", business.id);
         if (error) throw error;
       } else if (step === 3) {
-        if (pName.trim()) {
-          const { error } = await supabase.from("products").insert({
-            business_id: business.id, name: pName.trim(),
-            selling_price: Number(pPrice) || 0, cost_price: 0,
-            stock_quantity: Number(pStock) || 0, reorder_level: 5, unit: "pcs",
-          });
-          if (error) throw error;
-          // Clear after a successful insert so Back + Continue can't create a duplicate.
-          setPName(""); setPPrice(""); setPStock("");
-        }
-      } else if (step === 4) {
-        if (sName.trim()) {
-          const { error } = await supabase.from("suppliers").insert({
-            business_id: business.id, name: sName.trim(), phone: sPhone || null,
-          });
-          if (error) throw error;
-          setSName(""); setSPhone("");
-        }
-      } else if (step === 5) {
         await finish();
         return;
       }
@@ -150,7 +124,7 @@ export default function OnboardingDialog({ open, onClose }: { open: boolean; onC
   };
 
   const skip = async () => {
-    if (step < 5) setStep(step + 1);
+    if (step < 3) setStep(step + 1);
     else await next();
   };
 
@@ -158,16 +132,12 @@ export default function OnboardingDialog({ open, onClose }: { open: boolean; onC
     step === 0 ? <Store className="size-5" /> :
     step === 1 ? <LayoutGrid className="size-5" /> :
     step === 2 ? <Gauge className="size-5" /> :
-    step === 3 ? <Package className="size-5" /> :
-    step === 4 ? <Truck className="size-5" /> :
     <Sparkles className="size-5" />;
 
   const stepTitle =
     step === 0 ? `Welcome, ${profile?.owner_name?.split(" ")[0] || "there"}!` :
     step === 1 ? "What will you use?" :
     step === 2 ? "How big is your operation?" :
-    step === 3 ? "Add your first product" :
-    step === 4 ? "Add your first supplier" :
     "You're ready!";
 
   return (
@@ -249,29 +219,10 @@ export default function OnboardingDialog({ open, onClose }: { open: boolean; onC
         )}
 
         {step === 3 && (
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground text-center">Add one item you sell — you can add more later.</p>
-            <div className="space-y-2"><Label>Product name</Label><Input value={pName} onChange={(e) => setPName(e.target.value)} placeholder="e.g. Garri (50kg)" /></div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2"><Label>Selling price ({getCurrencySymbol(currency)})</Label><Input type="number" min="0" placeholder="0" value={pPrice} onChange={(e) => setPPrice(e.target.value)} /></div>
-              <div className="space-y-2"><Label>Stock quantity</Label><Input type="number" min="0" placeholder="0" value={pStock} onChange={(e) => setPStock(e.target.value)} /></div>
-            </div>
-          </div>
-        )}
-
-        {step === 4 && (
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground text-center">Add someone you buy stock from — optional but useful.</p>
-            <div className="space-y-2"><Label>Supplier name</Label><Input value={sName} onChange={(e) => setSName(e.target.value)} placeholder="e.g. Olu Farms" /></div>
-            <div className="space-y-2"><Label>Phone</Label><Input value={sPhone} onChange={(e) => setSPhone(e.target.value)} placeholder="+234..." /></div>
-          </div>
-        )}
-
-        {step === 5 && (
           <div className="space-y-3 py-1">
             {reco.kind === "free" && (
               <p className="text-sm text-muted-foreground text-center">
-                Good news — the <span className="font-medium text-brand-dark">Free plan</span> covers everything you picked.
+                Good news — the <span className="font-medium text-brand-dark">Free plan</span> has great modules and sizeable limits.
                 You can upgrade any time from Settings → Billing as you grow.
               </p>
             )}
@@ -323,12 +274,12 @@ export default function OnboardingDialog({ open, onClose }: { open: boolean; onC
             {step > 0 && (
               <Button variant="ghost" onClick={() => setStep(step - 1)} disabled={busy}>Back</Button>
             )}
-            {step < 5 && (
+            {step < 3 && (
               <Button variant="ghost" className="text-muted-foreground" onClick={skip} disabled={busy}>Skip</Button>
             )}
           </div>
           <Button variant="brand" onClick={next} disabled={busy || (step === 0 && !bizName.trim())}>
-            {busy ? "Saving..." : step === 5 ? "Start using iTrova" : "Continue"}
+            {busy ? "Saving..." : step === 3 ? "Start using iTrova" : "Continue"}
           </Button>
         </div>
       </DialogContent>

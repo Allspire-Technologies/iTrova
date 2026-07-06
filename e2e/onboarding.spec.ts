@@ -44,10 +44,8 @@ test.describe("Onboarding plan picker", () => {
     await page.getByRole("button", { name: /Point of Sale/ }).click();     // modules: POS only
     await page.getByRole("button", { name: "Continue" }).click();
     await page.getByRole("button", { name: "Up to 100", exact: true }).click(); // small scale
-    await page.getByRole("button", { name: "Continue" }).click();          // saves onboarding_profile
-    await page.getByRole("button", { name: "Skip" }).click();              // product
-    await page.getByRole("button", { name: "Skip" }).click();              // supplier
-    await expect(page.getByText(/Free plan.*covers everything/s)).toBeVisible();
+    await page.getByRole("button", { name: "Continue" }).click();          // saves onboarding_profile → final step
+    await expect(page.getByText(/Free plan/)).toBeVisible();
     await expect(page.getByRole("button", { name: "Start 7-day free trial" })).toHaveCount(0);
   });
 
@@ -77,17 +75,13 @@ test.describe("Onboarding plan picker", () => {
     await page.getByRole("button", { name: "Up to 1,000", exact: true }).click();
     await page.getByRole("button", { name: "Continue" }).click();
 
-    // The module/scale selection is persisted on the business for follow-up. Wait for the wizard
-    // to advance (the PATCH resolves before the step changes) rather than asserting mid-flight.
-    await expect(page.getByText("Add your first product")).toBeVisible();
+    await expect(page.getByText("Recommended for you")).toBeVisible();
+
+    // The module/scale selection is persisted on the business for follow-up. Asserted after the
+    // wizard advances (the PATCH resolves before the step changes), not mid-flight.
     const profilePatch = bizPatches.find(b => b?.onboarding_profile);
     expect(profilePatch.onboarding_profile.modules).toEqual(["export_invoices"]);
     expect(profilePatch.onboarding_profile.scale).toMatchObject({ products: "m" });
-
-    await page.getByRole("button", { name: "Skip" }).click();                // product
-    await page.getByRole("button", { name: "Skip" }).click();                // supplier
-
-    await expect(page.getByText("Recommended for you")).toBeVisible();
     await expect(page.getByText("Pro", { exact: true })).toBeVisible();
     // All three paths are on offer: trial, immediate upgrade, stay free.
     await expect(page.getByRole("button", { name: "Request immediate upgrade" })).toBeVisible();
