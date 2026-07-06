@@ -42,6 +42,8 @@ type Business = {
   subscription_started_at: string | null;
   subscription_cycle: string | null;
   whatsapp_number: string | null;
+  trial_plan: string | null;
+  trial_started_at: string | null;
 };
 
 /** Subscription view that keeps the raw paid tier (for display) even once expired. */
@@ -51,6 +53,8 @@ export type SubscriptionStatus = {
   renewsAt: string | null;
   daysRemaining: number | null;
   expired: boolean;
+  /** True while the paid tier came from the onboarding trial and is still running. */
+  isTrial: boolean;
 };
 
 export type PlanPrice = {
@@ -124,7 +128,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Enforce expiry at read time: an expired paid tier behaves as Free everywhere
     // that reads business.subscription_tier (limits, modules, plan resolution).
     setBusiness({ ...biz, subscription_tier: expired ? "free" : rawTier });
-    setSubscription({ tier: rawTier, cycle: biz.subscription_cycle, renewsAt, daysRemaining: daysRemaining(renewsAt), expired });
+    // The tier is a trial while it matches the trialed plan, hasn't lapsed, and no billing cycle
+    // is set — a real (manual) paid grant always sets subscription_cycle, a trial never does.
+    const isTrial = !expired && rawTier !== "free" && !biz.subscription_cycle
+      && !!biz.trial_started_at && biz.trial_plan === rawTier;
+    setSubscription({ tier: rawTier, cycle: biz.subscription_cycle, renewsAt, daysRemaining: daysRemaining(renewsAt), expired, isTrial });
   };
 
   // Offline fallback: rehydrate business/profile/role from the last cached session so the app
@@ -176,7 +184,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         supabase.from("user_roles").select("role").eq("user_id", uid).eq("business_id", p.business_id),
       ]);
       if (bErr || rErr) { await hydrateFromCache(); return; } // offline mid-load
-      const biz = b as Business | null;
+      // trial_plan/trial_started_at postdate the generated Supabase types (20260706150000) —
+      // select("*") returns them at runtime; cast through unknown until the types are regenerated.
+      const biz = b as unknown as Business | null;
       if (biz) {
         applyBusiness(biz);
       } else {

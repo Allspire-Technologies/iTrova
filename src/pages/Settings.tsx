@@ -859,7 +859,13 @@ export default function Settings() {
                       {subscription.renewsAt ? ` on ${fmtDate(subscription.renewsAt)}` : ""} — you've been moved to Free.
                     </span>
                   )}
-                  {!subscription?.expired && subscription?.daysRemaining != null && subscription.tier !== "free" && (
+                  {subscription?.isTrial && subscription.daysRemaining != null && (
+                    <span className="block mt-0.5 text-brand font-medium">
+                      Free trial — {subscription.daysRemaining} day{subscription.daysRemaining === 1 ? "" : "s"} left
+                      {subscription.renewsAt ? ` (ends ${fmtDate(subscription.renewsAt)})` : ""}. Upgrade below to keep it after the trial.
+                    </span>
+                  )}
+                  {!subscription?.expired && !subscription?.isTrial && subscription?.daysRemaining != null && subscription.tier !== "free" && (
                     <span className="block mt-0.5">
                       {subscription.cycle ? `${CYCLE_LABEL[subscription.cycle as BillingCycle] ?? subscription.cycle} · ` : ""}
                       renews {subscription.renewsAt ? fmtDate(subscription.renewsAt) : "—"} (in {subscription.daysRemaining} day{subscription.daysRemaining === 1 ? "" : "s"}).

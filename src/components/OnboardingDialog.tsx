@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,17 +7,28 @@ import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { Store, Package, Truck, Sparkles } from "lucide-react";
+import { Store, Package, Truck, Sparkles, LayoutGrid, Gauge, Check } from "lucide-react";
 import { getCurrencySymbol, CURRENCY_OPTIONS } from "@/lib/format";
 import SearchableSelect from "@/components/SearchableSelect";
+import { MODULE_CHOICES, SCALE_QUESTIONS, recommendPlan, type ScaleAnswers } from "@/lib/planRecommend";
+import { effectivePrice } from "@/lib/planPricing";
+
+// Onboarding: business basics → module picker → scale bands → first product → first supplier →
+// plan recommendation (with an optional one-off 7-day trial) → done. The module/scale selection is
+// informational — it drives the recommendation and is stored on the business for follow-up, but
+// never gates the UI (the plan does that).
 
 export default function OnboardingDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { business, user, profile, refresh } = useAuth();
+  const { business, user, profile, plans, refresh } = useAuth();
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
 
   const [bizName, setBizName] = useState(business?.name || "");
   const [currency, setCurrency] = useState(business?.currency || "NGN");
+
+  const [picked, setPicked] = useState<string[]>([]);
+  const [scale, setScale] = useState<ScaleAnswers>({});
+  const [trialStarted, setTrialStarted] = useState(false);
 
   const [pName, setPName] = useState("");
   const [pPrice, setPPrice] = useState("");
@@ -26,8 +37,49 @@ export default function OnboardingDialog({ open, onClose }: { open: boolean; onC
   const [sName, setSName] = useState("");
   const [sPhone, setSPhone] = useState("");
 
-  const total = 4;
+  const total = 6;
   const pct = Math.round((step / (total - 1)) * 100);
+
+  const reco = useMemo(() => recommendPlan(picked, scale, plans), [picked, scale, plans]);
+  const trialUsed = !!business?.trial_started_at;
+
+  const toggleModule = (key: string) =>
+    setPicked(prev => (prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]));
+
+  const money = (amount: number, curr: string) => {
+    try {
+      return new Intl.NumberFormat(undefined, { style: "currency", currency: curr, maximumFractionDigits: 0 }).format(amount);
+    } catch {
+      return `${curr} ${amount.toLocaleString()}`;
+    }
+  };
+
+  const finish = async () => {
+    if (!user) return;
+    const { error } = await supabase.from("profiles").update({ onboarded: true }).eq("id", user.id);
+    if (error) throw error;
+    await refresh();
+    onClose();
+    toast.success("You're all set!");
+  };
+
+  const startTrial = async () => {
+    if (reco.kind !== "plan") return;
+    setBusy(true);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await supabase.rpc("start_plan_trial" as any, { _plan_key: reco.plan.key });
+      if (error) throw error;
+      setTrialStarted(true);
+      toast.success(`${reco.plan.name} trial started — 7 days, on us.`);
+      await refresh();
+    } catch (e: any) {
+      const msg: string = e?.message || "Couldn't start the trial";
+      toast.error(msg.includes("TRIAL_DENIED") ? msg.split("TRIAL_DENIED:")[1]?.trim() || "Trial not available" : msg);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const next = async () => {
     if (!business || !user) return;
@@ -38,7 +90,14 @@ export default function OnboardingDialog({ open, onClose }: { open: boolean; onC
           const { error } = await supabase.from("businesses").update({ name: bizName, currency }).eq("id", business.id);
           if (error) throw error;
         }
-      } else if (step === 1) {
+      } else if (step === 2) {
+        // Persist the selection once both picker steps are done — even "Maybe later" businesses
+        // leave a trail of what they wanted (sales follow-up, future plan design).
+        const { error } = await supabase.from("businesses")
+          .update({ onboarding_profile: { modules: picked, scale } } as never)
+          .eq("id", business.id);
+        if (error) throw error;
+      } else if (step === 3) {
         if (pName.trim()) {
           const { error } = await supabase.from("products").insert({
             business_id: business.id, name: pName.trim(),
@@ -47,19 +106,15 @@ export default function OnboardingDialog({ open, onClose }: { open: boolean; onC
           });
           if (error) throw error;
         }
-      } else if (step === 2) {
+      } else if (step === 4) {
         if (sName.trim()) {
           const { error } = await supabase.from("suppliers").insert({
             business_id: business.id, name: sName.trim(), phone: sPhone || null,
           });
           if (error) throw error;
         }
-      } else if (step === 3) {
-        const { error } = await supabase.from("profiles").update({ onboarded: true }).eq("id", user.id);
-        if (error) throw error;
-        await refresh();
-        onClose();
-        toast.success("You're all set!");
+      } else if (step === 5) {
+        await finish();
         return;
       }
       setStep(step + 1);
@@ -71,26 +126,34 @@ export default function OnboardingDialog({ open, onClose }: { open: boolean; onC
   };
 
   const skip = async () => {
-    if (step < 3) setStep(step + 1);
+    if (step < 5) setStep(step + 1);
     else await next();
   };
+
+  const stepIcon =
+    step === 0 ? <Store className="size-5" /> :
+    step === 1 ? <LayoutGrid className="size-5" /> :
+    step === 2 ? <Gauge className="size-5" /> :
+    step === 3 ? <Package className="size-5" /> :
+    step === 4 ? <Truck className="size-5" /> :
+    <Sparkles className="size-5" />;
+
+  const stepTitle =
+    step === 0 ? `Welcome, ${profile?.owner_name?.split(" ")[0] || "there"}!` :
+    step === 1 ? "What will you use?" :
+    step === 2 ? "How big is your operation?" :
+    step === 3 ? "Add your first product" :
+    step === 4 ? "Add your first supplier" :
+    "You're ready!";
 
   return (
     <Dialog open={open} onOpenChange={() => { /* modal */ }}>
       <DialogContent className="max-w-lg" onPointerDownOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
         <DialogHeader>
           <div className="size-12 rounded-xl bg-gradient-brand grid place-items-center text-brand-foreground mx-auto mb-2">
-            {step === 0 ? <Store className="size-5" /> : step === 1 ? <Package className="size-5" /> : step === 2 ? <Truck className="size-5" /> : <Sparkles className="size-5" />}
+            {stepIcon}
           </div>
-          <DialogTitle className="font-display text-center text-2xl">
-            {step === 0
-              ? `Welcome, ${profile?.owner_name?.split(" ")[0] || "there"}!`
-              : step === 1
-              ? "Add your first product"
-              : step === 2
-              ? "Add your first supplier"
-              : "You're ready!"}
-          </DialogTitle>
+          <DialogTitle className="font-display text-center text-2xl">{stepTitle}</DialogTitle>
           <p className="text-center text-sm text-muted-foreground">Step {Math.min(step + 1, total)} of {total}</p>
         </DialogHeader>
 
@@ -105,6 +168,61 @@ export default function OnboardingDialog({ open, onClose }: { open: boolean; onC
         )}
 
         {step === 1 && (
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground text-center">Pick everything you plan to use — we'll suggest the right plan.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
+              {MODULE_CHOICES.map(m => {
+                const on = picked.includes(m.key);
+                return (
+                  <button
+                    key={m.key}
+                    type="button"
+                    onClick={() => toggleModule(m.key)}
+                    aria-pressed={on}
+                    className={`rounded-lg border p-3 text-left transition-colors ${on ? "border-brand bg-brand-light/40" : "border-border/60 hover:border-brand/40"}`}
+                  >
+                    <span className="flex items-center gap-1.5 text-sm font-medium text-brand-dark">
+                      <span className={`size-4 rounded grid place-items-center border ${on ? "bg-brand border-brand text-brand-foreground" : "border-border"}`}>
+                        {on && <Check className="size-3" />}
+                      </span>
+                      {m.label}
+                    </span>
+                    <span className="mt-1 block text-xs text-muted-foreground">{m.blurb}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground text-center">A rough idea is enough — this helps us match plan limits.</p>
+            {SCALE_QUESTIONS.map(q => (
+              <div key={q.resource} className="space-y-1.5">
+                <Label>{q.question}</Label>
+                <div className="flex flex-wrap gap-2">
+                  {q.bands.map(b => {
+                    const on = scale[q.resource] === b.key;
+                    return (
+                      <button
+                        key={b.key}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => setScale(prev => ({ ...prev, [q.resource]: on ? undefined : b.key }))}
+                        className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${on ? "border-brand bg-brand text-brand-foreground" : "border-border/60 text-brand-dark hover:border-brand/40"}`}
+                      >
+                        {b.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {step === 3 && (
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground text-center">Add one item you sell — you can add more later.</p>
             <div className="space-y-2"><Label>Product name</Label><Input value={pName} onChange={(e) => setPName(e.target.value)} placeholder="e.g. Garri (50kg)" /></div>
@@ -115,7 +233,7 @@ export default function OnboardingDialog({ open, onClose }: { open: boolean; onC
           </div>
         )}
 
-        {step === 2 && (
+        {step === 4 && (
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground text-center">Add someone you buy stock from — optional but useful.</p>
             <div className="space-y-2"><Label>Supplier name</Label><Input value={sName} onChange={(e) => setSName(e.target.value)} placeholder="e.g. Olu Farms" /></div>
@@ -123,16 +241,53 @@ export default function OnboardingDialog({ open, onClose }: { open: boolean; onC
           </div>
         )}
 
-        {step === 3 && (
-          <div className="text-center space-y-2 py-2">
-            <p className="text-sm text-muted-foreground">Your account is set up. From here you can record sales, track stock and manage suppliers — everything updates in real time.</p>
+        {step === 5 && (
+          <div className="space-y-3 py-1">
+            {reco.kind === "free" && (
+              <p className="text-sm text-muted-foreground text-center">
+                Good news — the <span className="font-medium text-brand-dark">Free plan</span> covers everything you picked.
+                You can upgrade any time from Settings → Billing as you grow.
+              </p>
+            )}
+            {reco.kind === "plan" && (
+              <div className="rounded-xl border-2 border-brand/30 bg-brand-light/20 p-4 space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Recommended for you</p>
+                <div className="flex items-baseline justify-between gap-2">
+                  <p className="font-display text-xl font-bold text-brand-dark">{reco.plan.name}</p>
+                  <p className="text-sm text-brand-dark">
+                    {money(effectivePrice(reco.plan.price_amount, reco.plan.promo_percent ?? 0, reco.plan.promo_until), reco.plan.price_currency || "NGN")}
+                    <span className="text-muted-foreground">/month</span>
+                  </p>
+                </div>
+                <p className="text-sm text-muted-foreground">Covers all the modules you picked at the scale you expect.</p>
+                {trialStarted ? (
+                  <p className="text-sm font-medium text-brand flex items-center gap-1.5"><Check className="size-4" /> Trial active — 7 days on us.</p>
+                ) : trialUsed ? (
+                  <p className="text-xs text-muted-foreground">Upgrade any time from Settings → Billing.</p>
+                ) : (
+                  <Button variant="brand" className="w-full" onClick={startTrial} disabled={busy}>
+                    Start 7-day free trial
+                  </Button>
+                )}
+              </div>
+            )}
+            {reco.kind === "custom" && (
+              <p className="text-sm text-muted-foreground text-center">
+                Your needs go beyond our standard plans — we'll set you up with a custom plan.{" "}
+                <a className="text-brand underline" href="mailto:sales@allspire.tech?subject=Custom%20Plan%20enquiry">Contact sales</a> and
+                start on Free in the meantime.
+              </p>
+            )}
+            <p className="text-sm text-muted-foreground text-center">
+              From here you can record sales, track stock and manage suppliers — everything updates in real time.
+            </p>
           </div>
         )}
 
         <div className="flex items-center justify-between gap-2 pt-2">
-          <Button variant="ghost" onClick={skip} disabled={busy}>{step === 3 ? "" : "Skip"}</Button>
+          <Button variant="ghost" onClick={skip} disabled={busy}>{step === 5 ? "" : "Skip"}</Button>
           <Button variant="brand" onClick={next} disabled={busy || (step === 0 && !bizName.trim())}>
-            {busy ? "Saving..." : step === 3 ? "Start using iTrova" : "Continue"}
+            {busy ? "Saving..." : step === 5 ? "Start using iTrova" : "Continue"}
           </Button>
         </div>
       </DialogContent>
