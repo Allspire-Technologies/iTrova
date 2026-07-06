@@ -92,6 +92,46 @@ test.describe("Point of Sale", () => {
     await expect(page.getByText("1 item", { exact: true }).filter({ visible: true })).toBeVisible();
   });
 
+  test("online checkout is a single atomic RPC call (no table-by-table writes)", async ({ page }) => {
+    const rpcPayloads: any[] = [];
+    const tableWrites: string[] = [];
+    await page.route("**/rest/v1/rpc/commit_pos_sale**", (r) => {
+      rpcPayloads.push(r.request().postDataJSON());
+      return r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "committed", sale_id: "s-1", invoice_number: "INV-0042" }) });
+    });
+    // Record any write the old 6-round-trip path would have made.
+    for (const table of ["sales", "sale_items", "invoices", "invoice_items"]) {
+      await page.route(`**/rest/v1/${table}**`, (r) => {
+        if (!["GET", "HEAD"].includes(r.request().method())) tableWrites.push(`${r.request().method()} ${table}`);
+        return r.fallback();
+      });
+    }
+
+    await page.getByRole("button", { name: /Garri 50kg/ }).click();
+    await page.getByRole("button", { name: "Complete sale" }).click();
+
+    await expect(page.getByText("Sale Complete")).toBeVisible();
+    expect(rpcPayloads).toHaveLength(1);
+    const sale = rpcPayloads[0]._sale;
+    expect(sale.items).toEqual([{ product_id: "prod-1", name: "Garri 50kg", quantity: 1, unit_price: 8500 }]);
+    expect(sale.total).toBe(8500);
+    expect(sale.invoice_number).toBeUndefined(); // sequential number is assigned server-side
+    expect(tableWrites).toEqual([]);
+
+    await page.keyboard.press("Escape"); // close the receipt
+    await expect(page.getByText("Cart is empty")).toBeVisible();
+  });
+
+  test("oversell rejection from the RPC surfaces the friendly stock toast", async ({ page }) => {
+    await page.route("**/rest/v1/rpc/commit_pos_sale**", (r) =>
+      r.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ code: "23514", message: "NEEDS_REVIEW:Garri 50kg", details: null, hint: null }) }));
+
+    await page.getByRole("button", { name: /Garri 50kg/ }).click();
+    await page.getByRole("button", { name: "Complete sale" }).click();
+
+    await expect(page.getByText(/Not enough stock for Garri 50kg/)).toBeVisible();
+  });
+
   test.describe("on a mobile viewport", () => {
     test.use({ viewport: { width: 375, height: 812 } });
 

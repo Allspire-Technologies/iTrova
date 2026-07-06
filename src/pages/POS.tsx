@@ -279,100 +279,38 @@ export default function POS() {
       return;
     }
 
-    // Deduct stock first, atomically and guarded against overselling. This is the source
-    // of truth for availability — the cart's stock numbers can be stale (e.g. a held sale
-    // resumed after the same item sold elsewhere), so we never trust them to gate the sale.
-    const stockItems = cart.map(i => ({ product_id: i.product.id, qty: i.qty }));
-    const { error: eStock } = await supabase.rpc("deduct_sale_stock" as any, { _business_id: business.id, _items: stockItems });
-    if (eStock) {
-      setBusy(false);
-      if (eStock.message?.includes("INSUFFICIENT_STOCK")) {
-        const name = eStock.message.split("INSUFFICIENT_STOCK:")[1]?.trim() || "an item";
+    // Online: one atomic RPC (Experience Roadmap · Phase 3). commit_pos_sale wraps the same
+    // commit_offline_sale transaction the sync path uses — oversell guard + sale + sale_items +
+    // invoice + invoice_items — and assigns the sequential invoice number server-side. Stock is
+    // still the server's call (cart numbers can be stale, e.g. a resumed held sale), and there is
+    // no client-side compensation dance anymore: it either all lands or nothing does.
+    const payload = {
+      sale_id: newId(),
+      invoice_id: newId(),
+      business_id: business.id,
+      staff_id: user?.id ?? null,
+      created_at: new Date().toISOString(),
+      payment_method: method,
+      discount,
+      subtotal,
+      total,
+      customer_name: "Walk-in Customer",
+      items: cart.map(i => ({ product_id: i.product.id, name: i.product.name, quantity: i.qty, unit_price: Number(i.product.selling_price) })),
+    };
+    const { data, error } = await supabase.rpc("commit_pos_sale" as any, { _sale: payload });
+    setBusy(false);
+    if (error) {
+      if (error.message?.includes("NEEDS_REVIEW:")) {
+        const name = error.message.split("NEEDS_REVIEW:")[1]?.trim() || "an item";
         toast.error(`Not enough stock for ${name} — it may have just sold. Refreshing availability.`);
       } else {
-        toast.error(eStock.message || "Could not reserve stock");
+        toast.error(error.message || "Sale failed");
       }
       load();
       return;
     }
 
-    const { data: sale, error: e1 } = await supabase
-      .from("sales")
-      .insert({ business_id: business.id, staff_id: user?.id, total_amount: total, discount_amount: discount, payment_method: method })
-      .select().single();
-    if (e1 || !sale) {
-      // Roll back the stock we already took, since no sale was recorded.
-      await supabase.rpc("restock_sale_stock" as any, { _business_id: business.id, _items: stockItems });
-      setBusy(false);
-      load();
-      return toast.error(e1?.message || "Sale failed");
-    }
-
-    const items = cart.map(i => ({
-      sale_id: sale.id,
-      product_id: i.product.id,
-      quantity: i.qty,
-      unit_price: Number(i.product.selling_price),
-    }));
-    const { error: e2 } = await supabase.from("sale_items").insert(items);
-    if (e2) {
-      // Undo: drop the sale (cascades sale_items) and return the stock.
-      await supabase.from("sales").delete().eq("id", sale.id);
-      await supabase.rpc("restock_sale_stock" as any, { _business_id: business.id, _items: stockItems });
-      setBusy(false);
-      load();
-      return toast.error(e2.message);
-    }
-
-    // Auto-create a paid invoice for this sale
-    const { data: numData } = await supabase.rpc("next_invoice_number" as any, { _business_id: business.id });
-    const { data: inv, error: e3 } = await supabase.from("invoices").insert({
-      business_id: business.id,
-      invoice_number: (numData as string) || invoiceFallbackNumber(),
-      customer_name: "Walk-in Customer",
-      status: "paid",
-      subtotal,
-      discount_amount: discount,
-      total,
-      sale_id: sale.id,
-      created_by: user?.id ?? null,
-      issue_date: new Date().toISOString().slice(0, 10),
-    } as any).select().single();
-    if (e3) {
-      toast.error(`Invoice creation failed: ${e3.message}`);
-    } else if (inv) {
-      const invItems = cart.map(i => ({
-        invoice_id: inv.id,
-        description: i.product.name,
-        quantity: i.qty,
-        unit_price: Number(i.product.selling_price),
-        line_total: i.qty * Number(i.product.selling_price),
-      }));
-      const { error: e4 } = await supabase.from("invoice_items").insert(invItems);
-      if (e4) {
-        // Backfill from sale_items as a fallback so the invoice view still shows items
-        console.error("invoice_items insert failed, attempting backfill:", e4.message);
-        await supabase.from("invoice_items").delete().eq("invoice_id", inv.id);
-        await supabase.from("sale_items")
-          .select("quantity,unit_price,products(name)")
-          .eq("sale_id", sale.id)
-          .then(({ data: si }) => {
-            if (!si?.length) return;
-            supabase.from("invoice_items").insert(
-              (si as any[]).map(r => ({
-                invoice_id: inv.id,
-                description: r.products?.name || "Item",
-                quantity: Number(r.quantity),
-                unit_price: Number(r.unit_price),
-                line_total: Number(r.quantity) * Number(r.unit_price),
-              }))
-            );
-          });
-      }
-    }
-
-    setBusy(false);
-    setReceipt({ total, discount, items: [...cart], method, number: inv?.invoice_number ?? null });
+    setReceipt({ total, discount, items: [...cart], method, number: (data as { invoice_number?: string } | null)?.invoice_number ?? null });
     setCart([]);
     setDiscount(0);
     load();
