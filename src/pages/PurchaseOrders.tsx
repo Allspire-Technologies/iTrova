@@ -15,6 +15,8 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { toast } from "sonner";
 import { downloadPdf } from "@/lib/pdf";
 import { toCsv, downloadCsv, parseCsv, readFileText } from "@/lib/csv";
+import { buildPoImportPlan, PO_FIELDS, templateHeaders, templateValues } from "@/lib/csvImport";
+import { ImportProgressDialog, ImportResultDialog, type FailedImportRow, type ImportOutcome, type ImportProgress } from "@/components/ImportDialogs";
 import Paginator, { usePagination } from "@/components/Paginator";
 import { TablePageSkeleton } from "@/components/Skeletons";
 import { getLimit, isAtLimit, limitMessage } from "@/lib/planLimits";
@@ -56,6 +58,8 @@ export default function PurchaseOrders() {
   const [pending, setPending] = useState<{ title: string; description: string; confirmLabel?: string; variant?: "destructive" | "default"; onConfirm: () => void } | null>(null);
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [importResult, setImportResult] = useState<ImportOutcome | null>(null);
+  const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
 
   const load = async () => {
     const [{ data: pos }, { data: sup }, { data: mat }, { data: prod }] = await Promise.all([
@@ -245,10 +249,15 @@ export default function PurchaseOrders() {
     }, `${i.po_number}.pdf`);
   };
 
+  // Rows sharing an Order Ref import as one multi-line PO; rows without one become single-line POs.
+  const CSV_HEADERS = templateHeaders(PO_FIELDS);
+
   const downloadTemplate = () => {
-    const headers = ["supplier_name", "expected_date", "notes", "description", "quantity", "unit_cost"];
-    const example = ["Olu Farms Ltd", "2026-07-15", "First batch order", "Wheat Flour (50kg bag)", "10", "8500"];
-    downloadCsv("purchase-orders-template.csv", [headers.join(","), example.join(",")].join("\n"));
+    const examples = [
+      ["PO-A", "Olu Farms Ltd", "2026-07-15", "Wheat Flour (50kg bag)", "10", "8500", "First batch order"],
+      ["PO-A", "Olu Farms Ltd", "2026-07-15", "Brown Sugar (25kg bag)", "4", "12000", ""],
+    ];
+    downloadCsv("purchase-orders-template.csv", [CSV_HEADERS.join(","), ...examples.map(e => e.join(","))].join("\n"));
     toast.success("Template downloaded");
   };
 
@@ -272,49 +281,65 @@ export default function PurchaseOrders() {
 
   const importCsv = async (file: File) => {
     if (!business) return;
-    if (isAtLimit(items.length, business.subscription_tier, "purchaseOrders")) {
-      toast.error(limitMessage("purchaseOrders"));
-      if (fileRef.current) fileRef.current.value = "";
-      return;
-    }
     try {
       const text = await readFileText(file);
       const rows = parseCsv(text);
-      const valid = rows.filter(r => r.description?.trim());
-      if (valid.length === 0) return toast.error("No valid rows. Required column: description");
-      let created = 0;
-      for (const r of valid) {
-        const sup = r.supplier_name
-          ? suppliers.find(s => s.name.toLowerCase() === r.supplier_name.toLowerCase())
-          : null;
+      const plan = buildPoImportPlan(rows, suppliers, items.length, getLimit(business.subscription_tier, "purchaseOrders"));
+      if (plan.pos.length === 0 && plan.rejected.length === 0) {
+        return toast.error("No rows found in the file.");
+      }
+
+      const failed: FailedImportRow[] = plan.rejected.map(r => ({ values: templateValues(r.row, PO_FIELDS), reason: r.reason }));
+
+      // One step per PO (each is a numbered document + its lines); a failed PO sinks its own rows only.
+      const totalSteps = plan.pos.length;
+      let done = 0;
+      const tick = () => setImportProgress({ done: ++done, total: totalSteps });
+      if (totalSteps > 0) setImportProgress({ done: 0, total: totalSteps });
+
+      let created = 0, lineCount = 0;
+      for (const po of plan.pos) {
+        const failPo = (reason: string) => po.raws.forEach(raw => failed.push({ values: templateValues(raw, PO_FIELDS), reason }));
         const { data: numData } = await supabase.rpc("next_doc_number" as any, {
           _business_id: business.id, _prefix: "PO", _table: "purchase_orders", _col: "po_number",
         });
         const po_number: string = (numData as string) || `PO-${Date.now().toString().slice(-6)}`;
-        const qty = Math.max(1, Number(r.quantity) || 1);
-        const cost = Number(r.unit_cost) || 0;
-        const line_total = qty * cost;
-        const { data: po, error } = await supabase.from("purchase_orders").insert({
+        const { data: created_po, error } = await supabase.from("purchase_orders").insert({
           business_id: business.id, po_number,
-          supplier_id: sup?.id || null,
-          expected_date: r.expected_date || null,
-          notes: r.notes || null,
-          total_amount: line_total, status: "draft",
+          supplier_id: po.supplier_id,
+          expected_date: po.expected_date,
+          notes: po.notes,
+          total_amount: po.total_amount, status: "draft",
         }).select().single();
-        if (error || !po) continue;
-        await supabase.from("purchase_order_items").insert({
-          purchase_order_id: po.id, raw_material_id: null,
-          description: r.description.trim(), quantity: qty, unit_cost: cost, line_total,
-        });
-        created++;
+        if (error || !created_po) { failPo(`Upload failed: ${error?.message ?? "couldn't create the order"}`); tick(); continue; }
+        const { error: itemsError } = await supabase.from("purchase_order_items").insert(
+          po.items.map(i => ({ purchase_order_id: created_po.id, raw_material_id: null, ...i })),
+        );
+        if (itemsError) failPo(`Upload failed: ${itemsError.message}`);
+        else { created++; lineCount += po.items.length; }
+        tick();
       }
-      if (created > 0) { toast.success(`Imported ${created} purchase order${created === 1 ? "" : "s"}`); load(); }
-      else toast.error("No orders could be imported");
+
+      setImportProgress(null);
+      setImportResult({
+        imported: lineCount,
+        detail: created ? `${created} purchase order${created === 1 ? "" : "s"} created` : undefined,
+        failed,
+      });
+      load();
     } catch (e: any) {
+      setImportProgress(null);
       toast.error(e.message || "Import failed");
     } finally {
       if (fileRef.current) fileRef.current.value = "";
     }
+  };
+
+  const downloadFailedRows = () => {
+    if (!importResult?.failed.length) return;
+    const cols = [...CSV_HEADERS, "Reason"];
+    const rows = importResult.failed.map(f => ({ ...f.values, "Reason": f.reason }));
+    downloadCsv(`purchase-orders-not-imported-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(rows, cols));
   };
 
   const statusColor = (s: string) =>
@@ -354,8 +379,8 @@ export default function PurchaseOrders() {
         </div>
         <div className="flex gap-2 flex-wrap">
           <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => e.target.files?.[0] && importCsv(e.target.files[0])} />
-          <Button variant="outline" disabled onClick={downloadTemplate}><Download className="size-4" /> CSV Template</Button>
-          <Button variant="outline" disabled onClick={() => fileRef.current?.click()}><Upload className="size-4" /> Import CSV</Button>
+          <Button variant="outline" onClick={downloadTemplate}><Download className="size-4" /> CSV Template</Button>
+          {hasModule("csv_import") && <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={atPoLimit} title={atPoLimit ? limitMessage("purchaseOrders") : undefined}><Upload className="size-4" /> Import CSV</Button>}
           {hasModule("csv_export") && <Button variant="outline" onClick={exportCsv} disabled={filtered.length === 0}><Download className="size-4" /> Export CSV</Button>}
           {poLimit !== null && items.length >= Math.floor(poLimit * 0.8) && (
             <span className={`self-center text-xs font-medium ${atPoLimit ? "text-destructive" : "text-amber-600"}`}>
@@ -564,6 +589,8 @@ export default function PurchaseOrders() {
         variant={pending?.variant}
         onConfirm={pending?.onConfirm ?? (() => {})}
       />
+      <ImportProgressDialog progress={importProgress} noun="purchase orders" />
+      <ImportResultDialog result={importResult} onClose={() => setImportResult(null)} onDownloadFailed={downloadFailedRows} />
     </div>
   );
 }
