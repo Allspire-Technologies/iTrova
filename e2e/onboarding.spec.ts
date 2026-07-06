@@ -77,7 +77,9 @@ test.describe("Onboarding plan picker", () => {
     await page.getByRole("button", { name: "Up to 1,000", exact: true }).click();
     await page.getByRole("button", { name: "Continue" }).click();
 
-    // The module/scale selection is persisted on the business for follow-up.
+    // The module/scale selection is persisted on the business for follow-up. Wait for the wizard
+    // to advance (the PATCH resolves before the step changes) rather than asserting mid-flight.
+    await expect(page.getByText("Add your first product")).toBeVisible();
     const profilePatch = bizPatches.find(b => b?.onboarding_profile);
     expect(profilePatch.onboarding_profile.modules).toEqual(["export_invoices"]);
     expect(profilePatch.onboarding_profile.scale).toMatchObject({ products: "m" });
@@ -87,11 +89,41 @@ test.describe("Onboarding plan picker", () => {
 
     await expect(page.getByText("Recommended for you")).toBeVisible();
     await expect(page.getByText("Pro", { exact: true })).toBeVisible();
+    // All three paths are on offer: trial, immediate upgrade, stay free.
+    await expect(page.getByRole("button", { name: "Request immediate upgrade" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Use iTrova for Free for now" })).toBeVisible();
     await page.getByRole("button", { name: "Start 7-day free trial" }).click();
     await expect(page.getByText(/Trial active/)).toBeVisible();
     expect(rpcCalls).toEqual([{ _plan_key: "pro" }]);
 
     await page.getByRole("button", { name: "Start using iTrova" }).click();
     await expect(page.getByText("You're all set!")).toBeVisible();
+  });
+
+  test("Back returns to the previous step with the selection intact", async ({ page }) => {
+    await openOnboarding(page);
+    await page.getByRole("button", { name: "Continue" }).click();          // → modules
+    await page.getByRole("button", { name: /Point of Sale/ }).click();
+    await page.getByRole("button", { name: "Continue" }).click();          // → scale
+    await expect(page.getByText("How big is your operation?")).toBeVisible();
+    await page.getByRole("button", { name: "Back" }).click();              // ← modules
+    await expect(page.getByText("What will you use?")).toBeVisible();
+    await expect(page.getByRole("button", { name: /Point of Sale/ })).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("button", { name: "Back" }).click();              // ← business details
+    await expect(page.getByText("Welcome, Ada!")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Back" })).toHaveCount(0); // no Back on step 1
+  });
+
+  test("closing the modal asks for confirmation; cancelling stays in setup", async ({ page }) => {
+    await openOnboarding(page);
+    await page.keyboard.press("Escape");
+    await expect(page.getByText("Leave setup?")).toBeVisible();
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expect(page.getByText("Leave setup?")).toBeHidden();
+    await expect(page.getByText("Welcome, Ada!")).toBeVisible();   // still in the wizard
+
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Skip setup" }).click();
+    await expect(page.getByText(/Setup skipped/)).toBeVisible();
   });
 });

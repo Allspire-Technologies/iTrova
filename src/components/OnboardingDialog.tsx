@@ -12,6 +12,7 @@ import { getCurrencySymbol, CURRENCY_OPTIONS } from "@/lib/format";
 import SearchableSelect from "@/components/SearchableSelect";
 import { MODULE_CHOICES, SCALE_QUESTIONS, recommendPlan, type ScaleAnswers } from "@/lib/planRecommend";
 import { effectivePrice } from "@/lib/planPricing";
+import ConfirmDialog from "@/components/ConfirmDialog";
 
 // Onboarding: business basics → module picker → scale bands → first product → first supplier →
 // plan recommendation (with an optional one-off 7-day trial) → done. The module/scale selection is
@@ -29,6 +30,7 @@ export default function OnboardingDialog({ open, onClose }: { open: boolean; onC
   const [picked, setPicked] = useState<string[]>([]);
   const [scale, setScale] = useState<ScaleAnswers>({});
   const [trialStarted, setTrialStarted] = useState(false);
+  const [closeConfirm, setCloseConfirm] = useState(false);
 
   const [pName, setPName] = useState("");
   const [pPrice, setPPrice] = useState("");
@@ -54,13 +56,32 @@ export default function OnboardingDialog({ open, onClose }: { open: boolean; onC
     }
   };
 
-  const finish = async () => {
+  const finish = async (message = "You're all set!") => {
     if (!user) return;
     const { error } = await supabase.from("profiles").update({ onboarded: true }).eq("id", user.id);
     if (error) throw error;
     await refresh();
     onClose();
-    toast.success("You're all set!");
+    toast.success(message);
+  };
+
+  // Closing early (X / Escape) asks first — the recommendation + trial offer only lives here.
+  const skipSetup = async () => {
+    setBusy(true);
+    try {
+      await finish("Setup skipped — you can upgrade anytime in Settings → Billing.");
+    } catch (e: any) {
+      toast.error(e.message || "Something went wrong");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const requestUpgrade = () => {
+    if (reco.kind !== "plan") return;
+    const price = money(effectivePrice(reco.plan.price_amount, reco.plan.promo_percent ?? 0, reco.plan.promo_until), reco.plan.price_currency || "NGN");
+    const msg = `Hi, I'd like to upgrade ${business?.name || "my business"} to the ${reco.plan.name} plan — ${price}/month.`;
+    window.open(`https://wa.me/2348137000305?text=${encodeURIComponent(msg)}`, "_blank");
   };
 
   const startTrial = async () => {
@@ -105,6 +126,8 @@ export default function OnboardingDialog({ open, onClose }: { open: boolean; onC
             stock_quantity: Number(pStock) || 0, reorder_level: 5, unit: "pcs",
           });
           if (error) throw error;
+          // Clear after a successful insert so Back + Continue can't create a duplicate.
+          setPName(""); setPPrice(""); setPStock("");
         }
       } else if (step === 4) {
         if (sName.trim()) {
@@ -112,6 +135,7 @@ export default function OnboardingDialog({ open, onClose }: { open: boolean; onC
             business_id: business.id, name: sName.trim(), phone: sPhone || null,
           });
           if (error) throw error;
+          setSName(""); setSPhone("");
         }
       } else if (step === 5) {
         await finish();
@@ -147,8 +171,10 @@ export default function OnboardingDialog({ open, onClose }: { open: boolean; onC
     "You're ready!";
 
   return (
-    <Dialog open={open} onOpenChange={() => { /* modal */ }}>
-      <DialogContent className="max-w-lg" onPointerDownOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
+    <>
+    {/* X / Escape don't dismiss outright — the confirm below guards the one-time trial offer. */}
+    <Dialog open={open} onOpenChange={(o) => { if (!o) setCloseConfirm(true); }}>
+      <DialogContent className="max-w-lg" onPointerDownOutside={(e) => e.preventDefault()}>
         <DialogHeader>
           <div className="size-12 rounded-xl bg-gradient-brand grid place-items-center text-brand-foreground mx-auto mb-2">
             {stepIcon}
@@ -262,12 +288,20 @@ export default function OnboardingDialog({ open, onClose }: { open: boolean; onC
                 <p className="text-sm text-muted-foreground">Covers all the modules you picked at the scale you expect.</p>
                 {trialStarted ? (
                   <p className="text-sm font-medium text-brand flex items-center gap-1.5"><Check className="size-4" /> Trial active — 7 days on us.</p>
-                ) : trialUsed ? (
-                  <p className="text-xs text-muted-foreground">Upgrade any time from Settings → Billing.</p>
                 ) : (
-                  <Button variant="brand" className="w-full" onClick={startTrial} disabled={busy}>
-                    Start 7-day free trial
-                  </Button>
+                  <div className="space-y-2 pt-1">
+                    {!trialUsed && (
+                      <Button variant="brand" className="w-full" onClick={startTrial} disabled={busy}>
+                        Start 7-day free trial
+                      </Button>
+                    )}
+                    <Button variant="outline" className="w-full" onClick={requestUpgrade} disabled={busy}>
+                      Request immediate upgrade
+                    </Button>
+                    <Button variant="ghost" className="w-full text-muted-foreground" onClick={() => next()} disabled={busy}>
+                      Use iTrova for Free for now
+                    </Button>
+                  </div>
                 )}
               </div>
             )}
@@ -285,12 +319,30 @@ export default function OnboardingDialog({ open, onClose }: { open: boolean; onC
         )}
 
         <div className="flex items-center justify-between gap-2 pt-2">
-          <Button variant="ghost" onClick={skip} disabled={busy}>{step === 5 ? "" : "Skip"}</Button>
+          <div className="flex items-center gap-1">
+            {step > 0 && (
+              <Button variant="ghost" onClick={() => setStep(step - 1)} disabled={busy}>Back</Button>
+            )}
+            {step < 5 && (
+              <Button variant="ghost" className="text-muted-foreground" onClick={skip} disabled={busy}>Skip</Button>
+            )}
+          </div>
           <Button variant="brand" onClick={next} disabled={busy || (step === 0 && !bizName.trim())}>
             {busy ? "Saving..." : step === 5 ? "Start using iTrova" : "Continue"}
           </Button>
         </div>
       </DialogContent>
     </Dialog>
+
+    <ConfirmDialog
+      open={closeConfirm}
+      onOpenChange={setCloseConfirm}
+      variant="default"
+      title="Leave setup?"
+      description="You're a few steps from your plan recommendation and the one-time 7-day free trial offer. Skip now and you can still upgrade later from Settings → Billing."
+      confirmLabel="Skip setup"
+      onConfirm={skipSetup}
+    />
+    </>
   );
 }
