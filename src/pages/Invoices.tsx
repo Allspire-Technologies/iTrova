@@ -92,7 +92,9 @@ export default function Invoices() {
 
   const load = async () => {
     const [{ data, error }, { data: profs }] = await Promise.all([
-      supabase.from("invoices").select("*").order("created_at", { ascending: false }),
+      supabase.from("invoices")
+        .select("id,invoice_number,customer_name,customer_phone,customer_email,status,subtotal,tax,total,discount_amount,amount_paid,issue_date,due_date,notes,sale_id,created_by")
+        .order("created_at", { ascending: false }),
       supabase.from("profiles").select("id, owner_name"),
     ]);
     if (error) return toast.error(error.message);

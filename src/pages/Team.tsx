@@ -75,7 +75,9 @@ export default function Team() {
     setLoading(true);
     const [{ data: roles }, { data: invs }, { data: salesData }, { data: emailData }, { data: teamRoles }] = await Promise.all([
       supabase.from("user_roles").select("user_id, role").eq("business_id", business.id),
-      supabase.from("invitations").select("*").eq("business_id", business.id).order("created_at", { ascending: false }),
+      supabase.from("invitations")
+        .select("id,email,role,token,expires_at,accepted_at,created_at,team_role_id")
+        .eq("business_id", business.id).order("created_at", { ascending: false }),
       supabase.from("sales").select("staff_id, total_amount").eq("business_id", business.id).eq("voided", false),
       supabase.rpc("get_member_emails", { p_business_id: business.id }),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -106,7 +108,9 @@ export default function Team() {
       last_seen: lastSeenMap[r.user_id] ?? null,
       email: emailMap[r.user_id] || null,
     })));
-    setInvites((invs as Invitation[]) || []);
+    // team_role_id postdates the generated types (RBAC migration); the explicit column list makes
+    // the client type-check the selection, so cast through unknown until the types are regenerated.
+    setInvites((invs as unknown as Invitation[]) || []);
     setLoading(false);
   };
 
