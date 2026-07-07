@@ -63,13 +63,12 @@ export default function RawMaterials() {
   // Approval leg of the production flow: the raw-materials custodian (adjust_stock) approves the
   // production team's material requests from here, so a Production-less approver can still act.
   const canApproveRequests = hasModule("production") && (can("raw_materials", "approve_requests") || can("raw_materials", "reject_requests"));
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [tab, setTab] = useState(searchParams.get("tab") === "requests" ? "requests" : "materials");
+  // Read the initial tab from the URL (notification deep-links use ?tab=requests). Switching is
+  // plain controlled state — writing back to the URL from the handler broke tab changes.
+  const [searchParams] = useSearchParams();
+  const initialTab = searchParams.get("tab");
+  const [tab, setTab] = useState(initialTab === "requests" || initialTab === "deliveries" ? initialTab : "materials");
   const [pendingRequests, setPendingRequests] = useState(0);
-  const changeTab = (v: string) => {
-    setTab(v);
-    setSearchParams(prev => { const p = new URLSearchParams(prev); if (v === "materials") p.delete("tab"); else p.set("tab", v); return p; }, { replace: true });
-  };
   const fileRef = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState<{ title: string; description: string; onConfirm: () => void } | null>(null);
   const [importResult, setImportResult] = useState<ImportOutcome | null>(null);
@@ -286,7 +285,7 @@ export default function RawMaterials() {
         </div>
       </div>
 
-      <Tabs value={tab} onValueChange={changeTab}>
+      <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="mb-2">
           <TabsTrigger value="materials" className="gap-2"><Boxes className="size-4" /> Materials</TabsTrigger>
           <TabsTrigger value="deliveries" className="gap-2"><Truck className="size-4" /> Deliveries {purchases.length > 0 && <span className="ml-1 bg-brand-light text-brand text-xs rounded-full px-1.5">{purchases.length}</span>}</TabsTrigger>

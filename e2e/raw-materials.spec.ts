@@ -69,6 +69,14 @@ test.describe("Raw Materials", () => {
     await expect(page.getByRole("tab", { name: /Deliveries/ })).toBeVisible();
   });
 
+  test("clicking the Deliveries tab switches to its panel", async ({ page }) => {
+    await page.getByRole("tab", { name: /Deliveries/ }).click();
+    await expect(page.getByText("No deliveries recorded")).toBeVisible();
+    // and back
+    await page.getByRole("tab", { name: /Materials/ }).click();
+    await expect(page.locator("table").getByText("Cassava flour")).toBeVisible();
+  });
+
   test("CSV import tolerates currency/commas, restocks by SKU and rejects unknown suppliers", async ({ page }) => {
     const csv = [
       "Name,SKU,Stock Quantity,Cost Per Unit,Supplier",
