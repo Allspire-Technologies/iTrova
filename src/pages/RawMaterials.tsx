@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -9,7 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import SearchableSelect from "@/components/SearchableSelect";
-import { Plus, Search, Boxes, Pencil, PackagePlus, Upload, Download, SlidersHorizontal, MessageCircle, Truck, MoreHorizontal, Factory } from "lucide-react";
+import { Plus, Search, Boxes, Pencil, PackagePlus, Upload, Download, SlidersHorizontal, MessageCircle, Truck, MoreHorizontal, Factory, ClipboardList } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
@@ -22,6 +23,7 @@ import { buildReorderMessage, toWaNumber, isValidWaNumber, waLink } from "@/lib/
 import WhatsAppShareDialog from "@/components/WhatsAppShareDialog";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import RecipeEditorDialog from "@/components/RecipeEditorDialog";
+import MaterialApprovals from "@/components/MaterialApprovals";
 import { TablePageSkeleton } from "@/components/Skeletons";
 import { getLimit, isAtLimit, limitMessage } from "@/lib/planLimits";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -57,6 +59,16 @@ export default function RawMaterials() {
   // Production module entry point: link this material into a product's recipe.
   const [linkMaterial, setLinkMaterial] = useState<Material | null>(null);
   const canLinkProduct = hasModule("production") && can("production", "recipes_manage");
+  // Approval leg of the production flow: the raw-materials custodian (adjust_stock) approves the
+  // production team's material requests from here, so a Production-less approver can still act.
+  const canApproveRequests = hasModule("production") && can("raw_materials", "adjust_stock");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [tab, setTab] = useState(searchParams.get("tab") === "requests" ? "requests" : "materials");
+  const [pendingRequests, setPendingRequests] = useState(0);
+  const changeTab = (v: string) => {
+    setTab(v);
+    setSearchParams(prev => { const p = new URLSearchParams(prev); if (v === "materials") p.delete("tab"); else p.set("tab", v); return p; }, { replace: true });
+  };
   const fileRef = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState<{ title: string; description: string; onConfirm: () => void } | null>(null);
   const [importResult, setImportResult] = useState<ImportOutcome | null>(null);
@@ -82,6 +94,13 @@ export default function RawMaterials() {
     setSuppliers((s as Supplier[]) || []);
     setPurchases((pur as Purchase[]) || []);
     setLoading(false);
+    // Seed the Requests-tab badge on page entry (the panel itself refreshes it once opened).
+    if (canApproveRequests) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { count } = await (supabase as any).from("production_requisitions")
+        .select("id", { count: "exact", head: true }).eq("status", "pending");
+      setPendingRequests(count ?? 0);
+    }
   };
   useEffect(() => { if (business) load(); }, [business]);
 
@@ -266,10 +285,13 @@ export default function RawMaterials() {
         </div>
       </div>
 
-      <Tabs defaultValue="materials">
+      <Tabs value={tab} onValueChange={changeTab}>
         <TabsList className="mb-2">
           <TabsTrigger value="materials" className="gap-2"><Boxes className="size-4" /> Materials</TabsTrigger>
           <TabsTrigger value="deliveries" className="gap-2"><Truck className="size-4" /> Deliveries {purchases.length > 0 && <span className="ml-1 bg-brand-light text-brand text-xs rounded-full px-1.5">{purchases.length}</span>}</TabsTrigger>
+          {canApproveRequests && (
+            <TabsTrigger value="requests" className="gap-2"><ClipboardList className="size-4" /> Requests {pendingRequests > 0 && <span className="ml-1 bg-warning/15 text-warning text-xs rounded-full px-1.5">{pendingRequests}</span>}</TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="materials">
@@ -456,6 +478,12 @@ export default function RawMaterials() {
             )}
           </Card>
         </TabsContent>
+
+        {canApproveRequests && (
+          <TabsContent value="requests">
+            <MaterialApprovals onChanged={load} onPendingCount={setPendingRequests} />
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* Add/Edit Dialog */}

@@ -38,6 +38,32 @@ test.describe("Raw Materials", () => {
     await expect(page.getByRole("dialog").getByText("Cassava flour")).toBeVisible();
   });
 
+  test("Requests tab approves a production material request with a reduced quantity", async ({ page }) => {
+    const PENDING_REQ = {
+      id: "rq1", business_id: "biz-1", requested_by: "user-9", status: "pending", notes: "Saturday batch",
+      decision_note: null, approved_by: null, approved_at: null, created_at: "2026-07-06T00:00:00Z",
+      production_requisition_items: [
+        { id: "ri1", raw_material_id: "rm-1", quantity_requested: 40, quantity_issued: null, raw_materials: { name: "Cassava flour", unit: "kg" } },
+      ],
+    };
+    await stubRows(page, "production_requisitions", [PENDING_REQ]);
+    let approvePayload: any = null;
+    await page.route("**/rest/v1/rpc/approve_requisition**", (r) => {
+      approvePayload = r.request().postDataJSON();
+      return r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ id: "rq1", status: "approved" }) });
+    });
+    // The approval leg lives on Raw Materials so a stock custodian (no Production module) can act.
+    await page.getByRole("tab", { name: /Requests/ }).click();
+    await expect(page.getByRole("table").getByText("Pending")).toBeVisible();
+    await page.getByRole("button", { name: "Approve" }).first().click();
+    await expect(page.getByText("Approve and issue materials")).toBeVisible();
+    await expect(page.getByLabel("Approve quantity 1")).toHaveValue("40");
+    await page.getByLabel("Approve quantity 1").fill("25"); // reduce before issuing
+    await page.getByRole("button", { name: "Approve & issue" }).click();
+    await expect(page.getByText("Approved — materials issued")).toBeVisible();
+    expect(approvePayload).toEqual({ _requisition_id: "rq1", _items: [{ raw_material_id: "rm-1", quantity: 25 }] });
+  });
+
   test("shows the materials and deliveries tabs", async ({ page }) => {
     await expect(page.getByRole("tab", { name: /Materials/ })).toBeVisible();
     await expect(page.getByRole("tab", { name: /Deliveries/ })).toBeVisible();

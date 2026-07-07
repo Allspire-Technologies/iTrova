@@ -18,11 +18,10 @@ import { TablePageSkeleton } from "@/components/Skeletons";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useDateFormat } from "@/hooks/useDateFormat";
-import { Factory, Plus, Pencil, Trash2, Check, X, MoreHorizontal, ClipboardList, PackagePlus } from "lucide-react";
+import { Factory, Plus, Pencil, Trash2, MoreHorizontal, ClipboardList, PackagePlus } from "lucide-react";
 import {
   listRecipes, listRequisitions, listRuns, saveRecipe,
-  createRequisition, updateRequisition, deleteRequisition,
-  approveRequisition, rejectRequisition, cancelRequisition, recordProductionRun,
+  createRequisition, updateRequisition, deleteRequisition, recordProductionRun,
   validateLines, friendlyProductionError, canTransition,
   REQUISITION_STATUS_LABEL, REQUISITION_STATUS_CLASS,
   type Recipe, type Requisition, type Run,
@@ -58,11 +57,6 @@ export default function Production() {
   const [deletingReq, setDeletingReq] = useState<Requisition | null>(null);
   const [reqLines, setReqLines] = useState<QtyLine[]>([{ key_id: "", quantity: "" }]);
   const [reqNotes, setReqNotes] = useState("");
-  const [approving, setApproving] = useState<Requisition | null>(null);
-  const [approveQtys, setApproveQtys] = useState<Record<string, string>>({});
-  const [rejecting, setRejecting] = useState<Requisition | null>(null);
-  const [rejectReason, setRejectReason] = useState("");
-  const [cancelling, setCancelling] = useState<Requisition | null>(null);
   const [runOpen, setRunOpen] = useState(false);
   const [runReq, setRunReq] = useState("");           // "" = direct run
   const [runOutputs, setRunOutputs] = useState<QtyLine[]>([{ key_id: "", quantity: "" }]);
@@ -159,62 +153,6 @@ export default function Production() {
       load();
     } catch (e) {
       toast.error(friendlyProductionError(e instanceof Error ? e.message : undefined, "Couldn't delete the request"));
-    }
-  };
-
-  const openApprove = (r: Requisition) => {
-    setApproving(r);
-    // Approver can reduce per-material quantities; default = what was requested.
-    setApproveQtys(Object.fromEntries(r.production_requisition_items.map(i => [i.raw_material_id, String(i.quantity_requested)])));
-  };
-
-  const doApprove = async () => {
-    if (!approving) return;
-    const items = approving.production_requisition_items.map(i => ({
-      raw_material_id: i.raw_material_id,
-      quantity: Number(approveQtys[i.raw_material_id]),
-    }));
-    if (items.some(i => !(i.quantity > 0))) return toast.error("Approved quantities must be above zero.");
-    const over = approving.production_requisition_items.find(i => Number(approveQtys[i.raw_material_id]) > Number(i.quantity_requested));
-    if (over) return toast.error("Approved quantities can't exceed what was requested.");
-    setBusy(true);
-    try {
-      await approveRequisition(approving.id, items);
-      toast.success("Approved — materials issued");
-      setApproving(null);
-      load();
-    } catch (e) {
-      toast.error(friendlyProductionError(e instanceof Error ? e.message : undefined, "Couldn't approve"));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const doReject = async () => {
-    if (!rejecting) return;
-    setBusy(true);
-    try {
-      await rejectRequisition(rejecting.id, rejectReason);
-      toast.success("Request rejected");
-      setRejecting(null); setRejectReason("");
-      load();
-    } catch (e) {
-      toast.error(friendlyProductionError(e instanceof Error ? e.message : undefined, "Couldn't reject"));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const doCancel = async (r: Requisition) => {
-    setBusy(true);
-    try {
-      await cancelRequisition(r.id);
-      toast.success(r.status === "approved" ? "Cancelled — issued materials returned to stock" : "Request cancelled");
-      load();
-    } catch (e) {
-      toast.error(friendlyProductionError(e instanceof Error ? e.message : undefined, "Couldn't cancel"));
-    } finally {
-      setBusy(false);
     }
   };
 
@@ -570,57 +508,6 @@ export default function Production() {
         </DialogContent>
       </Dialog>
 
-      {/* Approve: the raw-materials custodian can reduce quantities before issuing. */}
-      <Dialog open={!!approving} onOpenChange={(o) => !o && setApproving(null)}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle className="font-display">Approve and issue materials</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Approved quantities are deducted from raw-material stock immediately. Reduce any line to issue less than requested.
-            </p>
-            {approving?.production_requisition_items.map((i, idx) => {
-              const stock = materials.find(m => m.id === i.raw_material_id);
-              const short = stock && Number(stock.stock_quantity) < Number(approveQtys[i.raw_material_id] || 0);
-              return (
-                <div key={i.id} className="flex items-center gap-2">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-brand-dark truncate">{i.raw_materials?.name ?? "Material"}</p>
-                    <p className={`text-xs ${short ? "text-danger" : "text-muted-foreground"}`}>
-                      Requested {i.quantity_requested}{i.raw_materials?.unit ? ` ${i.raw_materials.unit}` : ""} · {Number(stock?.stock_quantity ?? 0)} in stock
-                    </p>
-                  </div>
-                  <Input
-                    type="number" min="0" max={Number(i.quantity_requested)} step="any" className="w-24"
-                    aria-label={`Approve quantity ${idx + 1}`}
-                    value={approveQtys[i.raw_material_id] ?? ""}
-                    onChange={(e) => setApproveQtys(prev => ({ ...prev, [i.raw_material_id]: e.target.value }))}
-                  />
-                  <span className="w-10 shrink-0 text-xs text-muted-foreground">{i.raw_materials?.unit ?? ""}</span>
-                </div>
-              );
-            })}
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setApproving(null)}>Cancel</Button>
-            <Button variant="brand" onClick={doApprove} disabled={busy}>{busy ? "Approving..." : "Approve & issue"}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!rejecting} onOpenChange={(o) => { if (!o) { setRejecting(null); setRejectReason(""); } }}>
-        <DialogContent variant="compact" className="max-w-sm">
-          <DialogHeader><DialogTitle className="font-display">Reject this request?</DialogTitle></DialogHeader>
-          <div className="space-y-2">
-            <Label>Reason <span className="font-normal text-muted-foreground">(optional, shown to the requester)</span></Label>
-            <Textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="e.g. Not enough flour until Friday's delivery" />
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => { setRejecting(null); setRejectReason(""); }}>Cancel</Button>
-            <Button variant="destructive" onClick={doReject} disabled={busy}>{busy ? "Rejecting..." : "Reject request"}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <ConfirmDialog
         open={!!deletingReq}
         onOpenChange={(o) => !o && setDeletingReq(null)}
@@ -628,17 +515,6 @@ export default function Production() {
         description="The request will be removed completely. No stock has moved yet."
         confirmLabel="Delete request"
         onConfirm={doDeleteRequest}
-      />
-
-      <ConfirmDialog
-        open={!!cancelling}
-        onOpenChange={(o) => !o && setCancelling(null)}
-        title="Cancel this request?"
-        description={cancelling?.status === "approved"
-          ? "The issued materials will be returned to raw-material stock."
-          : "The request will be withdrawn."}
-        confirmLabel="Cancel request"
-        onConfirm={() => cancelling && doCancel(cancelling)}
       />
 
       <Dialog open={runOpen} onOpenChange={(o) => !o && setRunOpen(false)}>
@@ -682,60 +558,26 @@ export default function Production() {
     </div>
   );
 
-  // Row actions for a requisition — max 3 visible, extras under More (DLS).
+  // Row actions for a requisition — the requester's view. Approval lives on the Raw Materials page
+  // (the custodian who owns stock decides); here the requester produces from an approved request
+  // and edits/deletes their own pending ones.
   function RequestActions({ r }: { r: Requisition }) {
-    // Requests flow FROM production TO the raw-materials custodian: approval rights come from
-    // the Raw Materials module (stock movement), not from the production module.
-    const canApprove = can("raw_materials", "adjust_stock");
     const isRequester = r.requested_by === user?.id;
-    const showApprove = canApprove && canTransition(r.status, "approve");
     const showProduce = can("production", "produce") && canTransition(r.status, "produce");
-    // Requesters manage their own pending requests directly (edit / delete).
     const showEdit = isRequester && can("production", "request") && canTransition(r.status, "edit");
     const showDelete = isRequester && can("production", "request") && canTransition(r.status, "delete");
-    // Cancel remains the approver tool: withdraw someone else's pending request, or an approved
-    // one (which returns the issued stock).
-    const showCancel = canApprove && canTransition(r.status, "cancel") && !(isRequester && r.status === "pending" && showDelete);
-    if (!showApprove && !showProduce && !showEdit && !showDelete && !showCancel) return null;
-
-    // Keep at most 3 visible: approvers see Approve/Reject (+More); plain requesters see Edit/Delete.
-    const editDeleteInMore = showApprove && (showEdit || showDelete);
-    const moreItems = [
-      ...(editDeleteInMore && showEdit ? [{ label: "Edit request", destructive: false, onClick: () => openEditRequest(r) }] : []),
-      ...(editDeleteInMore && showDelete ? [{ label: "Delete request", destructive: true, onClick: () => setDeletingReq(r) }] : []),
-      ...(showCancel ? [{ label: "Cancel request", destructive: true, onClick: () => setCancelling(r) }] : []),
-    ];
+    if (!showProduce && !showEdit && !showDelete) return null;
 
     return (
       <div className="flex gap-1 justify-end">
-        {showApprove && (
-          <>
-            <Button variant="ghost" size="sm" onClick={() => openApprove(r)}><Check className="size-4" /> Approve</Button>
-            <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={() => setRejecting(r)}><X className="size-4" /> Reject</Button>
-          </>
-        )}
         {showProduce && (
           <Button variant="ghost" size="sm" onClick={() => openRun(r.id)}><PackagePlus className="size-4" /> Produce</Button>
         )}
-        {!editDeleteInMore && showEdit && (
+        {showEdit && (
           <Button variant="ghost" size="sm" onClick={() => openEditRequest(r)}><Pencil className="size-4" /> Edit</Button>
         )}
-        {!editDeleteInMore && showDelete && (
+        {showDelete && (
           <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={() => setDeletingReq(r)}><Trash2 className="size-4" /> Delete</Button>
-        )}
-        {moreItems.length > 0 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" aria-label={`More actions for request of ${fmtDate(r.created_at)}`}><MoreHorizontal className="size-4" /> More</Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {moreItems.map((mi) => (
-                <DropdownMenuItem key={mi.label} className={mi.destructive ? "text-destructive focus:text-destructive" : undefined} onClick={mi.onClick}>
-                  {mi.destructive ? <Trash2 className="size-4 mr-2" /> : <Pencil className="size-4 mr-2" />} {mi.label}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
         )}
       </div>
     );

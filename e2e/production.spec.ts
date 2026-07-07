@@ -86,24 +86,13 @@ test.describe("Production", () => {
     expect(payload).toEqual({ _business_id: "biz-1", _items: [{ raw_material_id: "m1", quantity: 10 }], _notes: null });
   });
 
-  test("approver can reduce a quantity before approving; INSUFFICIENT_STOCK maps to a friendly toast", async ({ page }) => {
+  test("the Production requests tab has no approve/reject (that leg lives on Raw Materials)", async ({ page }) => {
     await authenticate(page, { role: "owner" });
     await stubProduction(page, { reqs: [PENDING_REQ] });
-    let approvePayload: any = null;
-    await page.route("**/rest/v1/rpc/approve_requisition**", (r) => {
-      approvePayload = r.request().postDataJSON();
-      return r.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ code: "23514", message: "INSUFFICIENT_STOCK:Cassava Flour", details: null, hint: null }) });
-    });
     await page.goto("/production?tab=requests");
     await expect(page.getByRole("table").getByText("Pending")).toBeVisible();
-    await page.getByRole("button", { name: "Approve" }).first().click();
-    // Approve dialog: prefilled with the requested amount; the custodian reduces it to 6.
-    await expect(page.getByText("Approve and issue materials")).toBeVisible();
-    await expect(page.getByLabel("Approve quantity 1")).toHaveValue("10");
-    await page.getByLabel("Approve quantity 1").fill("6");
-    await page.getByRole("button", { name: "Approve & issue" }).click();
-    await expect(page.getByText("Not enough Cassava Flour in stock for this.")).toBeVisible();
-    expect(approvePayload).toEqual({ _requisition_id: "rq1", _items: [{ raw_material_id: "m1", quantity: 6 }] });
+    await expect(page.getByRole("button", { name: "Approve" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Reject" })).toHaveCount(0);
   });
 
   test("completed requests show the trail of raw materials used in production", async ({ page }) => {
@@ -157,8 +146,8 @@ test.describe("Production", () => {
 
   test("requester can edit and delete their own pending request", async ({ page }) => {
     await authenticate(page, { role: "owner" });
-    // Requested by the signed-in user (FAKE_USER.id) — owner is also an approver, so
-    // Edit/Delete live in the More dropdown next to Approve/Reject.
+    // Requested by the signed-in user (FAKE_USER.id). Production has no approval leg now, so
+    // Edit/Delete are direct row actions.
     const OWN_REQ = { ...PENDING_REQ, id: "rq5", requested_by: "00000000-0000-0000-0000-000000000001" };
     await stubProduction(page, { reqs: [OWN_REQ] });
     let updatePayload: any = null;
@@ -174,8 +163,7 @@ test.describe("Production", () => {
     await page.goto("/production?tab=requests");
 
     // Edit: prefilled with the requested quantity, change it, save.
-    await page.getByRole("button", { name: /More actions for request/ }).first().click();
-    await page.getByRole("menuitem", { name: "Edit request" }).click();
+    await page.getByRole("table").getByRole("button", { name: "Edit" }).click();
     await expect(page.getByLabel("Material quantity 1")).toHaveValue("10");
     await page.getByLabel("Material quantity 1").fill("12");
     await page.getByRole("button", { name: "Save changes" }).click();
@@ -183,8 +171,7 @@ test.describe("Production", () => {
     expect(updatePayload).toEqual({ _requisition_id: "rq5", _items: [{ raw_material_id: "m1", quantity: 12 }], _notes: "Saturday batch" });
 
     // Delete: confirm dialog → RPC.
-    await page.getByRole("button", { name: /More actions for request/ }).first().click();
-    await page.getByRole("menuitem", { name: "Delete request" }).click();
+    await page.getByRole("table").getByRole("button", { name: "Delete" }).click();
     await page.getByRole("button", { name: "Delete request", exact: true }).click();
     await expect(page.getByText("Request deleted")).toBeVisible();
     expect(deleteCalled).toBe(true);
