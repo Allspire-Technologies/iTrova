@@ -36,7 +36,7 @@ const STATUSES = ["draft", "sent", "received", "cancelled"];
 type SortCol = "po_number" | "created_at" | "supplier" | "expected_date" | "total_amount" | "status";
 
 export default function PurchaseOrders() {
-  const { business, hasModule } = useAuth();
+  const { business, hasModule, can } = useAuth();
   const { fmt } = useCurrency();
   const { fmtDate } = useDateFormat();
   const [items, setItems] = useState<PO[]>([]);
@@ -360,7 +360,7 @@ export default function PurchaseOrders() {
   const RowActions = ({ i }: { i: PO }) => (
     <div className="flex gap-1 justify-end">
       <Button variant="ghost" size="sm" onClick={() => openView(i)}><Eye className="size-4" /> View</Button>
-      <Button variant="ghost" size="sm" onClick={() => exportPdf(i)}><Download className="size-4" /> PDF</Button>
+      {can("purchase_orders", "download") && <Button variant="ghost" size="sm" onClick={() => exportPdf(i)}><Download className="size-4" /> PDF</Button>}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="sm" aria-label={`More actions for ${i.po_number}`}><MoreHorizontal className="size-4" /> More</Button>
@@ -382,7 +382,7 @@ export default function PurchaseOrders() {
         <div className="flex gap-2 flex-wrap">
           <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => e.target.files?.[0] && importCsv(e.target.files[0])} />
           <Button variant="outline" onClick={downloadTemplate}><Download className="size-4" /> CSV Template</Button>
-          {hasModule("csv_import") && <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={atPoLimit} title={atPoLimit ? limitMessage("purchaseOrders") : undefined}><Upload className="size-4" /> Import CSV</Button>}
+          {hasModule("csv_import") && can("purchase_orders", "csv_import") && <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={atPoLimit} title={atPoLimit ? limitMessage("purchaseOrders") : undefined}><Upload className="size-4" /> Import CSV</Button>}
           {hasModule("csv_export") && <Button variant="outline" onClick={exportCsv} disabled={filtered.length === 0}><Download className="size-4" /> Export CSV</Button>}
           {poLimit !== null && items.length >= Math.floor(poLimit * 0.8) && (
             <span className={`self-center text-xs font-medium ${atPoLimit ? "text-destructive" : "text-amber-600"}`}>
@@ -575,7 +575,7 @@ export default function PurchaseOrders() {
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setViewing(null)}>Close</Button>
-                <Button onClick={() => exportPdf(viewing)}><Download className="size-4 mr-1" /> Download PDF</Button>
+                {can("purchase_orders", "download") && <Button onClick={() => exportPdf(viewing)}><Download className="size-4 mr-1" /> Download PDF</Button>}
               </DialogFooter>
             </>
           )}

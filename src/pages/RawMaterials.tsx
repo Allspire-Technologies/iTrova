@@ -58,10 +58,11 @@ export default function RawMaterials() {
   const [adjustTarget, setAdjustTarget] = useState<Material | null>(null);
   // Production module entry point: link this material into a product's recipe.
   const [linkMaterial, setLinkMaterial] = useState<Material | null>(null);
-  const canLinkProduct = hasModule("production") && can("production", "recipes_manage");
+  const canLinkProduct = hasModule("production") && can("raw_materials", "link_product");
+  const canReorder = can("raw_materials", "reorder");
   // Approval leg of the production flow: the raw-materials custodian (adjust_stock) approves the
   // production team's material requests from here, so a Production-less approver can still act.
-  const canApproveRequests = hasModule("production") && can("raw_materials", "adjust_stock");
+  const canApproveRequests = hasModule("production") && (can("raw_materials", "approve_requests") || can("raw_materials", "reject_requests"));
   const [searchParams, setSearchParams] = useSearchParams();
   const [tab, setTab] = useState(searchParams.get("tab") === "requests" ? "requests" : "materials");
   const [pendingRequests, setPendingRequests] = useState(0);
@@ -341,7 +342,7 @@ export default function RawMaterials() {
                           <Button variant="ghost" size="sm" aria-label={`More actions for ${m.name}`}><MoreHorizontal className="size-4" /> More</Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem disabled={!suppliers.find(x => x.id === m.supplier_id)?.phone} onClick={() => reorder(m)}><MessageCircle className="size-4 mr-2" /> Reorder via WhatsApp</DropdownMenuItem>
+                          {canReorder && <DropdownMenuItem disabled={!suppliers.find(x => x.id === m.supplier_id)?.phone} onClick={() => reorder(m)}><MessageCircle className="size-4 mr-2" /> Reorder via WhatsApp</DropdownMenuItem>}
                           <DropdownMenuItem onClick={() => openEdit(m)}><Pencil className="size-4 mr-2" /> Edit</DropdownMenuItem>
                           {canLinkProduct && <DropdownMenuItem onClick={() => setLinkMaterial(m)}><Factory className="size-4 mr-2" /> Link to product</DropdownMenuItem>}
                         </DropdownMenuContent>
@@ -387,7 +388,7 @@ export default function RawMaterials() {
                             <Button variant="ghost" size="sm" aria-label={`More actions for ${m.name}`}><MoreHorizontal className="size-4" /> More</Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem disabled={!suppliers.find(x => x.id === m.supplier_id)?.phone} onClick={() => reorder(m)}><MessageCircle className="size-4 mr-2" /> Reorder via WhatsApp</DropdownMenuItem>
+                            {canReorder && <DropdownMenuItem disabled={!suppliers.find(x => x.id === m.supplier_id)?.phone} onClick={() => reorder(m)}><MessageCircle className="size-4 mr-2" /> Reorder via WhatsApp</DropdownMenuItem>}
                             <DropdownMenuItem onClick={() => openEdit(m)}><Pencil className="size-4 mr-2" /> Edit</DropdownMenuItem>
                             {canLinkProduct && <DropdownMenuItem onClick={() => setLinkMaterial(m)}><Factory className="size-4 mr-2" /> Link to product</DropdownMenuItem>}
                           </DropdownMenuContent>

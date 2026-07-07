@@ -29,8 +29,11 @@ export default function MaterialApprovals({ onChanged, onPendingCount }: {
   onChanged?: () => void;
   onPendingCount?: (n: number) => void;
 }) {
-  const { business } = useAuth();
+  const { business, can } = useAuth();
   const { fmtDate } = useDateFormat();
+  const canApprove = can("raw_materials", "approve_requests");
+  const canReject = can("raw_materials", "reject_requests");
+  const canCancel = can("raw_materials", "adjust_stock");
   const [reqs, setReqs] = useState<Requisition[]>([]);
   const [materials, setMaterials] = useState<MaterialRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -129,12 +132,12 @@ export default function MaterialApprovals({ onChanged, onPendingCount }: {
     if (r.status === "pending") {
       return (
         <div className="flex gap-1 justify-end">
-          <Button variant="ghost" size="sm" onClick={() => openApprove(r)}><Check className="size-4" /> Approve</Button>
-          <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={() => setRejecting(r)}><X className="size-4" /> Reject</Button>
+          {canApprove && <Button variant="ghost" size="sm" onClick={() => openApprove(r)}><Check className="size-4" /> Approve</Button>}
+          {canReject && <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={() => setRejecting(r)}><X className="size-4" /> Reject</Button>}
         </div>
       );
     }
-    if (r.status === "approved") {
+    if (r.status === "approved" && canCancel) {
       return (
         <div className="flex justify-end">
           <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={() => setCancelling(r)}><RotateCcw className="size-4" /> Cancel & restock</Button>

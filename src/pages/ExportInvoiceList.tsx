@@ -76,17 +76,21 @@ export default function ExportInvoiceList() {
                 <Button variant="ghost" size="sm" onClick={() => navigate(`/export-invoice/${inv.id}`)}>
                   <Eye className="size-4" /> View
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => downloadExportInvoicePdf(inv, `${inv.invoice_number.replace(/[^\w.-]+/g, "-")}.pdf`)}>
-                  <FileDown className="size-4" /> PDF
-                </Button>
+                {can("export_invoices", "download") && (
+                  <Button variant="outline" size="sm" onClick={() => downloadExportInvoicePdf(inv, `${inv.invoice_number.replace(/[^\w.-]+/g, "-")}.pdf`)}>
+                    <FileDown className="size-4" /> PDF
+                  </Button>
+                )}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="sm" aria-label={`More actions for ${inv.invoice_number}`}><MoreHorizontal className="size-4" /> More</Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => downloadExportInvoiceDocx(inv, `${inv.invoice_number.replace(/[^\w.-]+/g, "-")}.docx`)}>
-                      <FileDown className="size-4 mr-2" /> Download DOCX
-                    </DropdownMenuItem>
+                    {can("export_invoices", "download") && (
+                      <DropdownMenuItem onClick={() => downloadExportInvoiceDocx(inv, `${inv.invoice_number.replace(/[^\w.-]+/g, "-")}.docx`)}>
+                        <FileDown className="size-4 mr-2" /> Download DOCX
+                      </DropdownMenuItem>
+                    )}
                     {can("export_invoices", "edit") && (
                       <DropdownMenuItem onClick={() => navigate(`/export-invoice/${inv.id}/edit`)}>
                         <Pencil className="size-4 mr-2" /> Edit

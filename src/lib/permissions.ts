@@ -32,35 +32,41 @@ export const MODULE_ACTIONS: ModuleDef[] = [
   { key: "raw_materials", label: "Raw Materials", actions: [
     a("view", "View"), a("create", "Add materials"), a("edit", "Edit materials"),
     a("record_purchase", "Record purchases"), a("adjust_stock", "Adjust stock"),
+    a("link_product", "Link to product"), a("reorder", "Reorder via WhatsApp"),
+    a("approve_requests", "Approve material requests"), a("reject_requests", "Reject material requests"),
     a("csv_import", "Import CSV"), a("csv_export", "Export CSV"),
   ]},
   { key: "invoices", label: "Invoices", actions: [
     a("view", "View"), a("create", "Create invoices"), a("edit", "Edit invoices"),
     a("status_change", "Change status"), a("record_payment", "Record payments"),
-    a("delete", "Delete invoices"), a("csv_export", "Export CSV"),
+    a("delete", "Delete invoices"), a("print", "Print receipt"), a("download", "Download PDF"),
+    a("csv_export", "Export CSV"),
   ]},
   { key: "export_invoices", label: "Export Invoices", actions: [
     a("view", "View"), a("create", "Create"), a("edit", "Edit"), a("delete", "Delete"),
+    a("download", "Download PDF/DOCX"),
   ]},
   { key: "purchase_orders", label: "Purchase Orders", actions: [
     a("view", "View"), a("create", "Create POs"), a("status_change", "Change status"),
-    a("receive", "Receive stock"), a("delete", "Delete POs"), a("csv_export", "Export CSV"),
+    a("receive", "Receive stock"), a("delete", "Delete POs"), a("download", "Download PDF"),
+    a("csv_import", "Import CSV"), a("csv_export", "Export CSV"),
   ]},
   { key: "general_store", label: "General Store", actions: [
     a("view", "View"), a("item_manage", "Manage items"), a("item_delete", "Delete items"),
     a("staff_manage", "Manage staff"), a("staff_delete", "Delete staff"),
     a("checkout", "Give out items"), a("return", "Record returns"), a("csv_import", "Import CSV"),
   ]},
-  // Approving/rejecting material requests is deliberately NOT a production action — it belongs to
-  // whoever manages Raw Materials stock (raw_materials.adjust_stock): requests flow FROM
-  // production TO the raw-materials custodian.
+  // Production is Request → Run only. Linking materials to a product ("Link to product") lives on
+  // the Raw Materials page (raw_materials.link_product), and approving/rejecting material requests
+  // belongs to the raw-materials custodian (raw_materials.approve_requests/reject_requests):
+  // requests flow FROM production TO whoever manages raw-material stock.
   { key: "production", label: "Production", actions: [
-    a("view", "View"), a("recipes_manage", "Manage recipes"), a("request", "Request materials"),
-    a("produce", "Record production"),
+    a("view", "View"), a("request", "Request materials"), a("produce", "Record production"),
   ]},
   { key: "reports", label: "Reports", actions: [a("view", "View"), a("export", "Export")] },
   { key: "team", label: "Team", actions: [
-    a("view", "View"), a("invite", "Invite members"), a("role_change", "Change roles"), a("remove", "Remove members"),
+    a("view", "View"), a("invite", "Invite members"), a("role_change", "Change roles"),
+    a("remove", "Remove members"), a("csv_import", "Import CSV"), a("csv_export", "Export CSV"),
   ]},
 ];
 
@@ -77,7 +83,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<"manager" | "cashier", PermissionM
     suppliers: allActions("suppliers"),
     raw_materials: allActions("raw_materials"),
     invoices: allActions("invoices"),
-    export_invoices: ["view", "create"],
+    export_invoices: ["view", "create", "download"],
     purchase_orders: allActions("purchase_orders"),
     general_store: ["view", "item_manage", "staff_manage", "checkout", "return", "csv_import"],
     production: allActions("production"),
@@ -85,7 +91,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<"manager" | "cashier", PermissionM
   },
   cashier: {
     pos: ["view", "orders_manage"],
-    invoices: ["view", "create"],
+    invoices: ["view", "create", "print"], // cashiers print receipts every sale
   },
 };
 

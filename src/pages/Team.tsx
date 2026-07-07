@@ -288,8 +288,8 @@ export default function Team() {
           <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden"
             onChange={e => e.target.files?.[0] && importCsv(e.target.files[0])} />
           <Button variant="outline" onClick={downloadTemplate}><Download className="size-4" /> CSV Template</Button>
-          {can("team", "invite") && hasModule("csv_import") && <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={atStaffLimit} title={atStaffLimit ? limitMessage("staff") : undefined}><Upload className="size-4" /> Import CSV</Button>}
-          <Button variant="outline" onClick={exportMembers} disabled={members.length === 0}><Download className="size-4" /> Export</Button>
+          {can("team", "invite") && hasModule("csv_import") && can("team", "csv_import") && <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={atStaffLimit} title={atStaffLimit ? limitMessage("staff") : undefined}><Upload className="size-4" /> Import CSV</Button>}
+          {can("team", "csv_export") && <Button variant="outline" onClick={exportMembers} disabled={members.length === 0}><Download className="size-4" /> Export</Button>}
           {staffLimit !== null && members.length >= Math.floor(staffLimit * 0.8) && (
             <span className={`self-center text-xs font-medium ${atStaffLimit ? "text-destructive" : "text-amber-600"}`}>
               {members.length} / {staffLimit} seats
