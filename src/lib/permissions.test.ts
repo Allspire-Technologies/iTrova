@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve as resolvePath } from "node:path";
+import { readFileSync, readdirSync } from "node:fs";
+import { resolve as resolvePath, join } from "node:path";
 import { resolvePermissions, toggleAction, toggleModule, DEFAULT_ROLE_PERMISSIONS, MODULE_ACTIONS } from "./permissions";
 
 const resolve = (over: Partial<Parameters<typeof resolvePermissions>[0]> = {}) =>
@@ -92,6 +92,42 @@ describe("server/client defaults drift guard", () => {
     };
     expect(grab("manager")).toEqual(DEFAULT_ROLE_PERMISSIONS.manager);
     expect(grab("cashier")).toEqual(DEFAULT_ROLE_PERMISSIONS.cashier);
+  });
+});
+
+describe("registry completeness — every can() call is a registered permission", () => {
+  // Modules gated by can() but deliberately NOT in MODULE_ACTIONS: `insights` is the "AI Insights —
+  // Soon" placeholder, which resolvePermissions grants by parity until it launches. Add a module
+  // here only with the same explicit intent.
+  const NON_REGISTRY_MODULES = new Set(["insights"]);
+
+  function collectSourceFiles(dir: string, acc: string[] = []): string[] {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) collectSourceFiles(full, acc);
+      else if (/\.(ts|tsx)$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) acc.push(full);
+    }
+    return acc;
+  }
+
+  it("no can(\"module\",\"action\") in src/ references an action missing from Permissions", () => {
+    const files = collectSourceFiles(resolvePath(__dirname, ".."));
+    const CALL = /\bcan\(\s*["']([a-z_]+)["']\s*,\s*["']([a-z_]+)["']\s*\)/g;
+    const byModule = new Map(MODULE_ACTIONS.map((m) => [m.key, new Set(m.actions.map((x) => x.key))]));
+    const missing: string[] = [];
+    const seen = new Set<string>();
+
+    for (const file of files) {
+      const text = readFileSync(file, "utf8");
+      for (const m of text.matchAll(CALL)) {
+        const pair = `${m[1]}.${m[2]}`;
+        if (seen.has(pair)) continue;
+        seen.add(pair);
+        if (NON_REGISTRY_MODULES.has(m[1])) continue;
+        if (!byModule.get(m[1])?.has(m[2])) missing.push(`${pair}  (${file.replace(/.*[/\\]src[/\\]/, "src/")})`);
+      }
+    }
+    expect(missing, `can() calls whose action isn't registered in MODULE_ACTIONS:\n${missing.join("\n")}`).toEqual([]);
   });
 });
 

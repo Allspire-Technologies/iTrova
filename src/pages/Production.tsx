@@ -13,21 +13,22 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import SearchableSelect from "@/components/SearchableSelect";
 import ConfirmDialog from "@/components/ConfirmDialog";
-import RecipeEditorDialog from "@/components/RecipeEditorDialog";
 import { TablePageSkeleton } from "@/components/Skeletons";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { Factory, Plus, Pencil, Trash2, MoreHorizontal, ClipboardList, PackagePlus } from "lucide-react";
 import {
-  listRecipes, listRequisitions, listRuns, saveRecipe,
+  listRequisitions, listRuns,
   createRequisition, updateRequisition, deleteRequisition, recordProductionRun,
   validateLines, friendlyProductionError, canTransition,
   REQUISITION_STATUS_LABEL, REQUISITION_STATUS_CLASS,
-  type Recipe, type Requisition, type Run,
+  type Requisition, type Run,
 } from "@/lib/production";
 
-const TABS = [{ key: "recipes", label: "Recipes" }, { key: "requests", label: "Requests" }, { key: "runs", label: "Runs" }] as const;
+// Recipes (product↔material links) live on the Raw Materials page ("Link to product"); Production
+// itself is just the Request → Run → Inventory mechanism.
+const TABS = [{ key: "requests", label: "Requests" }, { key: "runs", label: "Runs" }] as const;
 type TabKey = (typeof TABS)[number]["key"];
 
 type MaterialRow = { id: string; name: string; unit: string | null; stock_quantity: number };
@@ -38,20 +39,16 @@ export default function Production() {
   const { business, user, can } = useAuth();
   const { fmtDate } = useDateFormat();
   const [searchParams] = useSearchParams();
-  const initialTab = (searchParams.get("tab") as TabKey | null) ?? "recipes";
-  const [tab, setTab] = useState<TabKey>(TABS.some(t => t.key === initialTab) ? initialTab : "recipes");
+  const initialTab = (searchParams.get("tab") as TabKey | null) ?? "requests";
+  const [tab, setTab] = useState<TabKey>(TABS.some(t => t.key === initialTab) ? initialTab : "requests");
   const [loading, setLoading] = useState(true);
 
-  const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [requisitions, setRequisitions] = useState<Requisition[]>([]);
   const [runs, setRuns] = useState<Run[]>([]);
   const [materials, setMaterials] = useState<MaterialRow[]>([]);
   const [products, setProducts] = useState<ProductRow[]>([]);
 
   // dialogs
-  const [recipeOpen, setRecipeOpen] = useState(false);
-  const [recipeProduct, setRecipeProduct] = useState<string | null>(null);
-  const [deleteRecipe, setDeleteRecipe] = useState<Recipe | null>(null);
   const [requestOpen, setRequestOpen] = useState(false);
   const [editingReq, setEditingReq] = useState<Requisition | null>(null);
   const [deletingReq, setDeletingReq] = useState<Requisition | null>(null);
@@ -67,12 +64,12 @@ export default function Production() {
   const load = useCallback(async () => {
     if (!business) return;
     try {
-      const [rec, req, rn, mat, prod] = await Promise.all([
-        listRecipes(), listRequisitions(), listRuns(),
+      const [req, rn, mat, prod] = await Promise.all([
+        listRequisitions(), listRuns(),
         supabase.from("raw_materials").select("id,name,unit,stock_quantity").order("name"),
         supabase.from("products").select("id,name,unit").order("name"),
       ]);
-      setRecipes(rec); setRequisitions(req); setRuns(rn);
+      setRequisitions(req); setRuns(rn);
       setMaterials((mat.data as MaterialRow[]) ?? []);
       setProducts((prod.data as ProductRow[]) ?? []);
     } catch (e) {
@@ -206,17 +203,6 @@ export default function Production() {
     }
   };
 
-  const removeRecipe = async () => {
-    if (!deleteRecipe) return;
-    try {
-      await saveRecipe(deleteRecipe.product_id, []);
-      toast.success("Recipe removed");
-      load();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Couldn't remove the recipe");
-    }
-  };
-
   const qtyLineEditor = (
     lines: QtyLine[], setLines: (f: (prev: QtyLine[]) => QtyLine[]) => void,
     options: { value: string; label: string }[], placeholder: string, unitOf?: (id: string) => string,
@@ -261,12 +247,9 @@ export default function Production() {
           <h1 className="font-display text-3xl lg:text-4xl font-bold text-brand-dark flex items-center gap-2">
             <Factory className="size-7" /> Production
           </h1>
-          <p className="text-muted-foreground mt-1">Recipes, material requests and production runs that turn raw materials into stock.</p>
+          <p className="text-muted-foreground mt-1">Request raw materials, then record production runs that turn them into product stock.</p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          {tab === "recipes" && can("production", "recipes_manage") && (
-            <Button variant="hero" onClick={() => { setRecipeProduct(null); setRecipeOpen(true); }}><Plus className="size-4" /> Add recipe</Button>
-          )}
           {tab === "requests" && can("production", "request") && (
             <Button variant="hero" onClick={openNewRequest}><ClipboardList className="size-4" /> Request materials</Button>
           )}
@@ -284,68 +267,6 @@ export default function Production() {
           </button>
         ))}
       </div>
-
-      {/* ------------------------------------------------ Recipes */}
-      {tab === "recipes" && (
-        <Card className="shadow-card border-border/60">
-          {recipes.length === 0 ? (
-            <div className="p-12 text-center">
-              <div className="size-14 rounded-2xl bg-brand-light text-brand grid place-items-center mx-auto mb-4"><Factory className="size-6" /></div>
-              <h3 className="font-display text-lg font-semibold text-brand-dark">No recipes yet</h3>
-              <p className="text-muted-foreground text-sm mt-1 mb-4">Link raw materials to a product to describe what one unit is made of.</p>
-              {can("production", "recipes_manage") && (
-                <Button variant="brand" onClick={() => { setRecipeProduct(null); setRecipeOpen(true); }}><Plus className="size-4" /> Add recipe</Button>
-              )}
-            </div>
-          ) : (
-            <>
-              <div className="hidden sm:block">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Product</TableHead><TableHead>Materials per unit</TableHead><TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {recipes.map(r => (
-                      <TableRow key={r.product_id}>
-                        <TableCell className="font-medium text-brand-dark">{r.product_name}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {r.lines.map(l => `${l.raw_materials?.name ?? "Material"} × ${l.quantity_per_unit}${l.raw_materials?.unit ? ` ${l.raw_materials.unit}` : ""}`).join(" · ")}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {can("production", "recipes_manage") && (
-                            <div className="flex gap-1 justify-end">
-                              <Button variant="ghost" size="sm" onClick={() => { setRecipeProduct(r.product_id); setRecipeOpen(true); }}><Pencil className="size-4" /> Edit</Button>
-                              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={() => setDeleteRecipe(r)}><Trash2 className="size-4" /> Delete</Button>
-                            </div>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-              <div className="sm:hidden divide-y">
-                {recipes.map(r => (
-                  <div key={r.product_id} className="p-4 space-y-1">
-                    <p className="font-medium text-brand-dark">{r.product_name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {r.lines.map(l => `${l.raw_materials?.name ?? "Material"} × ${l.quantity_per_unit}${l.raw_materials?.unit ? ` ${l.raw_materials.unit}` : ""}`).join(" · ")}
-                    </p>
-                    {can("production", "recipes_manage") && (
-                      <div className="flex gap-1 pt-1">
-                        <Button variant="ghost" size="sm" onClick={() => { setRecipeProduct(r.product_id); setRecipeOpen(true); }}><Pencil className="size-4" /> Edit</Button>
-                        <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={() => setDeleteRecipe(r)}><Trash2 className="size-4" /> Delete</Button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </Card>
-      )}
 
       {/* ------------------------------------------------ Requests */}
       {tab === "requests" && (
@@ -476,22 +397,6 @@ export default function Production() {
       )}
 
       {/* ------------------------------------------------ dialogs */}
-      <RecipeEditorDialog
-        open={recipeOpen}
-        onClose={() => setRecipeOpen(false)}
-        onSaved={load}
-        productId={recipeProduct}
-      />
-
-      <ConfirmDialog
-        open={!!deleteRecipe}
-        onOpenChange={(o) => !o && setDeleteRecipe(null)}
-        title={`Remove the recipe for ${deleteRecipe?.product_name ?? "this product"}?`}
-        description="Past production runs keep their recorded quantities — only the template is removed."
-        confirmLabel="Remove recipe"
-        onConfirm={removeRecipe}
-      />
-
       <Dialog open={requestOpen} onOpenChange={(o) => { if (!o) { setRequestOpen(false); setEditingReq(null); } }}>
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle className="font-display">{editingReq ? "Edit materials request" : "Request materials"}</DialogTitle></DialogHeader>

@@ -5,21 +5,6 @@ import { supabase } from "@/integrations/supabase/client";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const sb = supabase as any;
 
-export type RecipeLine = {
-  id?: string;
-  product_id: string;
-  raw_material_id: string;
-  quantity_per_unit: number;
-  raw_materials?: { name: string; unit: string | null } | null;
-};
-
-export type Recipe = {
-  product_id: string;
-  product_name: string;
-  product_unit: string | null;
-  lines: RecipeLine[];
-};
-
 export type RequisitionStatus = "pending" | "approved" | "rejected" | "cancelled" | "completed";
 
 export type RequisitionItem = {
@@ -149,30 +134,8 @@ export function friendlyProductionError(message: string | undefined, fallback: s
 
 // ---------------------------------------------------------------- data access
 
-export async function listRecipes(): Promise<Recipe[]> {
-  const { data, error } = await sb
-    .from("product_materials")
-    .select("id, product_id, raw_material_id, quantity_per_unit, products(name, unit), raw_materials(name, unit)");
-  if (error) throw new Error(error.message);
-  const byProduct = new Map<string, Recipe>();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  for (const row of (data ?? []) as any[]) {
-    const r = byProduct.get(row.product_id) ?? {
-      product_id: row.product_id,
-      product_name: row.products?.name ?? "Product",
-      product_unit: row.products?.unit ?? null,
-      lines: [],
-    };
-    r.lines.push({
-      id: row.id, product_id: row.product_id, raw_material_id: row.raw_material_id,
-      quantity_per_unit: Number(row.quantity_per_unit), raw_materials: row.raw_materials ?? null,
-    });
-    byProduct.set(row.product_id, r);
-  }
-  return [...byProduct.values()].sort((a, b) => a.product_name.localeCompare(b.product_name));
-}
-
-/** Replace a product's recipe with the given lines (delete + insert — small sets). */
+/** Replace a product's recipe with the given lines (delete + insert — small sets). Used by the
+ *  "Link to product" editor on the Raw Materials page; Production has no recipe surface. */
 export async function saveRecipe(productId: string, lines: { raw_material_id: string; quantity_per_unit: number }[]): Promise<void> {
   const del = await sb.from("product_materials").delete().eq("product_id", productId);
   if (del.error) throw new Error(del.error.message);

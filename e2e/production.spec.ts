@@ -5,11 +5,6 @@ const FLOUR = { id: "m1", business_id: "biz-1", name: "Cassava Flour", sku: "CF-
 const SUGAR = { id: "m2", business_id: "biz-1", name: "Sugar", sku: "SG-01", unit: "kg", stock_quantity: 5, reorder_level: 2, cost_per_unit: 800, supplier_id: null, notes: null, created_at: "2026-06-01T00:00:00Z" };
 const GARRI = { id: "p1", business_id: "biz-1", name: "Garri 50kg", category: "Foodstuff", sku: "GAR-50", unit: "bag", selling_price: 8500, cost_price: 6000, stock_quantity: 20, reorder_level: 5, created_at: "2026-06-01T00:00:00Z" };
 
-const RECIPE_ROW = {
-  id: "pm1", product_id: "p1", raw_material_id: "m1", quantity_per_unit: 2.5,
-  products: { name: "Garri 50kg", unit: "bag" }, raw_materials: { name: "Cassava Flour", unit: "kg" },
-};
-
 const PENDING_REQ = {
   id: "rq1", business_id: "biz-1", requested_by: "user-1", status: "pending", notes: "Saturday batch",
   decision_note: null, approved_by: null, approved_at: null, created_at: "2026-07-06T00:00:00Z",
@@ -24,9 +19,8 @@ const APPROVED_REQ = {
   ],
 };
 
-function stubProduction(page: Page, opts: { recipes?: object[]; reqs?: object[]; runs?: object[] } = {}) {
+function stubProduction(page: Page, opts: { reqs?: object[]; runs?: object[] } = {}) {
   return Promise.all([
-    stubRows(page, "product_materials", opts.recipes ?? []),
     stubRows(page, "production_requisitions", opts.reqs ?? []),
     stubRows(page, "production_runs", opts.runs ?? []),
     stubRows(page, "raw_materials", [FLOUR, SUGAR]),
@@ -35,37 +29,14 @@ function stubProduction(page: Page, opts: { recipes?: object[]; reqs?: object[];
 }
 
 test.describe("Production", () => {
-  test("owner sees the module, its tabs, and existing recipes", async ({ page }) => {
+  test("owner sees the module with just the Request → Run tabs (recipes live on Raw Materials)", async ({ page }) => {
     await authenticate(page, { role: "owner" });
     await expect(page.getByRole("link", { name: "Production" })).toBeVisible();
-    await stubProduction(page, { recipes: [RECIPE_ROW] });
+    await stubProduction(page);
     await page.goto("/production");
     await expect(page.getByRole("heading", { name: "Production" })).toBeVisible();
-    for (const t of ["Recipes", "Requests", "Runs"]) await expect(page.getByRole("button", { name: t, exact: true })).toBeVisible();
-    await expect(page.getByRole("table").getByText("Garri 50kg")).toBeVisible();
-    await expect(page.getByRole("table").getByText(/Cassava Flour × 2.5 kg/)).toBeVisible();
-  });
-
-  test("recipe editor saves the material lines to product_materials", async ({ page }) => {
-    await authenticate(page, { role: "owner" });
-    await stubProduction(page);
-    const writes: any[] = [];
-    await page.route("**/rest/v1/product_materials**", (r) => {
-      const method = r.request().method();
-      if (method === "POST") { writes.push(r.request().postDataJSON()); return r.fulfill({ status: 201, contentType: "application/json", body: "[]" }); }
-      if (method === "DELETE") return r.fulfill({ status: 204, body: "" });
-      return r.fulfill({ status: 200, contentType: "application/json", body: "[]" });
-    });
-    await page.goto("/production");
-    await page.getByRole("button", { name: "Add recipe" }).first().click(); // header + empty-state CTA both match
-    await page.getByRole("combobox").first().click();
-    await page.getByRole("option", { name: "Garri 50kg" }).click();
-    await page.getByRole("combobox").nth(1).click();
-    await page.getByRole("option", { name: "Cassava Flour" }).click();
-    await page.getByLabel("Quantity of material 1").fill("2.5");
-    await page.getByRole("button", { name: "Save recipe" }).click();
-    await expect(page.getByText("Recipe saved")).toBeVisible();
-    expect(writes).toEqual([[{ product_id: "p1", raw_material_id: "m1", quantity_per_unit: 2.5 }]]);
+    for (const t of ["Requests", "Runs"]) await expect(page.getByRole("button", { name: t, exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Recipes", exact: true })).toHaveCount(0);
   });
 
   test("request materials sends the create_requisition RPC payload", async ({ page }) => {
