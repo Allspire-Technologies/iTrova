@@ -58,6 +58,8 @@ export default function Invoices() {
   const canStatus = can("invoices", "status_change");
   const canPay = can("invoices", "record_payment");
   const canDeleteInv = can("invoices", "delete");
+  const canPrintInv = can("invoices", "print");
+  const canDownloadInv = can("invoices", "download");
   const { fmt, symbol } = useCurrency();
   const { timezone } = useDateFormat();
   const [searchParams] = useSearchParams();
@@ -544,7 +546,7 @@ export default function Invoices() {
   const RowActions = ({ i }: { i: Invoice }) => {
     const second: "pay" | "print" | "edit" | null =
       canPay && canTakePayment(i) ? "pay"
-      : i.status === "paid" ? "print"
+      : canPrintInv && i.status === "paid" ? "print"
       : canEditInv && i.status !== "void" ? "edit"
       : null;
     return (
@@ -564,8 +566,8 @@ export default function Invoices() {
           </Tooltip>
           <DropdownMenuContent align="end">
             {canEditInv && second !== "edit" && i.status !== "void" && <DropdownMenuItem onClick={() => openEdit(i)}><Pencil className="size-4 mr-2" /> Edit</DropdownMenuItem>}
-            {i.status === "paid" && second !== "print" && <DropdownMenuItem onClick={() => printReceipt(i)}><Printer className="size-4 mr-2" /> Print</DropdownMenuItem>}
-            <DropdownMenuItem onClick={() => exportPdf(i)}><Download className="size-4 mr-2" /> Download</DropdownMenuItem>
+            {canPrintInv && i.status === "paid" && second !== "print" && <DropdownMenuItem onClick={() => printReceipt(i)}><Printer className="size-4 mr-2" /> Print</DropdownMenuItem>}
+            {canDownloadInv && <DropdownMenuItem onClick={() => exportPdf(i)}><Download className="size-4 mr-2" /> Download</DropdownMenuItem>}
             {canDeleteInv && <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => remove(i)}><Trash2 className="size-4 mr-2" /> Delete</DropdownMenuItem>}
           </DropdownMenuContent>
         </DropdownMenu>
@@ -899,8 +901,8 @@ export default function Invoices() {
                   window.open(`mailto:${viewing.customer_email}?subject=${subject}&body=${body}`);
                 }}><Mail className="size-4 mr-1" /> Email</Button>
                 <Button variant="outline" onClick={() => shareWa(viewing)}><MessageCircle className="size-4 mr-1" /> WhatsApp</Button>
-                {viewing.status === "paid" && <Button variant="outline" onClick={() => printReceipt(viewing)}><Printer className="size-4 mr-1" /> Print</Button>}
-                <Button onClick={() => exportPdf(viewing)}><Download className="size-4 mr-1" /> Download</Button>
+                {canPrintInv && viewing.status === "paid" && <Button variant="outline" onClick={() => printReceipt(viewing)}><Printer className="size-4 mr-1" /> Print</Button>}
+                {canDownloadInv && <Button onClick={() => exportPdf(viewing)}><Download className="size-4 mr-1" /> Download</Button>}
               </DialogFooter>
             </>
           )}

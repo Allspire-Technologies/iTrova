@@ -71,8 +71,8 @@ export default function ExportInvoiceView() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {can("export_invoices", "edit") && <Button variant="ghost" size="sm" onClick={() => navigate(`/export-invoice/${inv.id}/edit`)}><Pencil className="size-4" /> Edit</Button>}
-          <Button variant="outline" size="sm" onClick={() => downloadExportInvoicePdf(inv, `${base}.pdf`)}><FileDown className="size-4" /> PDF</Button>
-          <Button variant="outline" size="sm" onClick={() => downloadExportInvoiceDocx(inv, `${base}.docx`)}><FileDown className="size-4" /> DOCX</Button>
+          {can("export_invoices", "download") && <Button variant="outline" size="sm" onClick={() => downloadExportInvoicePdf(inv, `${base}.pdf`)}><FileDown className="size-4" /> PDF</Button>}
+          {can("export_invoices", "download") && <Button variant="outline" size="sm" onClick={() => downloadExportInvoiceDocx(inv, `${base}.docx`)}><FileDown className="size-4" /> DOCX</Button>}
         </div>
       </div>
 

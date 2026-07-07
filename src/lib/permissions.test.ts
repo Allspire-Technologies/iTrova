@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve as resolvePath } from "node:path";
+import { readFileSync, readdirSync } from "node:fs";
+import { resolve as resolvePath, join } from "node:path";
 import { resolvePermissions, toggleAction, toggleModule, DEFAULT_ROLE_PERMISSIONS, MODULE_ACTIONS } from "./permissions";
 
 const resolve = (over: Partial<Parameters<typeof resolvePermissions>[0]> = {}) =>
@@ -81,8 +81,9 @@ describe("resolvePermissions — plan + registry edges", () => {
 describe("server/client defaults drift guard", () => {
   it("the SQL default_role_permissions JSON matches DEFAULT_ROLE_PERMISSIONS exactly", () => {
     // Server-side enforcement (has_permission) embeds the same defaults in SQL. This test parses the
-    // migration so the two can never drift silently.
-    const sql = readFileSync(resolvePath(__dirname, "../../supabase/migrations/20260704150000_rbac_enforcement.sql"), "utf8");
+    // LATEST migration that re-declares default_role_permissions so the two can never drift silently.
+    // (Superseded declarations: 20260704150000 → 20260707110000 → 20260707150000 → 20260707190000.)
+    const sql = readFileSync(resolvePath(__dirname, "../../supabase/migrations/20260707190000_granular_permissions.sql"), "utf8");
     const block = sql.split("RBAC_DEFAULTS_JSON_START")[1]?.split("RBAC_DEFAULTS_JSON_END")[0] ?? "";
     const grab = (role: string) => {
       const m = block.match(new RegExp(`when '${role}' then '([\\s\\S]*?)'::jsonb`));
@@ -91,6 +92,42 @@ describe("server/client defaults drift guard", () => {
     };
     expect(grab("manager")).toEqual(DEFAULT_ROLE_PERMISSIONS.manager);
     expect(grab("cashier")).toEqual(DEFAULT_ROLE_PERMISSIONS.cashier);
+  });
+});
+
+describe("registry completeness — every can() call is a registered permission", () => {
+  // Modules gated by can() but deliberately NOT in MODULE_ACTIONS: `insights` is the "AI Insights —
+  // Soon" placeholder, which resolvePermissions grants by parity until it launches. Add a module
+  // here only with the same explicit intent.
+  const NON_REGISTRY_MODULES = new Set(["insights"]);
+
+  function collectSourceFiles(dir: string, acc: string[] = []): string[] {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) collectSourceFiles(full, acc);
+      else if (/\.(ts|tsx)$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) acc.push(full);
+    }
+    return acc;
+  }
+
+  it("no can(\"module\",\"action\") in src/ references an action missing from Permissions", () => {
+    const files = collectSourceFiles(resolvePath(__dirname, ".."));
+    const CALL = /\bcan\(\s*["']([a-z_]+)["']\s*,\s*["']([a-z_]+)["']\s*\)/g;
+    const byModule = new Map(MODULE_ACTIONS.map((m) => [m.key, new Set(m.actions.map((x) => x.key))]));
+    const missing: string[] = [];
+    const seen = new Set<string>();
+
+    for (const file of files) {
+      const text = readFileSync(file, "utf8");
+      for (const m of text.matchAll(CALL)) {
+        const pair = `${m[1]}.${m[2]}`;
+        if (seen.has(pair)) continue;
+        seen.add(pair);
+        if (NON_REGISTRY_MODULES.has(m[1])) continue;
+        if (!byModule.get(m[1])?.has(m[2])) missing.push(`${pair}  (${file.replace(/.*[/\\]src[/\\]/, "src/")})`);
+      }
+    }
+    expect(missing, `can() calls whose action isn't registered in MODULE_ACTIONS:\n${missing.join("\n")}`).toEqual([]);
   });
 });
 
