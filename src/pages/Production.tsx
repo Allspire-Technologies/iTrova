@@ -157,27 +157,29 @@ export default function Production() {
   };
 
   // ------------------------------------------------ runs
-  const openRun = (requisitionId = "") => {
-    setRunReq(requisitionId);
+  // Production is always recorded against an APPROVED materials request — default to the first one
+  // (or the one whose "Produce" button was clicked).
+  const materialsFromReq = (id: string) => {
+    const req = approvedReqs.find(r => r.id === id);
+    return req ? req.production_requisition_items.map(i => ({ key_id: i.raw_material_id, quantity: String(i.quantity_issued ?? i.quantity_requested) })) : [];
+  };
+  const openRun = (requisitionId?: string) => {
+    const id = requisitionId ?? approvedReqs[0]?.id ?? "";
+    setRunReq(id);
     setRunOutputs([{ key_id: "", quantity: "" }]);
     setRunNotes("");
-    const req = approvedReqs.find(r => r.id === requisitionId);
-    setRunMaterials(req
-      ? req.production_requisition_items.map(i => ({ key_id: i.raw_material_id, quantity: String(i.quantity_issued ?? i.quantity_requested) }))
-      : []);
+    setRunMaterials(materialsFromReq(id));
     setRunOpen(true);
   };
 
   const onRunReqChange = (id: string) => {
     setRunReq(id);
-    const req = approvedReqs.find(r => r.id === id);
-    setRunMaterials(req
-      ? req.production_requisition_items.map(i => ({ key_id: i.raw_material_id, quantity: String(i.quantity_issued ?? i.quantity_requested) }))
-      : []);
+    setRunMaterials(materialsFromReq(id));
   };
 
   const submitRun = async () => {
     if (!business) return;
+    if (!runReq) return toast.error("Pick an approved materials request to produce from.");
     const outputs = runOutputs.map(l => ({ product_id: l.key_id, quantity: Number(l.quantity) }));
     if (outputs.length === 0 || outputs.some(o => !o.product_id || !(o.quantity > 0))) {
       return toast.error("Add at least one produced product with a quantity above zero.");
@@ -189,7 +191,7 @@ export default function Production() {
     try {
       await recordProductionRun({
         businessId: business.id,
-        requisitionId: runReq || null,
+        requisitionId: runReq,
         outputs,
         materials: mats,
         notes: runNotes,
@@ -269,7 +271,7 @@ export default function Production() {
             <Button variant="hero" onClick={openNewRequest}><ClipboardList className="size-4" /> Request materials</Button>
           )}
           {tab === "runs" && can("production", "produce") && (
-            <Button variant="hero" onClick={() => openRun()}><PackagePlus className="size-4" /> Record production</Button>
+            <Button variant="hero" onClick={() => openRun()} disabled={approvedReqs.length === 0} title={approvedReqs.length === 0 ? "Get a materials request approved first" : undefined}><PackagePlus className="size-4" /> Record production</Button>
           )}
         </div>
       </div>
@@ -412,9 +414,13 @@ export default function Production() {
             <div className="p-12 text-center">
               <div className="size-14 rounded-2xl bg-brand-light text-brand grid place-items-center mx-auto mb-4"><PackagePlus className="size-6" /></div>
               <h3 className="font-display text-lg font-semibold text-brand-dark">No production recorded yet</h3>
-              <p className="text-muted-foreground text-sm mt-1 mb-4">Record a run to add produced quantities to product stock.</p>
+              <p className="text-muted-foreground text-sm mt-1 mb-4">
+                {approvedReqs.length === 0
+                  ? "Once a materials request is approved, record what you produced from it here."
+                  : "Record what you produced from an approved materials request to add it to product stock."}
+              </p>
               {can("production", "produce") && (
-                <Button variant="brand" onClick={() => openRun()}><PackagePlus className="size-4" /> Record production</Button>
+                <Button variant="brand" onClick={() => openRun()} disabled={approvedReqs.length === 0} title={approvedReqs.length === 0 ? "Get a materials request approved first" : undefined}><PackagePlus className="size-4" /> Record production</Button>
               )}
             </div>
           ) : (
@@ -522,26 +528,24 @@ export default function Production() {
           <DialogHeader><DialogTitle className="font-display">Record production</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>From approved request <span className="font-normal text-muted-foreground">(optional)</span></Label>
+              <Label>From approved request *</Label>
               <SearchableSelect
                 value={runReq}
                 onValueChange={onRunReqChange}
-                placeholder="Direct run — no request"
-                options={[
-                  { value: "", label: "Direct run — no request" },
-                  ...approvedReqs.map(r => ({
-                    value: r.id,
-                    label: `${fmtDate(r.created_at)} · ${r.production_requisition_items.map(i => i.raw_materials?.name ?? "Material").join(", ")}`,
-                  })),
-                ]}
+                placeholder="Select an approved request"
+                options={approvedReqs.map(r => ({
+                  value: r.id,
+                  label: `${fmtDate(r.created_at)} · ${r.production_requisition_items.map(i => i.raw_materials?.name ?? "Material").join(", ")}`,
+                }))}
               />
+              <p className="text-xs text-muted-foreground">Production is recorded against the materials issued for an approved request.</p>
             </div>
             <div className="space-y-2">
               <Label>Products produced *</Label>
               {qtyLineEditor(runOutputs, setRunOutputs, products.map(p => ({ value: p.id, label: p.name })), "Product", (id) => products.find(p => p.id === id)?.unit || "")}
             </div>
             <div className="space-y-2">
-              <Label>Materials used {runReq ? <span className="font-normal text-muted-foreground">(issued amounts prefilled — adjust to what was actually used; leftovers restock automatically)</span> : <span className="font-normal text-muted-foreground">(deducted from stock now)</span>}</Label>
+              <Label>Materials used <span className="font-normal text-muted-foreground">(issued amounts prefilled — adjust to what was actually used; leftovers restock automatically)</span></Label>
               {qtyLineEditor(runMaterials, setRunMaterials, materials.map(m => ({ value: m.id, label: m.name })), "Material", matUnit)}
             </div>
             <div className="space-y-2">

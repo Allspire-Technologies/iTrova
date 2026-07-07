@@ -144,6 +144,14 @@ test.describe("Production", () => {
     });
   });
 
+  test("production cannot be recorded without an approved request (button disabled)", async ({ page }) => {
+    await authenticate(page, { role: "owner" });
+    // Only a PENDING request exists — nothing approved to produce against.
+    await stubProduction(page, { reqs: [PENDING_REQ] });
+    await page.goto("/production?tab=runs");
+    await expect(page.getByRole("button", { name: "Record production" }).first()).toBeDisabled();
+  });
+
   test("requester can edit and delete their own pending request", async ({ page }) => {
     await authenticate(page, { role: "owner" });
     // Requested by the signed-in user (FAKE_USER.id). Production has no approval leg now, so
