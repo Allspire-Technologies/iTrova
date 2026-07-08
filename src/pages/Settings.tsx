@@ -177,13 +177,13 @@ function PlanCard({ plan, inheritsFrom, action, currentPlan, businessName }: { p
   );
 }
 
-const CUSTOM_PLAN_IDEAL = ["Large organisations", "Enterprise deployments", "Sector-specific implementations"];
+const CUSTOM_PLAN_IDEAL = ["Enterprise deployments", "Sector-specific implementations"];
 const CUSTOM_PLAN_PLUS = [
   "Custom branding",
   "Custom workflows",
   "Custom reports",
   "Dedicated infrastructure",
-  "API integrations",
+  "Staff payroll management",
   "SLA agreements",
   "Custom onboarding and training",
 ];
@@ -228,7 +228,7 @@ function CustomPlanCard({ reference }: { reference: { name: string; features: st
         </div>
         <div className="pt-1">
           <Button asChild variant="brand" className="w-full sm:w-auto">
-            <a href="mailto:sales@allspire.tech?subject=Custom%20Plan%20enquiry">Contact Sales</a>
+            <a href="mailto:hello@allspire.tech?subject=Custom%20Plan%20enquiry">Contact Sales</a>
           </Button>
         </div>
       </div>
