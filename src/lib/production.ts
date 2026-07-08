@@ -34,7 +34,7 @@ export type Run = {
   notes: string | null;
   created_at: string;
   production_run_outputs: { product_id: string; quantity: number; products?: { name: string; unit: string | null } | null }[];
-  production_run_materials: { raw_material_id: string; quantity_used: number; raw_materials?: { name: string; unit: string | null } | null }[];
+  production_run_materials: { raw_material_id: string; quantity_used: number; quantity_wasted: number; raw_materials?: { name: string; unit: string | null } | null }[];
 };
 
 export const REQUISITION_STATUS_LABEL: Record<RequisitionStatus, string> = {
@@ -73,15 +73,16 @@ export function canTransition(status: RequisitionStatus, action: "approve" | "re
 
 /**
  * Per-material stock delta when a run completes against a requisition: positive = extra to
- * deduct, negative = unused remainder to restock. Mirrors the SQL reconciliation loop.
+ * deduct, negative = unused remainder to restock. Mirrors the SQL reconciliation loop, which nets
+ * on TOTAL consumption — what went into the product (quantity) plus what was wasted.
  */
 export function materialDeltas(
   issued: { raw_material_id: string; quantity: number }[],
-  used: { raw_material_id: string; quantity: number }[],
+  consumed: { raw_material_id: string; quantity: number; wasted?: number }[],
 ): { raw_material_id: string; delta: number }[] {
   const map = new Map<string, number>();
   for (const i of issued) map.set(i.raw_material_id, (map.get(i.raw_material_id) ?? 0) - i.quantity);
-  for (const u of used) map.set(u.raw_material_id, (map.get(u.raw_material_id) ?? 0) + u.quantity);
+  for (const u of consumed) map.set(u.raw_material_id, (map.get(u.raw_material_id) ?? 0) + u.quantity + (u.wasted ?? 0));
   return [...map.entries()]
     .filter(([, delta]) => delta !== 0)
     .map(([raw_material_id, delta]) => ({ raw_material_id, delta }));
@@ -158,7 +159,7 @@ export async function listRequisitions(): Promise<Requisition[]> {
 export async function listRuns(): Promise<Run[]> {
   const { data, error } = await sb
     .from("production_runs")
-    .select("*, production_run_outputs(product_id, quantity, products(name, unit)), production_run_materials(raw_material_id, quantity_used, raw_materials(name, unit))")
+    .select("*, production_run_outputs(product_id, quantity, products(name, unit)), production_run_materials(raw_material_id, quantity_used, quantity_wasted, raw_materials(name, unit))")
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as Run[];
@@ -201,7 +202,7 @@ export async function recordProductionRun(args: {
   businessId: string;
   requisitionId: string | null;
   outputs: { product_id: string; quantity: number }[];
-  materials: { raw_material_id: string; quantity_used: number }[];
+  materials: { raw_material_id: string; quantity_used: number; quantity_wasted: number }[];
   notes: string;
 }): Promise<void> {
   const { error } = await sb.rpc("record_production_run", {

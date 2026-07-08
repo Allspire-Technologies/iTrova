@@ -52,6 +52,15 @@ describe("materialDeltas", () => {
   it("exact usage yields no deltas", () => {
     expect(materialDeltas(issued, issued.map(i => ({ ...i })))).toEqual([]);
   });
+  it("waste counts as consumption on top of usage (extra deduct)", () => {
+    // m1: 10 issued, 7 used + 5 wasted = 12 consumed → deduct 2 more.
+    const d = materialDeltas(issued, [{ raw_material_id: "m1", quantity: 7, wasted: 5 }, { raw_material_id: "m2", quantity: 4 }]);
+    expect(d).toEqual([{ raw_material_id: "m1", delta: 2 }]);
+  });
+  it("used + wasted exactly matching issued nets to zero", () => {
+    const d = materialDeltas([{ raw_material_id: "m1", quantity: 10 }], [{ raw_material_id: "m1", quantity: 8, wasted: 2 }]);
+    expect(d).toEqual([]);
+  });
 });
 
 describe("validateLines", () => {
