@@ -12,7 +12,10 @@ const TabsList = React.forwardRef<
   <TabsPrimitive.List
     ref={ref}
     className={cn(
-      "inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground",
+      // max-w-full + overflow-x-auto: when the triggers (icons, labels, count badges) are wider than
+      // the screen the strip scrolls within itself instead of pushing the whole page into horizontal
+      // overflow. The arbitrary variants hide the scrollbar; justify-start keeps the first tab visible.
+      "inline-flex h-10 max-w-full items-center justify-start overflow-x-auto rounded-md bg-muted p-1 text-muted-foreground [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
       className,
     )}
     {...props}
