@@ -30,16 +30,22 @@ import { supabase } from "@/integrations/supabase/client";
 
 type Supplier = { id: string; name: string };
 type Form = {
-  id: string | null; expense_date: string; category: string; amount: string;
+  id: string | null; expense_date: string; category: string; categoryOther: string; amount: string;
   payment_method: string; payee: string; supplier_id: string; description: string;
   status: ExpenseStatus; due_date: string; receipt_ref: string;
 };
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
 const emptyForm = (): Form => ({
-  id: null, expense_date: todayStr(), category: "", amount: "", payment_method: "cash",
+  id: null, expense_date: todayStr(), category: "", categoryOther: "", amount: "", payment_method: "cash",
   payee: "", supplier_id: "", description: "", status: "paid", due_date: "", receipt_ref: "",
 });
+// Custom categories are stored/displayed as "Other: <label>". Split a stored value back into the
+// dropdown selection + the free-text specifier.
+const splitCategory = (c: string): { category: string; categoryOther: string } => {
+  const m = /^other:\s*(.+)$/i.exec(c.trim());
+  return m ? { category: "Other", categoryOther: m[1] } : { category: c, categoryOther: "" };
+};
 
 const STATUS_BADGE: Record<"paid" | "pending" | "overdue", { label: string; className: string }> = {
   paid:    { label: "Paid",    className: "bg-brand-light text-brand-dark border-brand/20" },
@@ -102,7 +108,7 @@ export default function Expenditure() {
   const openAdd = () => { setForm(emptyForm()); setOpen(true); };
   const openEdit = (e: Expense) => {
     setForm({
-      id: e.id, expense_date: e.expense_date, category: e.category, amount: String(e.amount),
+      id: e.id, expense_date: e.expense_date, ...splitCategory(e.category), amount: String(e.amount),
       payment_method: e.payment_method || "cash", payee: e.payee || "", supplier_id: e.supplier_id || "",
       description: e.description || "", status: e.status, due_date: e.due_date || "", receipt_ref: e.receipt_ref || "",
     });
@@ -112,12 +118,14 @@ export default function Expenditure() {
   const save = async (ev: React.FormEvent) => {
     ev.preventDefault();
     if (!business) return;
-    if (!form.category.trim()) return toast.error("Pick or type a category.");
+    if (!form.category.trim()) return toast.error("Pick a category.");
+    if (form.category === "Other" && !form.categoryOther.trim()) return toast.error("Say what the 'Other' expense is.");
     if (!(Number(form.amount) > 0)) return toast.error("Enter an amount greater than zero.");
+    const finalCategory = form.category === "Other" ? `Other: ${form.categoryOther.trim()}` : form.category;
     setBusy(true);
     try {
       await saveExpense(business.id, user?.id ?? null, form.id, {
-        expense_date: form.expense_date, category: form.category.trim(), amount: Number(form.amount),
+        expense_date: form.expense_date, category: finalCategory, amount: Number(form.amount),
         payment_method: form.payment_method || null, payee: form.payee.trim() || null,
         supplier_id: form.supplier_id || null, description: form.description.trim() || null,
         status: form.status, due_date: form.status === "pending" ? (form.due_date || null) : null,
@@ -172,6 +180,8 @@ export default function Expenditure() {
   const pending = items.filter(e => e.status === "pending");
   const overdueCount = pending.filter(e => displayStatus(e, today) === "overdue").length;
   const categoryOptions = [...new Set([...EXPENSE_CATEGORIES, ...items.map(e => e.category)])].filter(Boolean);
+  // The Add/Edit dropdown: curated + any legacy custom already used (customs going forward are "Other: …").
+  const categoryFormOptions = [...new Set([...EXPENSE_CATEGORIES, ...items.map(e => e.category).filter(c => c && !/^other:/i.test(c))])];
   const { paged, page, setPage, pageSize, setPageSize, pageCount, total: totalRows } = usePagination(filtered, 20);
 
   // ---- CSV / PDF export
@@ -402,25 +412,28 @@ export default function Expenditure() {
               <div className="space-y-2"><Label>Date *</Label><Input type="date" required value={form.expense_date} onChange={e => setForm({ ...form, expense_date: e.target.value })} /></div>
               <div className="space-y-2"><Label>Amount *</Label><Input type="number" required min="0" step="0.01" placeholder="0" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></div>
             </div>
+            <div className="space-y-2">
+              <Label>Category *</Label>
+              <SearchableSelect value={form.category} onValueChange={v => setForm({ ...form, category: v })}
+                placeholder="Select category" searchPlaceholder="Search categories"
+                options={categoryFormOptions.map(c => ({ value: c, label: c }))} />
+              {form.category === "Other" && (
+                <Input autoFocus placeholder="Specify — shows as “Other: …”" value={form.categoryOther}
+                  onChange={e => setForm({ ...form, categoryOther: e.target.value })} />
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label>Category *</Label>
-                <Input required list="expense-cats" placeholder="Rent" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} />
-                <datalist id="expense-cats">{categoryOptions.map(c => <option key={c} value={c} />)}</datalist>
-              </div>
               <div className="space-y-2">
                 <Label>Payment method</Label>
                 <SearchableSelect value={form.payment_method} onValueChange={v => setForm({ ...form, payment_method: v })}
                   options={EXPENSE_PAYMENT_METHODS.map(m => ({ value: m, label: m.charAt(0).toUpperCase() + m.slice(1) }))} />
               </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2"><Label>Payee <span className="font-normal text-muted-foreground">(optional)</span></Label><Input value={form.payee} onChange={e => setForm({ ...form, payee: e.target.value })} placeholder="Who you paid" /></div>
-              <div className="space-y-2">
-                <Label>Supplier <span className="font-normal text-muted-foreground">(optional)</span></Label>
-                <SearchableSelect value={form.supplier_id || "none"} onValueChange={v => setForm({ ...form, supplier_id: v === "none" ? "" : v })}
-                  options={[{ value: "none", label: "— None —" }, ...suppliers.map(s => ({ value: s.id, label: s.name }))]} />
-              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Supplier <span className="font-normal text-muted-foreground">(optional)</span></Label>
+              <SearchableSelect value={form.supplier_id || "none"} onValueChange={v => setForm({ ...form, supplier_id: v === "none" ? "" : v })}
+                options={[{ value: "none", label: "— None —" }, ...suppliers.map(s => ({ value: s.id, label: s.name }))]} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">

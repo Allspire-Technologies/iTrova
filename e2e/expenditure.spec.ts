@@ -44,12 +44,34 @@ test.describe("Expenditure", () => {
     await page.getByRole("button", { name: "Add expense" }).first().click(); // header (empty state also has one)
     const dialog = page.getByRole("dialog");
     await dialog.getByPlaceholder("0").fill("45000");        // Amount
-    await dialog.getByPlaceholder("Rent").fill("Transport"); // Category
+    await dialog.getByRole("combobox").filter({ hasText: "Select category" }).click();
+    await page.getByRole("option", { name: "Transport" }).click();
     await dialog.getByPlaceholder("Who you paid").fill("Musa");
     await dialog.getByRole("button", { name: "Add expense" }).click();
     await expect(page.getByText("Expense added")).toBeVisible();
     const row = Array.isArray(posted) ? posted[0] : posted;
     expect(row).toMatchObject({ category: "Transport", amount: 45000, status: "paid", payee: "Musa", business_id: "biz-1" });
+  });
+
+  test("Other category asks for a label and saves it as 'Other: …'", async ({ page }) => {
+    await authenticate(page, { role: "owner" });
+    await seed(page, []);
+    let posted: any = null;
+    await page.route("**/rest/v1/expenses**", (r) => {
+      if (r.request().method() === "POST") { posted = r.request().postDataJSON(); return r.fulfill({ status: 201, contentType: "application/json", body: "[]" }); }
+      return r.fallback();
+    });
+    await page.goto("/expenditure");
+    await page.getByRole("button", { name: "Add expense" }).first().click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByPlaceholder("0").fill("12000");
+    await dialog.getByRole("combobox").filter({ hasText: "Select category" }).click();
+    await page.getByRole("option", { name: "Other" }).click();
+    await dialog.getByPlaceholder(/Specify/).fill("Export permits");
+    await dialog.getByRole("button", { name: "Add expense" }).click();
+    await expect(page.getByText("Expense added")).toBeVisible();
+    const row = Array.isArray(posted) ? posted[0] : posted;
+    expect(row.category).toBe("Other: Export permits");
   });
 
   test("mark a pending bill as paid sends status=paid", async ({ page }) => {
