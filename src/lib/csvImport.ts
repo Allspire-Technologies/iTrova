@@ -438,6 +438,60 @@ export function buildTeamImportPlan(
 }
 
 // ---------------------------------------------------------------------------
+// Expenses (insert-only — an expense can legitimately repeat, so no dedup/update)
+// ---------------------------------------------------------------------------
+
+export const EXPENSE_FIELDS: FieldSpec[] = [
+  { key: "expense_date", label: "Date", aliases: ["expense date", "date paid", "day"], required: true },
+  { key: "category", label: "Category", aliases: ["type", "expense category"], required: true },
+  { key: "amount", label: "Amount", aliases: ["cost", "value", "total", "price"], required: true, numeric: true },
+  { key: "payment_method", label: "Payment Method", aliases: ["method", "paid via", "payment"] },
+  { key: "payee", label: "Payee", aliases: ["paid to", "vendor", "supplier", "recipient"] },
+  { key: "description", label: "Description", aliases: ["note", "notes", "memo", "details"] },
+  { key: "status", label: "Status", aliases: ["paid", "state"] },
+  { key: "due_date", label: "Due Date", aliases: ["due", "pay by"] },
+];
+
+export type ExpenseImportFields = {
+  expense_date: string; category: string; amount: number; payment_method: string | null;
+  payee: string | null; description: string | null; status: "paid" | "pending"; due_date: string | null;
+};
+
+export type ExpenseImportPlan = { inserts: ExpenseImportFields[]; rejected: RejectedRow[] };
+
+/** Parse a spreadsheet date to YYYY-MM-DD (accepts anything Date understands); null if unparseable. */
+function parseImportDate(v: string | undefined): string | null {
+  const t = (v ?? "").trim();
+  if (!t) return null;
+  const ms = Date.parse(t);
+  return Number.isNaN(ms) ? null : new Date(ms).toISOString().slice(0, 10);
+}
+
+export function buildExpenseImportPlan(rows: CsvRow[]): ExpenseImportPlan {
+  const rejected: RejectedRow[] = [];
+  const inserts: ExpenseImportFields[] = [];
+  for (const raw of rows) {
+    const canon = canonicalize(raw, EXPENSE_FIELDS);
+    const problems = validateRow(canon, EXPENSE_FIELDS);
+    const date = parseImportDate(canon.expense_date);
+    if ((canon.expense_date ?? "").trim() && !date) problems.push("Invalid Date");
+    const statusRaw = (canon.status ?? "").trim().toLowerCase();
+    const status: "paid" | "pending" = statusRaw === "pending" ? "pending" : "paid";
+    if (statusRaw && statusRaw !== "paid" && statusRaw !== "pending") problems.push("Invalid Status — use paid or pending");
+    const due = parseImportDate(canon.due_date);
+    if ((canon.due_date ?? "").trim() && !due) problems.push("Invalid Due Date");
+    if (problems.length) { rejected.push({ row: raw, reason: problems.join("; ") }); continue; }
+    inserts.push({
+      expense_date: date!, category: canon.category!.trim(),
+      amount: parseImportNumber(canon.amount) || 0,
+      payment_method: str(canon.payment_method), payee: str(canon.payee),
+      description: str(canon.description), status, due_date: status === "pending" ? due : null,
+    });
+  }
+  return { inserts, rejected };
+}
+
+// ---------------------------------------------------------------------------
 
 function capInserts<T>(
   allInserts: { insert: T; raw: CsvRow }[],

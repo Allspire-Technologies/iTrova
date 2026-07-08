@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { LayoutDashboard, Package, ShoppingCart, Truck, FileText, ClipboardList, Users, BarChart3, Sparkles, Settings, LogOut, Store, Menu, Boxes, ChevronLeft, ChevronRight, AlertTriangle, Clock, WifiOff, Ship, Warehouse, Factory } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingCart, Truck, FileText, ClipboardList, Users, BarChart3, Sparkles, Settings, LogOut, Store, Menu, Boxes, ChevronLeft, ChevronRight, AlertTriangle, Clock, WifiOff, Ship, Warehouse, Factory, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
@@ -34,6 +34,7 @@ const nav: NavItem[] = [
   { to: "/invoices", label: "Invoices", icon: FileText, module: "invoices" },
   { to: "/export-invoice", label: "Export Invoice", icon: Ship, module: "export_invoices" },
   { to: "/purchase-orders", label: "Purchase Orders", icon: ClipboardList, module: "purchase_orders" },
+  { to: "/expenditure", label: "Expenditure", icon: Wallet, module: "expenditure" },
   { to: "/team", label: "Team", icon: Users, module: "team" },
   { to: "/reports", label: "Reports", icon: BarChart3, module: "reports" },
   { to: "/insights", label: "AI Insights", icon: Sparkles, soon: true, module: "insights" },

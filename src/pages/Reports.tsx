@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useCurrency } from "@/hooks/useCurrency";
-import { Download, TrendingUp, ShoppingCart, Package, AlertTriangle, Truck, Users, ArrowUpRight, ArrowDownRight, ChevronLeft, ChevronRight } from "lucide-react";
+import { Download, TrendingUp, ShoppingCart, Package, AlertTriangle, Truck, Users, ArrowUpRight, ArrowDownRight, ChevronLeft, ChevronRight, Wallet } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, AreaChart, Area, CartesianGrid } from "recharts";
 import { toast } from "sonner";
 import { ReportsChartSkeleton } from "@/components/Skeletons";
@@ -21,6 +21,7 @@ import {
   productTurnover,
   supplierSpendRows as supplierSpendRowsOf,
 } from "@/lib/reportMetrics";
+import { netProfit, fetchExpensesForReport } from "@/lib/expenditure";
 
 type Sale = { id: string; total_amount: number; created_at: string; staff_id?: string | null };
 type SaleItem = { sale_id: string; product_id: string | null; quantity: number; unit_price: number };
@@ -31,8 +32,9 @@ type Supplier = { id: string; name: string };
 function isoDate(d: Date) { return d.toISOString().slice(0, 10); }
 
 export default function Reports() {
-  const { business } = useAuth();
+  const { business, hasModule } = useAuth();
   const { fmt } = useCurrency();
+  const showExpenses = hasModule("expenditure");
   const [from, setFrom] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 29); return isoDate(d); });
   const [to, setTo] = useState(() => isoDate(new Date()));
 
@@ -45,6 +47,8 @@ export default function Reports() {
   const [loading, setLoading] = useState(true);
   const [prevSales, setPrevSales] = useState<Sale[]>([]);
   const [prevSaleItems, setPrevSaleItems] = useState<SaleItem[]>([]);
+  const [expensesTotal, setExpensesTotal] = useState(0);
+  const [prevExpensesTotal, setPrevExpensesTotal] = useState(0);
   const [outOfStockPage, setOutOfStockPage] = useState(1);
   const [lowStockPage, setLowStockPage] = useState(1);
   const [turnoverPage, setTurnoverPage] = useState(1);
@@ -60,7 +64,7 @@ export default function Reports() {
       const prevToIso = new Date(new Date(fromIso).getTime() - 1).toISOString();
       const prevFromIso = new Date(new Date(prevToIso).getTime() - periodMs).toISOString();
 
-      const [s, p, pr, mp, sup, prevS, prof] = await Promise.all([
+      const [s, p, pr, mp, sup, prevS, prof, exp] = await Promise.all([
         supabase.from("sales").select("id,total_amount,created_at,staff_id").eq("business_id", business.id).eq("voided", false).gte("created_at", fromIso).lte("created_at", toIso),
         supabase.from("products").select("id,name,stock_quantity,reorder_level,cost_price,selling_price").eq("business_id", business.id),
         // Only the items whose sale falls in the report window (previous period start → current
@@ -77,6 +81,8 @@ export default function Reports() {
         supabase.from("suppliers").select("id,name").eq("business_id", business.id),
         supabase.from("sales").select("id,total_amount").eq("business_id", business.id).eq("voided", false).gte("created_at", prevFromIso).lte("created_at", prevToIso),
         supabase.from("profiles").select("id,owner_name").eq("business_id", business.id),
+        // Expenses across both periods (by expense_date); split in memory for the Net-profit change.
+        showExpenses ? fetchExpensesForReport(business.id, prevFromIso.slice(0, 10), to) : Promise.resolve([]),
       ]);
 
       if (s.error) { toast.error("Failed to load sales data"); setLoading(false); return; }
@@ -100,14 +106,20 @@ export default function Reports() {
       const prevSaleIds = new Set(prevSalesData.map(x => x.id));
       setPrevSales(prevSalesData);
       setPrevSaleItems(allSaleItems.filter(si => prevSaleIds.has(si.sale_id)));
+
+      // Split expenses into current (expense_date >= from) vs previous period.
+      const expRows = exp as { expense_date: string; amount: number }[];
+      setExpensesTotal(expRows.filter(e => e.expense_date >= from).reduce((t, e) => t + Number(e.amount || 0), 0));
+      setPrevExpensesTotal(expRows.filter(e => e.expense_date < from).reduce((t, e) => t + Number(e.amount || 0), 0));
+
       setLoading(false);
     })();
   }, [business, from, to]);
 
-  const totals = useMemo(
-    () => ({ ...salesSummary(sales, saleItems, products), supplierSpend: supplierSpendTotal(purchases) }),
-    [sales, saleItems, products, purchases]
-  );
+  const totals = useMemo(() => {
+    const base = salesSummary(sales, saleItems, products);
+    return { ...base, supplierSpend: supplierSpendTotal(purchases), expenses: expensesTotal, netProfit: netProfit(base.grossProfit, expensesTotal) };
+  }, [sales, saleItems, products, purchases, expensesTotal]);
 
   const dailyTrend = useMemo(() => {
     const map = new Map<string, number>();
@@ -140,7 +152,10 @@ export default function Reports() {
 
   const turnover = useMemo(() => productTurnover(saleItems, products), [saleItems, products]);
 
-  const prevTotals = useMemo(() => salesSummary(prevSales, prevSaleItems, products), [prevSales, prevSaleItems, products]);
+  const prevTotals = useMemo(() => {
+    const base = salesSummary(prevSales, prevSaleItems, products);
+    return { ...base, netProfit: netProfit(base.grossProfit, prevExpensesTotal) };
+  }, [prevSales, prevSaleItems, products, prevExpensesTotal]);
 
   const pct = pctChange;
 
@@ -168,6 +183,7 @@ export default function Reports() {
         ["COGS (estimate)", fmt(totals.cogs)],
         ["Gross profit (estimate)", fmt(totals.grossProfit)],
         ["Supplier spend", fmt(totals.supplierSpend)],
+        ...(showExpenses ? [["Expenses", fmt(totals.expenses)], ["Net profit (estimate)", fmt(totals.netProfit)]] : []),
       ],
       styles: { fontSize: 10, cellPadding: 6 },
       headStyles: { fillColor: [30, 41, 59], textColor: 255 },
@@ -311,6 +327,8 @@ export default function Reports() {
             <Metric label="Gross profit" value={fmt(totals.grossProfit)} icon={ShoppingCart} accent="dark" sub={`COGS ${fmt(totals.cogs)}`} change={pct(totals.grossProfit, prevTotals.grossProfit)} />
             <Metric label="Units sold" value={totals.units.toLocaleString()} icon={Package} accent="muted" sub={`Avg sale ${fmt(totals.avg)}`} change={pct(totals.units, prevTotals.units)} />
             <Metric label="Supplier spend" value={fmt(totals.supplierSpend)} icon={Truck} accent={totals.supplierSpend ? "warning" : "muted"} sub={`${supplierSpendRows.length} suppliers`} />
+            {showExpenses && <Metric label="Expenses" value={fmt(totals.expenses)} icon={Wallet} accent={totals.expenses ? "warning" : "muted"} sub="This period" change={pct(totals.expenses, prevExpensesTotal)} />}
+            {showExpenses && <Metric label="Net profit" value={fmt(totals.netProfit)} icon={TrendingUp} accent={totals.netProfit >= 0 ? "brand" : "danger"} sub="After expenses" change={pct(totals.netProfit, prevTotals.netProfit)} />}
           </div>
 
           <Card className="shadow-card border-border/60">
@@ -499,12 +517,13 @@ function CardPager({ page, pageCount, onPage }: { page: number; pageCount: numbe
   );
 }
 
-function Metric({ label, value, icon: Icon, sub, accent, change }: { label: string; value: string; icon: any; sub?: string; accent: "brand" | "dark" | "warning" | "muted"; change?: number | null }) {
+function Metric({ label, value, icon: Icon, sub, accent, change }: { label: string; value: string; icon: any; sub?: string; accent: "brand" | "dark" | "warning" | "muted" | "danger"; change?: number | null }) {
   const accents = {
     brand: "bg-brand-light text-brand",
     dark: "bg-brand-dark/10 text-brand-dark",
     warning: "bg-warning/15 text-warning",
     muted: "bg-muted text-muted-foreground",
+    danger: "bg-danger/10 text-danger",
   };
   return (
     <Card className="shadow-card border-border/60">
