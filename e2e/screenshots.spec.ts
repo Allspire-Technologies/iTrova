@@ -111,6 +111,41 @@ test.describe("Guide desktop", () => {
     await page.getByRole("tab", { name: "Deliveries" }).click();
     await settle(page);
     await snap(page, "07-raw-materials-deliveries");
+    await page.getByRole("tab", { name: /Requests/ }).click();
+    await expect(page.getByRole("button", { name: "Approve" }).first()).toBeVisible({ timeout: 20000 });
+    await settle(page);
+    await snap(page, "07-raw-materials-requests");
+  });
+
+  test("production", async ({ page }) => {
+    await go(page, "/production");
+    await expect(page.getByRole("heading", { name: "Production" })).toBeVisible({ timeout: 20000 });
+    await settle(page);
+    await snap(page, "13-production-requests");
+    await page.getByRole("button", { name: "Runs", exact: true }).click();
+    await expect(page.locator("table").getByText(/Garri \(white\) 50kg/)).toBeVisible({ timeout: 20000 });
+    await settle(page);
+    await snap(page, "13-production-runs");
+  });
+
+  test("general store", async ({ page }) => {
+    await go(page, "/general-store");
+    await expect(page.getByRole("heading", { name: "General Store" })).toBeVisible({ timeout: 20000 });
+    await expect(page.locator("table").getByText("Wheelbarrow")).toBeVisible({ timeout: 20000 });
+    await settle(page);
+    await snap(page, "15-general-store");
+    await page.getByRole("button", { name: "Records", exact: true }).click();
+    await expect(page.locator("table").getByText("Emeka Nwosu").first()).toBeVisible({ timeout: 20000 });
+    await settle(page);
+    await snap(page, "15-general-store-records");
+  });
+
+  test("export invoices", async ({ page }) => {
+    await go(page, "/export-invoice");
+    await expect(page.getByRole("heading", { name: "Export Invoices" })).toBeVisible({ timeout: 20000 });
+    await expect(page.getByText("Atlantic Foods LLC")).toBeVisible({ timeout: 20000 });
+    await settle(page);
+    await snap(page, "16-export-invoices");
   });
 
   test("purchase orders", async ({ page }) => {
@@ -146,6 +181,14 @@ test.describe("Guide desktop", () => {
     await expect(page.getByText("Business Profile")).toBeVisible({ timeout: 20000 });
     await settle(page);
     await snap(page, "11-settings");
+  });
+
+  test("permissions", async ({ page }) => {
+    await go(page, "/settings");
+    await page.getByRole("button", { name: "Permissions & Access" }).click();
+    await expect(page.getByText("Storekeeper").first()).toBeVisible({ timeout: 20000 });
+    await settle(page);
+    await snap(page, "14-permissions");
   });
 });
 

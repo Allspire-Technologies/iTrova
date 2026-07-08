@@ -74,6 +74,60 @@ const MATERIAL_PURCHASES = [
   { id: "mp2", business_id: BIZ, raw_material_id: "rm3", supplier_id: "sup1", quantity: 6, unit_cost: 41000, total_cost: 246000, notes: null, created_at: iso("22"), raw_materials: { name: "Vegetable Oil 25L" }, suppliers: { name: "Lagos Wholesale Ltd" } },
 ];
 
+const PRODUCTION_REQUISITIONS = [
+  { id: "req1", business_id: BIZ, requested_by: STAFF_2, status: "pending", notes: "For Friday's bread batch", decision_note: null, approved_by: null, approved_at: null, created_at: iso("30", 8),
+    production_requisition_items: [
+      { id: "rqi1", raw_material_id: "rm1", quantity_requested: 4, quantity_issued: null, raw_materials: { name: "Wheat Flour 50kg", unit: "bag" } },
+      { id: "rqi2", raw_material_id: "rm2", quantity_requested: 2, quantity_issued: null, raw_materials: { name: "Granulated Sugar 50kg", unit: "bag" } },
+    ] },
+  { id: "req3", business_id: BIZ, requested_by: STAFF_2, status: "approved", notes: null, decision_note: null, approved_by: FAKE_USER.id, approved_at: iso("30", 9), created_at: iso("30", 8),
+    production_requisition_items: [
+      { id: "rqi4", raw_material_id: "rm3", quantity_requested: 2, quantity_issued: 2, raw_materials: { name: "Vegetable Oil 25L", unit: "keg" } },
+    ] },
+  { id: "req2", business_id: BIZ, requested_by: STAFF_2, status: "completed", notes: null, decision_note: null, approved_by: FAKE_USER.id, approved_at: iso("28", 10), created_at: iso("28", 9),
+    production_requisition_items: [
+      { id: "rqi3", raw_material_id: "rm1", quantity_requested: 3, quantity_issued: 3, raw_materials: { name: "Wheat Flour 50kg", unit: "bag" } },
+    ] },
+];
+
+const PRODUCTION_RUNS = [
+  { id: "run1", business_id: BIZ, requisition_id: "req2", produced_by: STAFF_2, notes: null, created_at: iso("28", 12),
+    production_run_outputs: [{ product_id: "p1", quantity: 40, products: { name: "Garri (white) 50kg", unit: "bag" } }],
+    production_run_materials: [{ raw_material_id: "rm1", quantity_used: 3, raw_materials: { name: "Wheat Flour 50kg", unit: "bag" } }] },
+];
+
+// One custom role alongside the built-in Owner/Manager/Cashier defaults, for the Permissions screen.
+const TEAM_ROLES = [
+  { id: "tr1", business_id: BIZ, name: "Storekeeper", system_key: null,
+    permissions: { raw_materials: ["view", "create", "edit", "adjust_stock", "approve_requests", "reject_requests"], inventory: ["view"], purchase_orders: ["view", "receive"] }, created_at: iso("10") },
+];
+
+const STORE_STAFF = [
+  { id: "ss1", business_id: BIZ, name: "Emeka Nwosu", phone: "+234 806 555 0110", role: "Line supervisor", active: true, created_at: iso("06") },
+  { id: "ss2", business_id: BIZ, name: "Fatima Yusuf", phone: "+234 807 555 0121", role: "Packer", active: true, created_at: iso("07") },
+];
+
+const STORE_ITEMS = [
+  { id: "si1", business_id: BIZ, name: "Wheelbarrow", category: "Equipment", unit: "unit", kind: "borrowable", stock_quantity: 3, reorder_level: 1, created_at: iso("05") },
+  { id: "si2", business_id: BIZ, name: "Safety gloves", category: "PPE", unit: "pair", kind: "consumable", stock_quantity: 8, reorder_level: 10, created_at: iso("06") },
+  { id: "si3", business_id: BIZ, name: "Cleaning bucket", category: "Equipment", unit: "unit", kind: "borrowable", stock_quantity: 5, reorder_level: 2, created_at: iso("07") },
+];
+
+const STORE_TRANSACTIONS = [
+  { id: "st1", business_id: BIZ, item_id: "si1", staff_id: "ss1", kind: "borrow", quantity: 1, returned_quantity: 0, status: "out", due_date: "2026-07-02", returned_at: null, notes: null, created_at: iso("29", 9), item: { name: "Wheelbarrow", unit: "unit", kind: "borrowable" }, staff: { name: "Emeka Nwosu" } },
+  { id: "st2", business_id: BIZ, item_id: "si2", staff_id: "ss2", kind: "collect", quantity: 2, returned_quantity: 0, status: "collected", due_date: null, returned_at: null, notes: null, created_at: iso("28", 14), item: { name: "Safety gloves", unit: "pair", kind: "consumable" }, staff: { name: "Fatima Yusuf" } },
+  { id: "st3", business_id: BIZ, item_id: "si3", staff_id: "ss1", kind: "borrow", quantity: 1, returned_quantity: 1, status: "returned", due_date: "2026-06-27", returned_at: iso("27", 16), notes: null, created_at: iso("26", 10), item: { name: "Cleaning bucket", unit: "unit", kind: "borrowable" }, staff: { name: "Emeka Nwosu" } },
+];
+
+const EXPORT_INVOICES = [
+  { id: "ei1", business_id: BIZ, invoice_number: "BLM-EXP-0007", invoice_date: "2026-06-29", currency: "USD", country_of_origin: "Nigeria",
+    seller_name: DEMO_BUSINESS, buyer_name: "Atlantic Foods LLC", buyer_country: "United States",
+    subtotal: 24500, total: 24500, total_cartons: 350, amount_in_words: "", items: [{ product_id: null, description: "Dried Hibiscus", size: "50kg", units_per_box: 1, boxes: 350, unit_price: 70, total: 24500 }], created_at: iso("29", 11) },
+  { id: "ei2", business_id: BIZ, invoice_number: "BLM-EXP-0006", invoice_date: "2026-06-21", currency: "GBP", country_of_origin: "Nigeria",
+    seller_name: DEMO_BUSINESS, buyer_name: "Savannah Imports Ltd", buyer_country: "United Kingdom",
+    subtotal: 18000, total: 18000, total_cartons: 200, amount_in_words: "", items: [{ product_id: null, description: "Shea Butter", size: "20kg", units_per_box: 1, boxes: 200, unit_price: 90, total: 18000 }], created_at: iso("21", 10) },
+];
+
 const PURCHASE_ORDERS = [
   { id: "po1", business_id: BIZ, po_number: "PO-260629-2", supplier_id: "sup1", status: "sent", expected_date: "2026-07-03", total_amount: 370000, notes: null, created_at: iso("29"), received_at: null, suppliers: { name: "Lagos Wholesale Ltd" } },
   { id: "po2", business_id: BIZ, po_number: "PO-260626-1", supplier_id: "sup2", status: "received", expected_date: "2026-06-28", total_amount: 530000, notes: null, created_at: iso("26"), received_at: iso("28"), suppliers: { name: "Kano Grains Depot" } },
@@ -136,6 +190,20 @@ export async function seedDemo(page: Page) {
   await page.route("**/rest/v1/suppliers**", (r) => arrayOrObject(r, SUPPLIERS));
   await page.route("**/rest/v1/raw_materials**", (r) => arrayOrObject(r, RAW_MATERIALS));
   await page.route("**/rest/v1/material_purchases**", (r) => fulfill(r, MATERIAL_PURCHASES));
+  // Production module: the pending count header drives the Raw Materials "Requests" badge.
+  await page.route("**/rest/v1/production_requisitions**", (r) => {
+    if (r.request().method() === "HEAD") return fulfill(r, [], range(1)); // 1 pending
+    return fulfill(r, PRODUCTION_REQUISITIONS);
+  });
+  await page.route("**/rest/v1/production_runs**", (r) => fulfill(r, PRODUCTION_RUNS));
+  await page.route("**/rest/v1/product_materials**", (r) => fulfill(r, []));
+  await page.route("**/rest/v1/team_roles**", (r) => fulfill(r, TEAM_ROLES));
+  await page.route("**/rest/v1/member_access**", (r) => fulfill(r, []));
+  // General Store + Export Invoices modules.
+  await page.route("**/rest/v1/store_items**", (r) => fulfill(r, STORE_ITEMS));
+  await page.route("**/rest/v1/store_staff**", (r) => fulfill(r, STORE_STAFF));
+  await page.route("**/rest/v1/store_transactions**", (r) => fulfill(r, STORE_TRANSACTIONS));
+  await page.route("**/rest/v1/export_invoices**", (r) => fulfill(r, EXPORT_INVOICES));
   await page.route("**/rest/v1/purchase_orders**", (r) => arrayOrObject(r, PURCHASE_ORDERS));
   await page.route("**/rest/v1/purchase_order_items**", (r) => fulfill(r, PO_ITEMS));
   await page.route("**/rest/v1/stock_adjustments**", (r) => fulfill(r, STOCK_ADJUSTMENTS));
@@ -155,7 +223,7 @@ export async function seedDemo(page: Page) {
   await page.route("**/rest/v1/plans**", (r) => fulfill(r, [
     {
       key: "free", name: "Free", is_active: true, sort_order: 0,
-      modules: ["inventory", "suppliers", "raw_materials", "purchase_orders", "invoices", "reports", "team", "csv_import", "csv_export"],
+      modules: ["inventory", "pos", "suppliers", "raw_materials", "purchase_orders", "invoices", "export_invoices", "general_store", "reports", "team", "production", "csv_import", "csv_export"],
       limits: { inventory: null, suppliers: null, invoices: null, team: null, raw_materials: null, purchase_orders: null },
       prices: [],
     },
