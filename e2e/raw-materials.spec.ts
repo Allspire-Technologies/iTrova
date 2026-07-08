@@ -77,6 +77,16 @@ test.describe("Raw Materials", () => {
     await expect(page.locator("table").getByText("Cassava flour")).toBeVisible();
   });
 
+  test("the tab strip scrolls instead of overflowing the page on mobile (with count badges)", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await stubRows(page, "material_purchases", [{ id: "mp1", raw_material_id: "rm-1", supplier_id: null, quantity: 250, unit_cost: 480, total_cost: 120000, notes: null, created_at: "2026-06-10T00:00:00Z" }]);
+    await stubRows(page, "production_requisitions", [{ id: "rq1", business_id: "biz-1", requested_by: "u2", status: "pending", notes: null, decision_note: null, approved_by: null, approved_at: null, created_at: "2026-07-06T00:00:00Z", production_requisition_items: [{ id: "ri1", raw_material_id: "rm-1", quantity_requested: 40, quantity_issued: null, raw_materials: { name: "Cassava flour", unit: "kg" } }] }]);
+    await page.goto("/raw-materials?tab=requests"); // widest tab active + Deliveries/Requests badges present
+    await expect(page.getByRole("button", { name: "Approve" })).toBeVisible();
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(1);
+  });
+
   test("CSV import tolerates currency/commas, restocks by SKU and rejects unknown suppliers", async ({ page }) => {
     const csv = [
       "Name,SKU,Stock Quantity,Cost Per Unit,Supplier",
