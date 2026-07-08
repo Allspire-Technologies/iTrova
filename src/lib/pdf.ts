@@ -16,7 +16,7 @@ export type PdfDocInput = {
   date: string;
   dueDate?: string | null;
   status?: string;
-  business: { name: string; currency?: string };
+  business: { name: string; currency?: string; tin?: string | null };
   partyLabel: string; // "Bill to" or "Supplier"
   party: { name: string; phone?: string | null; email?: string | null; address?: string | null };
   items: { description: string; quantity: number; unit_price: number; line_total: number }[];
@@ -50,8 +50,10 @@ export async function buildPdf(input: PdfDocInput) {
   doc.setFontSize(11).setFont("helvetica", "bold");
   doc.text(input.business.name, pageW - M, 74, { align: "right" });
   doc.setFont("helvetica", "normal").setFontSize(9);
-  doc.text(`Date: ${input.date}`, pageW - M, 90, { align: "right" });
-  if (input.dueDate) doc.text(`Due: ${input.dueDate}`, pageW - M, 104, { align: "right" });
+  let by = 90;
+  if (input.business.tin) { doc.text(`TIN: ${input.business.tin}`, pageW - M, by, { align: "right" }); by += 14; }
+  doc.text(`Date: ${input.date}`, pageW - M, by, { align: "right" }); by += 14;
+  if (input.dueDate) doc.text(`Due: ${input.dueDate}`, pageW - M, by, { align: "right" });
 
   // Party block
   doc.setFontSize(10).setFont("helvetica", "bold");

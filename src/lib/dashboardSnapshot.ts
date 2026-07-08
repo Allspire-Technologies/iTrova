@@ -10,6 +10,7 @@ export type DashActivityEntry = { id: string; ts: string; label: string; sub: st
 export type DashSnap = {
   todaySales: number; salesCount: number; products: DashProduct[]; openInvoices: number;
   trend: { day: string; total: number }[]; topProducts: DashTopProduct[]; activity: DashActivityEntry[];
+  vatThisMonth: number;
 };
 
 type Sale = { id: string; total_amount: number; created_at: string };
@@ -17,6 +18,7 @@ type Sale = { id: string; total_amount: number; created_at: string };
 export async function fetchDashboardSnapshot(): Promise<DashSnap> {
   const since = new Date(); since.setDate(since.getDate() - 6); since.setHours(0, 0, 0, 0);
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
 
   const [
     { data: sales },
@@ -26,6 +28,7 @@ export async function fetchDashboardSnapshot(): Promise<DashSnap> {
     { data: adjustments },
     { data: activityLog },
     { data: profs },
+    { data: monthSales },
   ] = await Promise.all([
     supabase.from("sales").select("id,total_amount,created_at").eq("voided", false).gte("created_at", since.toISOString()),
     supabase.from("products").select("id,name,stock_quantity,reorder_level,selling_price").order("created_at", { ascending: false }),
@@ -34,7 +37,12 @@ export async function fetchDashboardSnapshot(): Promise<DashSnap> {
     supabase.from("stock_adjustments").select("id,created_at,delta,reason,notes,user_id,product_id,raw_material_id,products(name),raw_materials(name)").order("created_at", { ascending: false }).limit(50),
     supabase.from("activity_log").select("id,created_at,summary,actor_name").order("created_at", { ascending: false }).limit(50),
     supabase.from("profiles").select("id, owner_name"),
+    supabase.from("sales").select("tax_amount").eq("voided", false).gte("created_at", monthStart.toISOString()),
   ]);
+
+  // Output VAT collected this calendar month (tax_amount postdates generated types).
+  const vatThisMonth = ((monthSales as unknown as { tax_amount: number | null }[] | null) ?? [])
+    .reduce((t, s) => t + Number(s.tax_amount || 0), 0);
 
   const nameById: Record<string, string> = {};
   for (const p of (profs as { id: string; owner_name: string | null }[] | null) ?? []) {
@@ -98,5 +106,6 @@ export async function fetchDashboardSnapshot(): Promise<DashSnap> {
     trend: days,
     topProducts,
     activity,
+    vatThisMonth,
   };
 }

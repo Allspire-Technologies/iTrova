@@ -113,14 +113,14 @@ export async function insertExpenseBatch(
   return { error: error ?? null };
 }
 
-/** Lightweight fetch for the Reports Net-profit tie-in (by expense_date; both periods). */
+/** Lightweight fetch for the Reports Net-profit + input-VAT tie-in (by expense_date; both periods). */
 export async function fetchExpensesForReport(
   businessId: string, fromDate: string, toDate: string,
-): Promise<{ expense_date: string; amount: number }[]> {
-  const { data, error } = await sb.from("expenses").select("expense_date,amount")
+): Promise<{ expense_date: string; amount: number; tax_amount: number }[]> {
+  const { data, error } = await sb.from("expenses").select("expense_date,amount,tax_amount")
     .eq("business_id", businessId).gte("expense_date", fromDate).lte("expense_date", toDate);
   if (error) return [];
-  return (data ?? []) as { expense_date: string; amount: number }[];
+  return (data ?? []) as { expense_date: string; amount: number; tax_amount: number }[];
 }
 
 // ---------------------------------------------------------------- PDF export

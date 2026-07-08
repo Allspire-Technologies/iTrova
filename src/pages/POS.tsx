@@ -15,6 +15,7 @@ import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import OrdersPanel from "@/components/OrdersPanel";
 import Paginator, { usePagination } from "@/components/Paginator";
 import { invoiceFallbackNumber } from "@/lib/invoiceNumber";
+import { listTaxes, productRate, summariseCart, type Tax } from "@/lib/tax";
 import { buildReceiptMessage } from "@/lib/whatsapp";
 import WhatsAppShareDialog from "@/components/WhatsAppShareDialog";
 import { POSSkeleton } from "@/components/Skeletons";
@@ -25,7 +26,7 @@ import { cacheProducts, readCachedProducts, applyLocalStockDelta, enqueueSale, c
 import { drainQueue } from "@/lib/offlineSync";
 import type { ReviewSale } from "@/lib/offlineTypes";
 
-type Product = { id: string; name: string; sku: string | null; selling_price: number; stock_quantity: number; reorder_level: number; category: string | null };
+type Product = { id: string; name: string; sku: string | null; selling_price: number; stock_quantity: number; reorder_level: number; category: string | null; tax_id?: string | null };
 type CartItem = { product: Product; qty: number };
 
 const methods = [
@@ -48,7 +49,10 @@ export default function POS() {
   const [method, setMethod] = useState("cash");
   const [discount, setDiscount] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [receipt, setReceipt] = useState<{ total: number; discount: number; items: CartItem[]; method: string; number?: string | null } | null>(null);
+  const [receipt, setReceipt] = useState<{ total: number; discount: number; tax: number; inclusive: boolean; items: CartItem[]; method: string; number?: string | null } | null>(null);
+  const taxEnabled = !!business?.tax_enabled;
+  const inclusive = business?.prices_include_tax !== false;
+  const [taxes, setTaxes] = useState<Tax[]>([]);
   const [eod, setEod] = useState<EodData | null>(null);
   const [waShare, setWaShare] = useState<{ message: string } | null>(null);
   const [held, setHeld] = useState<HeldSale[]>([]);
@@ -113,7 +117,8 @@ export default function POS() {
       setLoading(false);
       return;
     }
-    const { data, error } = await supabase.from("products").select("id,name,sku,selling_price,stock_quantity,reorder_level,category").gt("stock_quantity", 0).order("name");
+    if (taxEnabled) listTaxes().then(setTaxes).catch(() => {});
+    const { data, error } = await supabase.from("products").select("id,name,sku,selling_price,stock_quantity,reorder_level,category,tax_id").gt("stock_quantity", 0).order("name");
     if (error) {
       // Don't render an empty grid as if the shop had no stock — tell the cashier and fall back to
       // the last cached catalogue so they can keep selling.
@@ -123,7 +128,7 @@ export default function POS() {
       setLoading(false);
       return;
     }
-    const rows = (data as Product[]) || [];
+    const rows = (data as unknown as Product[]) || []; // tax_id postdates generated types
     setProducts(rows);
     setLoading(false);
     void cacheProducts(business.id, rows.map(r => ({ id: r.id, business_id: business.id, name: r.name, sku: r.sku, selling_price: r.selling_price, stock_quantity: r.stock_quantity, reorder_level: r.reorder_level, category: r.category })));
@@ -245,7 +250,14 @@ export default function POS() {
   };
 
   const subtotal = cart.reduce((a, i) => a + i.qty * Number(i.product.selling_price), 0);
-  const total = Math.max(0, subtotal - discount);
+  // Tax is resolved per line from the product's tax_id (online only — cached offline products carry
+  // no rate, so offline sales record tax 0). Inclusive → total unchanged; exclusive → VAT added.
+  const taxInfo = summariseCart(
+    cart.map(i => ({ unitPrice: Number(i.product.selling_price), qty: i.qty, ratePct: taxEnabled ? productRate(i.product.tax_id, taxes) : null })),
+    discount, inclusive,
+  );
+  const taxTotal = taxInfo.taxTotal;
+  const total = taxInfo.total;
 
   const checkout = async () => {
     if (!business || cart.length === 0) return;
@@ -265,7 +277,7 @@ export default function POS() {
           items, status: "pending", attempts: 0,
         });
         await applyLocalStockDelta(business.id, items);
-        setReceipt({ total, discount, items: [...cart], method, number: invoiceNumber });
+        setReceipt({ total, discount, tax: taxTotal, inclusive, items: [...cart], method, number: invoiceNumber });
         setCart([]);
         setDiscount(0);
         await refreshQueues();
@@ -293,6 +305,7 @@ export default function POS() {
       payment_method: method,
       discount,
       subtotal,
+      tax: taxTotal,
       total,
       customer_name: "Walk-in Customer",
       items: cart.map(i => ({ product_id: i.product.id, name: i.product.name, quantity: i.qty, unit_price: Number(i.product.selling_price) })),
@@ -310,7 +323,7 @@ export default function POS() {
       return;
     }
 
-    setReceipt({ total, discount, items: [...cart], method, number: (data as { invoice_number?: string } | null)?.invoice_number ?? null });
+    setReceipt({ total, discount, tax: taxTotal, inclusive, items: [...cart], method, number: (data as { invoice_number?: string } | null)?.invoice_number ?? null });
     setCart([]);
     setDiscount(0);
     load();
@@ -427,17 +440,23 @@ export default function POS() {
         </div>
 
         <div className="pt-2 border-t border-border/60 space-y-1">
+          {(discount > 0 || (taxEnabled && !inclusive && taxTotal > 0)) && (
+            <div className="flex items-baseline justify-between text-sm">
+              <div className="text-muted-foreground">Subtotal</div>
+              <div className="text-muted-foreground">{fmt(subtotal)}</div>
+            </div>
+          )}
           {discount > 0 && (
-            <>
-              <div className="flex items-baseline justify-between text-sm">
-                <div className="text-muted-foreground">Subtotal</div>
-                <div className="text-muted-foreground">{fmt(subtotal)}</div>
-              </div>
-              <div className="flex items-baseline justify-between text-sm">
-                <div className="text-muted-foreground">Discount</div>
-                <div className="text-danger">-{fmt(discount)}</div>
-              </div>
-            </>
+            <div className="flex items-baseline justify-between text-sm">
+              <div className="text-muted-foreground">Discount</div>
+              <div className="text-danger">-{fmt(discount)}</div>
+            </div>
+          )}
+          {taxEnabled && taxTotal > 0 && (
+            <div className="flex items-baseline justify-between text-sm">
+              <div className="text-muted-foreground">VAT{inclusive ? " (included)" : ""}</div>
+              <div className="text-muted-foreground">{fmt(taxTotal)}</div>
+            </div>
           )}
           <div className="flex items-baseline justify-between">
             <div className="text-sm text-muted-foreground">Total</div>
@@ -732,9 +751,10 @@ export default function POS() {
                 .total{font-size:16px;font-weight:bold;margin-top:6px}
                 .foot{text-align:center;font-size:11px;color:#666;margin-top:8px}
               </style></head><body>
-                <h1>${bizName}</h1><div class="muted">${date}</div><hr/>
+                <h1>${bizName}</h1>${business?.tin ? `<div class="muted">TIN: ${business.tin}</div>` : ""}<div class="muted">${date}</div><hr/>
                 ${receipt.items.map(i => `<div class="row"><span>${i.qty} × ${i.product.name}</span><span>${fmt(i.qty * Number(i.product.selling_price))}</span></div>`).join("")}
                 <hr/>
+                ${receipt.tax > 0 ? `<div class="row"><span>VAT${receipt.inclusive ? " (incl.)" : ""}</span><span>${fmt(receipt.tax)}</span></div>` : ""}
                 <div class="row total"><span>TOTAL</span><span>${fmt(receipt.total)}</span></div>
                 <div class="muted">Paid via ${receipt.method}</div>
                 <div class="foot">${profile?.owner_name ? `Served by ${profile.owner_name}<br/>` : ""}Thank you for your patronage</div>
