@@ -44,6 +44,9 @@ type Business = {
   whatsapp_number: string | null;
   trial_plan: string | null;
   trial_started_at: string | null;
+  tax_enabled: boolean | null;
+  prices_include_tax: boolean | null;
+  tin: string | null;
 };
 
 /** Subscription view that keeps the raw paid tier (for display) even once expired. */

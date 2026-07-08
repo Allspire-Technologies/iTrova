@@ -428,7 +428,7 @@ export default function Invoices() {
     downloadPdf({
       docType: "INVOICE", docNumber: i.invoice_number, date: i.issue_date,
       dueDate: i.due_date, status: i.status,
-      business: { name: business?.name || "" },
+      business: { name: business?.name || "", tin: business?.tin },
       partyLabel: "Bill to",
       party: { name: i.customer_name, phone: i.customer_phone, email: i.customer_email },
       items: (data as Item[]) || [],
@@ -849,6 +849,7 @@ export default function Invoices() {
                   <div className={`text-sm ${Number(viewing.discount_amount) > 0 ? "text-destructive font-medium" : "text-muted-foreground"}`}>
                     Discount: {Number(viewing.discount_amount) > 0 ? `-${fmt(viewing.discount_amount)}` : "—"}
                   </div>
+                  {Number(viewing.tax) > 0 && <div className="text-sm text-muted-foreground">VAT: {fmt(viewing.tax)}</div>}
                   <div className="font-semibold">Total: {fmt(viewing.total)}</div>
                   {Number(viewing.amount_paid) > 0 && (
                     <>

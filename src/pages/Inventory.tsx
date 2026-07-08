@@ -18,6 +18,7 @@ import Paginator, { usePagination } from "@/components/Paginator";
 import { TablePageSkeleton } from "@/components/Skeletons";
 import { getLimit, isAtLimit, limitMessage } from "@/lib/planLimits";
 import { findSkuConflict, buildImportPlan, expiryAlert, canonicalizeRow, type ProductFields } from "@/lib/inventoryRules";
+import { listTaxes, formatRate, type Tax } from "@/lib/tax";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { useOnline } from "@/contexts/OnlineContext";
@@ -34,9 +35,10 @@ type Product = {
   stock_quantity: number;
   reorder_level: number;
   expiry_date?: string | null;
+  tax_id?: string | null;
 };
 
-const empty = { name: "", category: "", sku: "", unit: "pcs", selling_price: "", cost_price: "", stock_quantity: "", reorder_level: 5, expiry_date: "" };
+const empty = { name: "", category: "", sku: "", unit: "pcs", selling_price: "", cost_price: "", stock_quantity: "", reorder_level: 5, expiry_date: "", tax_id: "" };
 
 export default function Inventory() {
   const { business, hasModule } = useAuth();
@@ -58,6 +60,9 @@ export default function Inventory() {
   const [importResult, setImportResult] = useState<ImportOutcome | null>(null);
   const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const taxEnabled = !!business?.tax_enabled;
+  const [taxes, setTaxes] = useState<Tax[]>([]);
+  const defaultTaxId = taxes.find(t => t.is_default && t.active)?.id ?? "";
 
   const load = async () => {
     if (!business) return;
@@ -69,11 +74,12 @@ export default function Inventory() {
       return;
     }
     const { data, error } = await supabase.from("products")
-      .select("id,name,category,sku,unit,selling_price,cost_price,stock_quantity,reorder_level,expiry_date")
+      .select("id,name,category,sku,unit,selling_price,cost_price,stock_quantity,reorder_level,expiry_date,tax_id")
       .order("created_at", { ascending: false });
     if (error) return toast.error(error.message);
-    const rows = (data as Product[]) || [];
+    const rows = (data as unknown as Product[]) || []; // tax_id postdates generated types
     setItems(rows);
+    if (taxEnabled) listTaxes().then(setTaxes).catch(() => {});
     setLoading(false);
     void cacheProducts(
       business.id,
@@ -83,7 +89,7 @@ export default function Inventory() {
 
   useEffect(() => { if (business) load(); }, [business, online]);
 
-  const openAdd = () => { setEditing(null); setForm(empty); setOpen(true); };
+  const openAdd = () => { setEditing(null); setForm({ ...empty, tax_id: taxEnabled ? defaultTaxId : "" }); setOpen(true); };
   const openEdit = (p: Product) => { setEditing(p); setForm(p); setOpen(true); };
 
   const save = async (e: React.FormEvent) => {
@@ -107,10 +113,12 @@ export default function Inventory() {
       cost_price: Number(form.cost_price) || 0,
       reorder_level: Number(form.reorder_level) || 0,
       expiry_date: form.expiry_date || null,
+      tax_id: taxEnabled ? (form.tax_id || null) : (form.tax_id ?? null),
     };
+    // tax_id postdates the generated Supabase types — cast until types are regenerated.
     const { error } = editing
-      ? await supabase.from("products").update(payload).eq("id", editing.id)
-      : await supabase.from("products").insert({ ...payload, stock_quantity: Number(form.stock_quantity) || 0, business_id: business.id });
+      ? await supabase.from("products").update(payload as never).eq("id", editing.id)
+      : await supabase.from("products").insert({ ...payload, stock_quantity: Number(form.stock_quantity) || 0, business_id: business.id } as never);
     setBusy(false);
     if (error) return toast.error(error.message);
     toast.success(editing ? "Product updated" : "Product added");
@@ -327,6 +335,17 @@ export default function Inventory() {
                   <Input type="date" value={form.expiry_date || ""} onChange={e => setForm({ ...form, expiry_date: e.target.value })} />
                   <p className="text-xs text-muted-foreground">Inventory flags it from 90 days out; owners/managers also get a bell alert from 30 days.</p>
                 </div>
+                {taxEnabled && (
+                  <div className="space-y-2">
+                    <Label>Tax</Label>
+                    <SearchableSelect
+                      value={form.tax_id || "exempt"}
+                      onValueChange={v => setForm({ ...form, tax_id: v === "exempt" ? "" : v })}
+                      options={[{ value: "exempt", label: "Exempt (no tax)" }, ...taxes.filter(t => t.active).map(t => ({ value: t.id, label: `${t.name} (${formatRate(t.rate)})` }))]}
+                    />
+                    <p className="text-xs text-muted-foreground">Staple foods are usually VAT-exempt; most other goods carry VAT.</p>
+                  </div>
+                )}
                 <DialogFooter>
                   <Button type="button" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
                   <Button type="submit" variant="brand" disabled={busy}>{busy ? "Saving..." : editing ? "Save changes" : "Add product"}</Button>

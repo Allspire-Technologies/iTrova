@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useCurrency } from "@/hooks/useCurrency";
-import { Download, TrendingUp, ShoppingCart, Package, AlertTriangle, Truck, Users, ArrowUpRight, ArrowDownRight, ChevronLeft, ChevronRight, Wallet } from "lucide-react";
+import { Download, TrendingUp, ShoppingCart, Package, AlertTriangle, Truck, Users, ArrowUpRight, ArrowDownRight, ChevronLeft, ChevronRight, Wallet, Receipt } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, AreaChart, Area, CartesianGrid } from "recharts";
 import { toast } from "sonner";
 import { ReportsChartSkeleton } from "@/components/Skeletons";
@@ -23,9 +23,9 @@ import {
 } from "@/lib/reportMetrics";
 import { netProfit, fetchExpensesForReport } from "@/lib/expenditure";
 
-type Sale = { id: string; total_amount: number; created_at: string; staff_id?: string | null };
+type Sale = { id: string; total_amount: number; created_at: string; staff_id?: string | null; tax_amount?: number };
 type SaleItem = { sale_id: string; product_id: string | null; quantity: number; unit_price: number };
-type Product = { id: string; name: string; stock_quantity: number; reorder_level: number; cost_price: number | null; selling_price: number };
+type Product = { id: string; name: string; stock_quantity: number; reorder_level: number; cost_price: number | null; selling_price: number; tax_id?: string | null };
 type MatPurchase = { supplier_id: string | null; total_cost: number; created_at: string };
 type Supplier = { id: string; name: string };
 
@@ -49,6 +49,7 @@ export default function Reports() {
   const [prevSaleItems, setPrevSaleItems] = useState<SaleItem[]>([]);
   const [expensesTotal, setExpensesTotal] = useState(0);
   const [prevExpensesTotal, setPrevExpensesTotal] = useState(0);
+  const [inputVatTotal, setInputVatTotal] = useState(0);
   const [outOfStockPage, setOutOfStockPage] = useState(1);
   const [lowStockPage, setLowStockPage] = useState(1);
   const [turnoverPage, setTurnoverPage] = useState(1);
@@ -65,8 +66,8 @@ export default function Reports() {
       const prevFromIso = new Date(new Date(prevToIso).getTime() - periodMs).toISOString();
 
       const [s, p, pr, mp, sup, prevS, prof, exp] = await Promise.all([
-        supabase.from("sales").select("id,total_amount,created_at,staff_id").eq("business_id", business.id).eq("voided", false).gte("created_at", fromIso).lte("created_at", toIso),
-        supabase.from("products").select("id,name,stock_quantity,reorder_level,cost_price,selling_price").eq("business_id", business.id),
+        supabase.from("sales").select("id,total_amount,created_at,staff_id,tax_amount").eq("business_id", business.id).eq("voided", false).gte("created_at", fromIso).lte("created_at", toIso),
+        supabase.from("products").select("id,name,stock_quantity,reorder_level,cost_price,selling_price,tax_id").eq("business_id", business.id),
         // Only the items whose sale falls in the report window (previous period start → current
         // period end — the two ranges are adjacent). The !inner join makes the sales filters
         // restrictive server-side; before this, every sale_item ever was downloaded and filtered
@@ -87,11 +88,11 @@ export default function Reports() {
 
       if (s.error) { toast.error("Failed to load sales data"); setLoading(false); return; }
 
-      const salesData = (s.data as Sale[]) || [];
+      const salesData = (s.data as unknown as Sale[]) || []; // tax_amount postdates generated types
       const allSaleItems = (pr.data as SaleItem[]) || [];
       const saleIds = new Set(salesData.map(x => x.id));
       setSales(salesData);
-      setProducts((p.data as Product[]) || []);
+      setProducts((p.data as unknown as Product[]) || []); // tax_id postdates generated types
       setSaleItems(allSaleItems.filter(si => saleIds.has(si.sale_id)));
       setPurchases((mp.data as MatPurchase[]) || []);
       setSuppliers((sup.data as Supplier[]) || []);
@@ -108,9 +109,11 @@ export default function Reports() {
       setPrevSaleItems(allSaleItems.filter(si => prevSaleIds.has(si.sale_id)));
 
       // Split expenses into current (expense_date >= from) vs previous period.
-      const expRows = exp as { expense_date: string; amount: number }[];
-      setExpensesTotal(expRows.filter(e => e.expense_date >= from).reduce((t, e) => t + Number(e.amount || 0), 0));
+      const expRows = exp as { expense_date: string; amount: number; tax_amount: number }[];
+      const currentExp = expRows.filter(e => e.expense_date >= from);
+      setExpensesTotal(currentExp.reduce((t, e) => t + Number(e.amount || 0), 0));
       setPrevExpensesTotal(expRows.filter(e => e.expense_date < from).reduce((t, e) => t + Number(e.amount || 0), 0));
+      setInputVatTotal(currentExp.reduce((t, e) => t + Number(e.tax_amount || 0), 0)); // input VAT recoverable
 
       setLoading(false);
     })();
@@ -159,6 +162,20 @@ export default function Reports() {
 
   const pct = pctChange;
 
+  // Net VAT (gated on tax_enabled): output = VAT charged on sales, input = VAT paid on expense bills.
+  const taxEnabled = !!business?.tax_enabled;
+  const vat = useMemo(() => {
+    const output = sales.reduce((t, s) => t + Number(s.tax_amount || 0), 0);
+    const taxMap = new Map(products.map(p => [p.id, p.tax_id]));
+    let taxableSales = 0, exemptSales = 0;
+    for (const si of saleItems) {
+      const line = Number(si.quantity) * Number(si.unit_price);
+      if (si.product_id && taxMap.get(si.product_id)) taxableSales += line;
+      else exemptSales += line;
+    }
+    return { output, input: inputVatTotal, net: output - inputVatTotal, taxableSales, exemptSales };
+  }, [sales, saleItems, products, inputVatTotal]);
+
   const exportPdf = async () => {
     // jsPDF is heavy — load it only when the user actually exports (Experience Roadmap · Phase 1).
     const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
@@ -184,6 +201,13 @@ export default function Reports() {
         ["Gross profit (estimate)", fmt(totals.grossProfit)],
         ["Supplier spend", fmt(totals.supplierSpend)],
         ...(showExpenses ? [["Expenses", fmt(totals.expenses)], ["Net profit (estimate)", fmt(totals.netProfit)]] : []),
+        ...(taxEnabled ? [
+          ["Taxable sales", fmt(vat.taxableSales)],
+          ["Exempt sales", fmt(vat.exemptSales)],
+          ["Output VAT", fmt(vat.output)],
+          ["Input VAT", fmt(vat.input)],
+          ["Net VAT payable", fmt(vat.net)],
+        ] : []),
       ],
       styles: { fontSize: 10, cellPadding: 6 },
       headStyles: { fillColor: [30, 41, 59], textColor: 255 },
@@ -330,6 +354,15 @@ export default function Reports() {
             {showExpenses && <Metric label="Expenses" value={fmt(totals.expenses)} icon={Wallet} accent={totals.expenses ? "warning" : "muted"} sub="This period" change={pct(totals.expenses, prevExpensesTotal)} />}
             {showExpenses && <Metric label="Net profit" value={fmt(totals.netProfit)} icon={TrendingUp} accent={totals.netProfit >= 0 ? "brand" : "danger"} sub="After expenses" change={pct(totals.netProfit, prevTotals.netProfit)} />}
           </div>
+
+          {taxEnabled && (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Metric label="Output VAT" value={fmt(vat.output)} icon={Receipt} accent="brand" sub={`Taxable sales ${fmt(vat.taxableSales)}`} />
+              <Metric label="Input VAT" value={fmt(vat.input)} icon={Wallet} accent={vat.input ? "warning" : "muted"} sub="On expense bills" />
+              <Metric label="Net VAT payable" value={fmt(vat.net)} icon={Receipt} accent={vat.net > 0 ? "dark" : "brand"} sub="Output − input" />
+              <Metric label="Exempt sales" value={fmt(vat.exemptSales)} icon={Package} accent="muted" sub="No VAT charged" />
+            </div>
+          )}
 
           <Card className="shadow-card border-border/60">
             <CardHeader><CardTitle className="font-display text-lg">Revenue trend</CardTitle></CardHeader>

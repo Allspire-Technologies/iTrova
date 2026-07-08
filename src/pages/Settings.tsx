@@ -23,6 +23,12 @@ import { LEGAL_LINKS } from "@/lib/legalLinks";
 import { isEmailConfirmed, isValidEmail, normalizeEmail, verifyAction } from "@/lib/emailVerification";
 import { lazy, Suspense } from "react";
 
+const TaxSettingsInner = lazy(() => import("@/components/settings/TaxSettings"));
+const TaxSettings = () => (
+  <Suspense fallback={<p className="py-8 text-center text-sm text-muted-foreground">Loading tax settings…</p>}>
+    <TaxSettingsInner />
+  </Suspense>
+);
 const PermissionsAccessInner = lazy(() => import("@/components/settings/PermissionsAccess"));
 const PermissionsAccess = () => (
   <Suspense fallback={<p className="py-8 text-center text-sm text-muted-foreground">Loading permissions…</p>}>
@@ -561,6 +567,9 @@ export default function Settings() {
           )}
         </Card>
       )}
+
+      {/* Tax (VAT) — owner only; defines the tax catalogue mapped onto Inventory */}
+      {tab === "business" && isOwner && <TaxSettings />}
 
       {/* Exporter Profile — owner only (prefills export invoices); View card until Edit */}
       {tab === "business" && isOwner && (

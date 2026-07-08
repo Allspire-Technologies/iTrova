@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useDateFormat } from "@/hooks/useDateFormat";
-import { TrendingUp, Package, AlertTriangle, ShoppingBag, Sparkles, FileText, Clock, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { TrendingUp, Package, AlertTriangle, ShoppingBag, Sparkles, FileText, Clock, ArrowUpRight, ArrowDownRight, Receipt } from "lucide-react";
 import { DashboardSkeleton } from "@/components/Skeletons";
 import { ResponsiveContainer, AreaChart, Area, XAxis, Tooltip, BarChart, Bar, Cell, YAxis } from "recharts";
 import { Link } from "react-router-dom";
@@ -30,6 +30,7 @@ export default function Dashboard() {
   const [trend, setTrend] = useState<{ day: string; total: number }[]>([]);
   const [topProducts, setTopProducts] = useState<TopProduct[]>([]);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
+  const [vatThisMonth, setVatThisMonth] = useState(0);
   const [activityOpen, setActivityOpen] = useState(false);
   const showOnboarding = !!profile && profile.onboarded === false && role === "owner";
 
@@ -50,6 +51,7 @@ export default function Dashboard() {
       if (snap) {
         setTodaySales(snap.todaySales); setSalesCount(snap.salesCount); setProducts(snap.products);
         setOpenInvoices(snap.openInvoices); setTrend(snap.trend); setTopProducts(snap.topProducts); setActivity(snap.activity);
+        setVatThisMonth(snap.vatThisMonth ?? 0);
       }
       setLoading(false);
       return;
@@ -58,6 +60,7 @@ export default function Dashboard() {
       const snap = await fetchDashboardSnapshot();
       setTodaySales(snap.todaySales); setSalesCount(snap.salesCount); setProducts(snap.products);
       setOpenInvoices(snap.openInvoices); setTrend(snap.trend); setTopProducts(snap.topProducts); setActivity(snap.activity);
+      setVatThisMonth(snap.vatThisMonth);
       setLoading(false);
       void cacheDashboard(business.id, snap); // read-only snapshot for offline
     }
@@ -138,6 +141,7 @@ export default function Dashboard() {
         <MetricCard label="Products in Stock" value={products.length.toString()} icon={Package} accent="dark" sub={`${totalStockUnits} units total`} />
         <MetricCard label="Stock Alerts" value={(outOfStock.length + lowStock.length).toString()} icon={AlertTriangle} accent={outOfStock.length ? "warning" : lowStock.length ? "warning" : "muted"} sub={outOfStock.length ? `${outOfStock.length} out of stock` : lowStock.length ? "Low stock items" : "All healthy"} />
         <MetricCard label="Open Invoices" value={openInvoices.toString()} icon={FileText} accent="muted" sub="draft & issued" />
+        {business?.tax_enabled && <MetricCard label="VAT Collected" value={fmt(vatThisMonth)} icon={Receipt} accent="brand" sub="this month" />}
       </div>
 
       {/* Chart */}
