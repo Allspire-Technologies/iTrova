@@ -5,6 +5,7 @@ import {
   MATERIAL_FIELDS, buildMaterialImportPlan,
   PO_FIELDS, buildPoImportPlan,
   TEAM_FIELDS, buildTeamImportPlan,
+  buildExpenseImportPlan,
 } from "./csvImport";
 
 describe("canonicalize / validateRow", () => {
@@ -248,5 +249,42 @@ describe("buildTeamImportPlan", () => {
     );
     expect(plan.invites).toHaveLength(1);
     expect(plan.rejected[0].reason).toMatch(/Plan limit reached/);
+  });
+});
+
+describe("buildExpenseImportPlan", () => {
+  it("imports valid rows (tolerant amounts, normalised dates), defaults status to paid", () => {
+    const plan = buildExpenseImportPlan([
+      { Date: "2026-07-01", Category: "Rent", Amount: "₦150,000" },
+      { date: "2026/07/03", type: "Transport", cost: "4500", "paid to": "Musa", Status: "PAID" },
+    ]);
+    expect(plan.rejected).toEqual([]);
+    expect(plan.inserts[0]).toMatchObject({ expense_date: "2026-07-01", category: "Rent", amount: 150000, status: "paid" });
+    expect(plan.inserts[1]).toMatchObject({ category: "Transport", amount: 4500, payee: "Musa" });
+  });
+
+  it("keeps due date only for pending, and validates it", () => {
+    const plan = buildExpenseImportPlan([
+      { Date: "2026-07-01", Category: "Utilities", Amount: "20000", Status: "pending", "Due Date": "2026-07-20" },
+      { Date: "2026-07-01", Category: "Utilities", Amount: "20000", Status: "paid", "Due Date": "2026-07-20" },
+    ]);
+    expect(plan.inserts[0]).toMatchObject({ status: "pending", due_date: "2026-07-20" });
+    expect(plan.inserts[1].due_date).toBeNull(); // paid → no due date
+  });
+
+  it("rejects missing required columns, bad amount/date/status with reasons", () => {
+    const plan = buildExpenseImportPlan([
+      { Category: "Rent", Amount: "100" },                                   // missing Date
+      { Date: "2026-07-01", Category: "Rent", Amount: "abc" },               // bad amount
+      { Date: "not-a-date", Category: "Rent", Amount: "100" },               // bad date
+      { Date: "2026-07-01", Category: "Rent", Amount: "100", Status: "half" }, // bad status
+    ]);
+    expect(plan.inserts).toHaveLength(0);
+    expect(plan.rejected.map(r => r.reason)).toEqual([
+      expect.stringContaining("Missing Date"),
+      expect.stringContaining("Invalid Amount"),
+      expect.stringContaining("Invalid Date"),
+      expect.stringContaining("Invalid Status"),
+    ]);
   });
 });

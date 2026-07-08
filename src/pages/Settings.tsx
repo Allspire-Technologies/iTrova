@@ -74,8 +74,8 @@ function ViewField({ label, value }: { label: string; value?: string | null }) {
   );
 }
 
-type NotifPrefs = { low_stock_alerts: boolean; overdue_invoice_alerts: boolean; expiry_alerts: boolean; general_store_alerts: boolean; production_alerts: boolean; daily_summary: boolean };
-const DEFAULT_PREFS: NotifPrefs = { low_stock_alerts: true, overdue_invoice_alerts: true, expiry_alerts: true, general_store_alerts: true, production_alerts: true, daily_summary: false };
+type NotifPrefs = { low_stock_alerts: boolean; overdue_invoice_alerts: boolean; expiry_alerts: boolean; general_store_alerts: boolean; production_alerts: boolean; expense_alerts: boolean; daily_summary: boolean };
+const DEFAULT_PREFS: NotifPrefs = { low_stock_alerts: true, overdue_invoice_alerts: true, expiry_alerts: true, general_store_alerts: true, production_alerts: true, expense_alerts: true, daily_summary: false };
 
 function PlanCard({ plan, inheritsFrom, action, currentPlan, businessName }: { plan: Plan; inheritsFrom: { name: string; features: string[] } | null; action: PlanChange; currentPlan: string; businessName: string }) {
   const active = plan.key === currentPlan;
@@ -757,6 +757,13 @@ export default function Settings() {
               key: "production_alerts" as const,
               label: "Production alerts",
               desc: "Get notified about material requests awaiting approval and decisions on yours",
+              disabled: false,
+              soon: false,
+            },
+            {
+              key: "expense_alerts" as const,
+              label: "Expenditure alerts",
+              desc: "Get notified when a pending bill is past its due date",
               disabled: false,
               soon: false,
             },

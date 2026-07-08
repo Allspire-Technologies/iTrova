@@ -63,6 +63,11 @@ export const MODULE_ACTIONS: ModuleDef[] = [
   { key: "production", label: "Production", actions: [
     a("view", "View"), a("request", "Request materials"), a("produce", "Record production"),
   ]},
+  { key: "expenditure", label: "Expenditure", actions: [
+    a("view", "View"), a("create", "Add expenses"), a("edit", "Edit expenses"),
+    a("delete", "Delete expenses"), a("export", "Download PDF"),
+    a("csv_import", "Import CSV"), a("csv_export", "Export CSV"),
+  ]},
   { key: "reports", label: "Reports", actions: [a("view", "View"), a("export", "Export")] },
   { key: "team", label: "Team", actions: [
     a("view", "View"), a("invite", "Invite members"), a("role_change", "Change roles"),
@@ -87,6 +92,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<"manager" | "cashier", PermissionM
     purchase_orders: allActions("purchase_orders"),
     general_store: ["view", "item_manage", "staff_manage", "checkout", "return", "csv_import"],
     production: allActions("production"),
+    expenditure: allActions("expenditure"),
     reports: ["view", "export"],
   },
   cashier: {

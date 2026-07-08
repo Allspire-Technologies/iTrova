@@ -6,7 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
-type NotifType = "low_stock" | "out_of_stock" | "overdue" | "invoice_edited" | "plan_expiring" | "plan_expired" | "store_low_stock" | "store_out_of_stock" | "store_overdue" | "expiring" | "production_request" | "production_decided";
+type NotifType = "low_stock" | "out_of_stock" | "overdue" | "invoice_edited" | "plan_expiring" | "plan_expired" | "store_low_stock" | "store_out_of_stock" | "store_overdue" | "expiring" | "production_request" | "production_decided" | "expense_overdue";
 type Notif = {
   id: string;
   type: NotifType;
@@ -31,6 +31,7 @@ const STYLE: Record<NotifType, { icon: typeof Bell; wrap: string }> = {
   store_low_stock:    { icon: Warehouse,     wrap: "bg-warning/10 text-warning" },
   production_request: { icon: Factory,       wrap: "bg-warning/10 text-warning" },
   production_decided: { icon: Factory,       wrap: "bg-brand-light text-brand" },
+  expense_overdue:    { icon: CalendarClock, wrap: "bg-danger/10 text-danger" },
 };
 
 export default function NotificationsBell() {
