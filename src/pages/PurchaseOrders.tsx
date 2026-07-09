@@ -55,6 +55,8 @@ export default function PurchaseOrders() {
   const [viewItems, setViewItems] = useState<Item[]>([]);
   const [form, setForm] = useState({ supplier_id: "", expected_date: "", notes: "" });
   const [lines, setLines] = useState<Item[]>([{ product_id: null, raw_material_id: null, description: "", quantity: 1, unit_cost: 0, line_total: 0 }]);
+  const [poTax, setPoTax] = useState<number>(0); // input VAT on this order (from the supplier invoice)
+  const taxEnabled = !!business?.tax_enabled;
   const [pending, setPending] = useState<{ title: string; description: string; confirmLabel?: string; variant?: "destructive" | "default"; onConfirm: () => void } | null>(null);
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -177,7 +179,8 @@ export default function PurchaseOrders() {
       expected_date: form.expected_date || null,
       notes: form.notes || null,
       total_amount: subtotal, status: "draft",
-    }).select().single();
+      tax_amount: taxEnabled ? (poTax || 0) : 0,
+    } as never).select().single(); // tax_amount postdates the generated types
     if (error) { setBusy(false); return toast.error(error.message); }
     const payload = lines.map(l => ({
       purchase_order_id: po!.id, raw_material_id: l.raw_material_id, product_id: l.product_id,
@@ -190,6 +193,7 @@ export default function PurchaseOrders() {
     setOpen(false);
     setForm({ supplier_id: "", expected_date: "", notes: "" });
     setLines([{ product_id: null, raw_material_id: null, description: "", quantity: 1, unit_cost: 0, line_total: 0 }]);
+    setPoTax(0);
     load();
   };
 
@@ -538,6 +542,12 @@ export default function PurchaseOrders() {
               <Button variant="outline" size="sm" onClick={addLine}><Plus className="size-4 mr-1" /> Add line</Button>
             </div>
             <div><Label>Notes</Label><Textarea rows={2} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></div>
+            {taxEnabled && (
+              <div className="flex items-center justify-end gap-2">
+                <Label className="font-normal text-muted-foreground">of which VAT (input):</Label>
+                <Input type="number" min="0" step="0.01" placeholder="0" className="w-32" value={poTax || ""} onChange={e => setPoTax(Number(e.target.value))} />
+              </div>
+            )}
             <div className="text-right text-lg font-semibold">Total: {fmt(subtotal)}</div>
           </div>
           <DialogFooter>
