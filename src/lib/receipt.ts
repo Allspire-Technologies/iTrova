@@ -13,6 +13,8 @@ export interface ReceiptData {
   items: ReceiptItem[];
   subtotal: number;
   discount?: number;
+  tax?: number;              // VAT on the sale (shown as a line when > 0)
+  tin?: string | null;       // business Tax ID, printed under the name when present
   total: number;
   paid?: boolean;
   formatMoney: (n: number) => string;
@@ -41,13 +43,22 @@ export function buildReceiptHtml(r: ReceiptData): string {
     )
     .join("");
 
-  const subtotalHtml = hasDiscount
-    ? `<div class="row"><span class="name">Subtotal</span><span class="amt">${money(r.subtotal)}</span></div>`
+  const hasTax = !!r.tax && r.tax > 0;
+  // When there's VAT, show the NET subtotal (total − VAT) so the receipt adds up: subtotal + VAT =
+  // total. (Prices are typically VAT-inclusive, so the stored subtotal already contains the VAT.)
+  // The discount is already reflected in the total, so it isn't itemised again on a taxed receipt.
+  const netSubtotal = hasTax ? r.total - (r.tax as number) : r.subtotal;
+  const subtotalHtml = (hasDiscount || hasTax)
+    ? `<div class="row"><span class="name">Subtotal</span><span class="amt">${money(netSubtotal)}</span></div>`
     : "";
-  const discountHtml = hasDiscount
+  const discountHtml = (hasDiscount && !hasTax)
     ? `<div class="row"><span class="name">Discount</span><span class="amt">-${money(r.discount as number)}</span></div>`
     : "";
+  const taxHtml = hasTax
+    ? `<div class="row"><span class="name">VAT</span><span class="amt">${money(r.tax as number)}</span></div>`
+    : "";
   const paidBadge = r.paid ? `<div class="paid">*** PAID ***</div>` : "";
+  const tinHtml = r.tin ? `<div class="muted">TIN: ${escapeHtml(r.tin)}</div>` : "";
   const customerHtml = r.customerName ? `<div class="meta">Customer: ${escapeHtml(r.customerName)}</div>` : "";
   const servedHtml = r.servedBy ? `Served by ${escapeHtml(r.servedBy)}<br/>` : "";
   const footer = escapeHtml(r.footer ?? "Thank you for your patronage");
@@ -70,6 +81,7 @@ hr { border: none; border-top: 1px dashed #000; margin: 6px 0; }
 .foot { text-align: center; font-size: 11px; margin-top: 8px; }
 </style></head><body>
 <h1>${escapeHtml(r.businessName)}</h1>
+${tinHtml}
 <div class="muted">Receipt ${escapeHtml(r.docNumber)}</div>
 <div class="muted">${escapeHtml(r.date)}</div>
 ${customerHtml}
@@ -78,6 +90,7 @@ ${itemsHtml}
 <hr/>
 ${subtotalHtml}
 ${discountHtml}
+${taxHtml}
 <div class="row total"><span class="name">TOTAL</span><span class="amt">${money(r.total)}</span></div>
 ${paidBadge}
 <div class="foot">${servedHtml}${footer}</div>

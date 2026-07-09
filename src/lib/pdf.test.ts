@@ -24,6 +24,24 @@ describe("buildPdf", () => {
     expect(out.length).toBeGreaterThan(1000);
   });
 
+  it("builds a VAT invoice (net subtotal = total − VAT) with a TIN", async () => {
+    const doc = await buildPdf({
+      docType: "INVOICE",
+      docNumber: "INV-009",
+      date: "2026-06-23",
+      status: "paid",
+      business: { name: "Sunrise Stores", tin: "12345678-0001" },
+      partyLabel: "Bill to",
+      party: { name: "Ada" },
+      items: [{ description: "Garri 50kg", quantity: 2, unit_price: 12500, line_total: 25000 }],
+      subtotal: 25000,
+      tax: 1744, // net subtotal shown = 25000 − 1744 = 23256
+      total: 25000,
+      formatMoney: (n) => "₦" + n,
+    });
+    expect(doc.output("datauristring").startsWith("data:application/pdf")).toBe(true);
+  });
+
   it("falls back to the default formatter and omits the discount line when zero", async () => {
     const doc = await buildPdf({
       docType: "INVOICE",

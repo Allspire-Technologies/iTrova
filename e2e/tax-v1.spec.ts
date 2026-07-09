@@ -54,6 +54,93 @@ test.describe("Tax v1 — input VAT on procurement", () => {
     expect(Number(insertBody.total_cost)).toBe(120000);
   });
 
+  test("printed invoice receipt shows VAT + TIN, and subtotal + VAT = total", async ({ page }) => {
+    await authenticate(page, { role: "owner", onRoutes: taxEnabledBusiness });
+    // Capture the receipt HTML the page writes into the print window (avoids the popup auto-close race).
+    await page.addInitScript(() => {
+      (window as unknown as { __receipt: string }).__receipt = "";
+      window.open = () => ({
+        document: { write: (h: string) => { (window as unknown as { __receipt: string }).__receipt += h; }, close: () => {} },
+        close: () => {},
+      }) as unknown as Window;
+    });
+    const invoice = {
+      id: "inv-1", business_id: "biz-1", invoice_number: "INV-009", customer_name: "Ada",
+      customer_phone: null, customer_email: null, status: "paid", subtotal: 25000, tax: 1744,
+      discount_amount: 0, total: 25000, issue_date: "2026-06-23", due_date: null, notes: null,
+      sale_id: "sale-1", created_by: null, created_at: "2026-06-23T00:00:00Z",
+    };
+    await stubRows(page, "invoices", [invoice]);
+    await stubRows(page, "invoice_items", [{ id: "it1", invoice_id: "inv-1", description: "Garri 50kg", quantity: 2, unit_price: 12500, line_total: 25000 }]);
+
+    await page.goto("/invoices");
+    await page.locator("table").getByRole("button", { name: "Print", exact: true }).click();
+    const html = await page.evaluate(() => (window as unknown as { __receipt: string }).__receipt);
+    expect(html).toContain("VAT");
+    expect(html).toContain("TIN: 12345678-0001");
+    expect(html).toMatch(/23[,]?256/); // net subtotal = total(25000) − VAT(1744), so subtotal + VAT = total
+    expect(html).toMatch(/1[,]?744/);  // VAT
+  });
+
+  test("View invoice dialog shows a net subtotal so subtotal + VAT = total", async ({ page }) => {
+    await authenticate(page, { role: "owner", onRoutes: taxEnabledBusiness });
+    const invoice = {
+      id: "inv-1", business_id: "biz-1", invoice_number: "INV-009", customer_name: "Ada",
+      customer_phone: null, customer_email: null, status: "paid", subtotal: 25000, tax: 1744,
+      discount_amount: 0, total: 25000, issue_date: "2026-06-23", due_date: null, notes: null,
+      sale_id: "sale-1", created_by: null, created_at: "2026-06-23T00:00:00Z", amount_paid: 25000,
+    };
+    await stubRows(page, "invoices", [invoice]);
+    await stubRows(page, "invoice_items", [{ id: "it1", invoice_id: "inv-1", description: "Garri 50kg", quantity: 2, unit_price: 12500, line_total: 25000 }]);
+
+    await page.goto("/invoices");
+    await page.locator("table").getByRole("button", { name: "View" }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByText(/Subtotal: .*23[,]?256/)).toBeVisible(); // net = total − VAT
+    await expect(dialog.getByText(/VAT: .*1[,]?744/)).toBeVisible();
+    await expect(dialog.getByText(/Total: .*25[,]?000/)).toBeVisible();
+  });
+
+  test("Edit invoice dialog shows a net subtotal + VAT that add up to the total", async ({ page }) => {
+    await authenticate(page, { role: "owner", onRoutes: taxEnabledBusiness });
+    const invoice = {
+      id: "inv-1", business_id: "biz-1", invoice_number: "INV-009", customer_name: "Ada",
+      customer_phone: null, customer_email: null, status: "paid", subtotal: 25000, tax: 1744,
+      discount_amount: 0, total: 25000, issue_date: "2026-06-23", due_date: null, notes: null,
+      sale_id: "sale-1", created_by: null, created_at: "2026-06-23T00:00:00Z", amount_paid: 25000,
+    };
+    await stubRows(page, "invoices", [invoice]);
+    await stubRows(page, "invoice_items", [{ id: "it1", invoice_id: "inv-1", description: "Garri 50kg", quantity: 2, unit_price: 12500, line_total: 25000 }]);
+
+    await page.goto("/invoices");
+    await page.locator("table").getByRole("button", { name: "More actions" }).click();
+    await page.getByRole("menuitem", { name: "Edit" }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByText(/Subtotal: .*23[,]?256/)).toBeVisible(); // net = total − VAT
+    await expect(dialog.getByText(/VAT: .*1[,]?744/)).toBeVisible();
+    await expect(dialog.getByText(/Total: .*25[,]?000/)).toBeVisible();
+  });
+
+  test("downloading a VAT invoice generates the PDF in-browser", async ({ page }) => {
+    await authenticate(page, { role: "owner", onRoutes: taxEnabledBusiness });
+    const invoice = {
+      id: "inv-1", business_id: "biz-1", invoice_number: "INV-009", customer_name: "Ada",
+      customer_phone: null, customer_email: null, status: "paid", subtotal: 25000, tax: 1744,
+      discount_amount: 0, total: 25000, issue_date: "2026-06-23", due_date: null, notes: null,
+      sale_id: "sale-1", created_by: null, created_at: "2026-06-23T00:00:00Z", amount_paid: 25000,
+    };
+    await stubRows(page, "invoices", [invoice]);
+    await stubRows(page, "invoice_items", [{ id: "it1", invoice_id: "inv-1", description: "Garri 50kg", quantity: 2, unit_price: 12500, line_total: 25000 }]);
+
+    await page.goto("/invoices");
+    await page.locator("table").getByRole("button", { name: "View" }).click();
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      page.getByRole("dialog").getByRole("button", { name: "Download" }).click(),
+    ]);
+    expect(download.suggestedFilename()).toBe("INV-009.pdf");
+  });
+
   test("Purchase Order create dialog shows the input-VAT field when tax is enabled", async ({ page }) => {
     await authenticate(page, { role: "owner", onRoutes: taxEnabledBusiness });
     await stubRows(page, "taxes", [VAT]);

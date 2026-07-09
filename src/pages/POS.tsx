@@ -755,7 +755,7 @@ export default function POS() {
                 <h1>${bizName}</h1>${business?.tin ? `<div class="muted">TIN: ${business.tin}</div>` : ""}<div class="muted">${date}</div><hr/>
                 ${receipt.items.map(i => `<div class="row"><span>${i.qty} × ${i.product.name}</span><span>${fmt(i.qty * Number(i.product.selling_price))}</span></div>`).join("")}
                 <hr/>
-                ${receipt.tax > 0 ? `<div class="row"><span>VAT${receipt.inclusive ? " (incl.)" : ""}</span><span>${fmt(receipt.tax)}</span></div>` : ""}
+                ${receipt.tax > 0 ? `<div class="row"><span>Subtotal</span><span>${fmt(receipt.total - receipt.tax)}</span></div><div class="row"><span>VAT${receipt.inclusive ? " (incl.)" : ""}</span><span>${fmt(receipt.tax)}</span></div>` : ""}
                 <div class="row total"><span>TOTAL</span><span>${fmt(receipt.total)}</span></div>
                 <div class="muted">Paid via ${receipt.method}</div>
                 <div class="foot">${profile?.owner_name ? `Served by ${profile.owner_name}<br/>` : ""}Thank you for your patronage</div>
