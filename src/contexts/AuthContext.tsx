@@ -229,15 +229,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    supabase.auth.getSession().then(({ data: { session: sess } }) => {
+    supabase.auth.getSession().then(async ({ data: { session: sess } }) => {
       setSession(sess);
       setUser(sess?.user ?? null);
-      if (sess?.user) {
-        loadProfile(sess.user.id);
-        supabase.from("profiles").update({ last_seen: new Date().toISOString() }).eq("id", sess.user.id)
-          .then(({ error }) => { if (error) console.warn("last_seen update failed:", error.message); });
+      try {
+        // AWAIT the full member load so `loading` only clears once profile + role + RBAC access are
+        // resolved. Otherwise `loading` flips false with role still null, and every route guard sees
+        // `can → false` for a beat and flashes "No access" before correcting (loadProfile fails open
+        // to cache/nulls, so this never hangs).
+        if (sess?.user) {
+          await loadProfile(sess.user.id);
+          supabase.from("profiles").update({ last_seen: new Date().toISOString() }).eq("id", sess.user.id)
+            .then(({ error }) => { if (error) console.warn("last_seen update failed:", error.message); });
+        }
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return () => sub.subscription.unsubscribe();
