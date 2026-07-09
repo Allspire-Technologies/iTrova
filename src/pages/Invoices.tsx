@@ -217,6 +217,10 @@ export default function Invoices() {
   // A discount can never exceed the subtotal or go negative; the invoice total nets it off.
   const discountApplied = Math.min(Math.max(0, discount), subtotal);
   const invoiceTotal = subtotal - discountApplied;
+  // A POS invoice carries inclusive VAT. Keep it proportional to the (possibly edited) total — the
+  // VAT fraction is fixed from the original invoice — so the breakdown stays correct after edits.
+  const vatFraction = editing && Number(editing.total) > 0 ? Number(editing.tax) / Number(editing.total) : 0;
+  const invoiceVat = Math.round(invoiceTotal * vatFraction * 100) / 100;
 
   const save = async () => {
     if (!business) return;
@@ -240,7 +244,7 @@ export default function Invoices() {
         customer_email: form.customer_email || null,
         due_date: form.due_date || null,
         notes: form.notes || null,
-        subtotal, discount_amount: discountApplied, total: invoiceTotal,
+        subtotal, discount_amount: discountApplied, total: invoiceTotal, tax: invoiceVat,
       }).eq("id", editing.id);
       if (error) { setBusy(false); return toast.error(error.message); }
       await supabase.from("invoice_items").delete().eq("invoice_id", editing.id);
@@ -428,7 +432,7 @@ export default function Invoices() {
     downloadPdf({
       docType: "INVOICE", docNumber: i.invoice_number, date: i.issue_date,
       dueDate: i.due_date, status: i.status,
-      business: { name: business?.name || "", tin: business?.tin },
+      business: { name: business?.name || "", tin: business?.tin, currency: business?.currency },
       partyLabel: "Bill to",
       party: { name: i.customer_name, phone: i.customer_phone, email: i.customer_email },
       items: (data as Item[]) || [],
@@ -455,6 +459,8 @@ export default function Invoices() {
       items,
       subtotal: Number(i.subtotal),
       discount: Number(i.discount_amount) || 0,
+      tax: Number(i.tax) || 0,
+      tin: business?.tin ?? null,
       total: Number(i.total),
       paid: i.status === "paid",
       formatMoney: fmt,
@@ -803,8 +809,11 @@ export default function Invoices() {
                   placeholder="0"
                 />
               </div>
-              <div className="text-right text-sm text-muted-foreground">Subtotal: {fmt(subtotal)}</div>
-              {discountApplied > 0 && <div className="text-right text-sm text-destructive">Discount: -{fmt(discountApplied)}</div>}
+              {/* With VAT, show the NET subtotal (total − VAT) so subtotal + VAT = total. */}
+              <div className="text-right text-sm text-muted-foreground">Subtotal: {fmt(invoiceVat > 0 ? invoiceTotal - invoiceVat : subtotal)}</div>
+              {invoiceVat > 0
+                ? <div className="text-right text-sm text-muted-foreground">VAT: {fmt(invoiceVat)}</div>
+                : (discountApplied > 0 && <div className="text-right text-sm text-destructive">Discount: -{fmt(discountApplied)}</div>)}
               <div className="text-right text-lg font-semibold">Total: {fmt(invoiceTotal)}</div>
             </div>
           </div>
@@ -845,11 +854,15 @@ export default function Invoices() {
                   </table>
                 </div>
                 <div className="space-y-1 text-right">
-                  <div className="text-sm text-muted-foreground">Subtotal: {fmt(viewing.subtotal)}</div>
-                  <div className={`text-sm ${Number(viewing.discount_amount) > 0 ? "text-destructive font-medium" : "text-muted-foreground"}`}>
-                    Discount: {Number(viewing.discount_amount) > 0 ? `-${fmt(viewing.discount_amount)}` : "—"}
-                  </div>
-                  {Number(viewing.tax) > 0 && <div className="text-sm text-muted-foreground">VAT: {fmt(viewing.tax)}</div>}
+                  {/* With VAT, show the NET subtotal (total − VAT) so subtotal + VAT = total. */}
+                  <div className="text-sm text-muted-foreground">Subtotal: {fmt(Number(viewing.tax) > 0 ? Number(viewing.total) - Number(viewing.tax) : Number(viewing.subtotal))}</div>
+                  {Number(viewing.tax) > 0
+                    ? <div className="text-sm text-muted-foreground">VAT: {fmt(viewing.tax)}</div>
+                    : (
+                      <div className={`text-sm ${Number(viewing.discount_amount) > 0 ? "text-destructive font-medium" : "text-muted-foreground"}`}>
+                        Discount: {Number(viewing.discount_amount) > 0 ? `-${fmt(viewing.discount_amount)}` : "—"}
+                      </div>
+                    )}
                   <div className="font-semibold">Total: {fmt(viewing.total)}</div>
                   {Number(viewing.amount_paid) > 0 && (
                     <>

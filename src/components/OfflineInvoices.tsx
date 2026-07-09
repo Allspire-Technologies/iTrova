@@ -197,6 +197,8 @@ export function OfflineInvoices() {
       items: r.items.map((i) => ({ description: i.name, quantity: Number(i.quantity), line_total: Number(i.quantity) * Number(i.unit_price) })),
       subtotal: Number(r.subtotal),
       discount: Number(r.discount) || 0,
+      tax: Number(r.tax) || 0,
+      tin: business?.tin ?? null,
       total: Number(r.total),
       paid: true,
       formatMoney: fmt,

@@ -21,6 +21,17 @@ export async function getLastSync(businessId: string): Promise<number | null> {
   return ((await db.get("meta", `lastSync:${businessId}`))?.value as number | undefined) ?? null;
 }
 
+// ---- taxes catalogue (so offline POS can resolve VAT rates) -----------------
+// Stored in the `meta` store (no dedicated object store needed); `Tax` is the same shape tax.ts uses.
+export async function cacheTaxes(businessId: string, taxes: unknown[]): Promise<void> {
+  const db = await getDb();
+  await db.put("meta", { key: `taxes:${businessId}`, value: taxes, updatedAt: Date.now() });
+}
+export async function readCachedTaxes<T = unknown>(businessId: string): Promise<T[]> {
+  const db = await getDb();
+  return ((await db.get("meta", `taxes:${businessId}`))?.value as T[] | undefined) ?? [];
+}
+
 // ---- session (business + staff snapshot for offline render) -----------------
 export async function cacheSession(s: CachedSession): Promise<void> {
   const db = await getDb();

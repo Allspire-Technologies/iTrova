@@ -190,3 +190,38 @@ describe("buildImportPlan expiry handling", () => {
     expect(cleared.inserts[0].expiry_date).toBeNull();
   });
 });
+
+describe("buildImportPlan tax column", () => {
+  const full = (over: Record<string, string> = {}) =>
+    ({ name: "P", sku: "S1", unit: "pcs", selling_price: "10", cost_price: "5", stock_quantity: "1", reorder_level: "5", ...over });
+  const taxes = [{ id: "vat-1", name: "VAT" }, { id: "ct-1", name: "Consumption Tax" }];
+
+  it("maps a Tax name (case-insensitively) to its id", () => {
+    const plan = buildImportPlan([full({ sku: "T1", Tax: "vat" })], [], 0, null, taxes);
+    expect(plan.inserts[0].tax_id).toBe("vat-1");
+  });
+
+  it("treats blank / 'exempt' as Exempt (null)", () => {
+    const blank = buildImportPlan([full({ sku: "T2", Tax: "" })], [], 0, null, taxes);
+    expect(blank.inserts[0].tax_id).toBeNull();
+    const exempt = buildImportPlan([full({ sku: "T3", Tax: "Exempt" })], [], 0, null, taxes);
+    expect(exempt.inserts[0].tax_id).toBeNull();
+  });
+
+  it("rejects a row whose Tax name matches nothing in the catalogue", () => {
+    const plan = buildImportPlan([full({ sku: "T4", Tax: "VATT" })], [], 0, null, taxes);
+    expect(plan.inserts).toHaveLength(0);
+    expect(plan.rejected[0].reason).toMatch(/Unknown tax/);
+  });
+
+  it("leaves tax unchanged when the column is absent (undefined)", () => {
+    const plan = buildImportPlan([full({ sku: "T5" })], [], 0, null, taxes);
+    expect(plan.inserts[0].tax_id).toBeUndefined();
+  });
+
+  it("ignores the Tax column entirely when tax is disabled (no taxes passed)", () => {
+    const plan = buildImportPlan([full({ sku: "T6", Tax: "VATT" })], [], 0, null);
+    expect(plan.inserts).toHaveLength(1);
+    expect(plan.inserts[0].tax_id).toBeUndefined();
+  });
+});

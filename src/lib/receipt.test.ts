@@ -52,6 +52,18 @@ describe("buildReceiptHtml", () => {
     expect(withDisc).toContain("-₦2000");
   });
 
+  it("shows a VAT line and the TIN, with a NET subtotal so subtotal + VAT = total", () => {
+    const plain = buildReceiptHtml(base);
+    expect(plain).not.toContain("VAT");
+    expect(plain).not.toContain("TIN:");
+    // Inclusive pricing: total 25000 with 1744 VAT → net subtotal 23256 (23256 + 1744 = 25000).
+    const withTax = buildReceiptHtml({ ...base, subtotal: 25000, tax: 1744, tin: "12345678-0001" });
+    expect(withTax).toContain("VAT");
+    expect(withTax).toContain("₦1744");
+    expect(withTax).toContain("₦23256"); // net subtotal = total − VAT
+    expect(withTax).toContain("TIN: 12345678-0001");
+  });
+
   it("escapes HTML in user-supplied text", () => {
     const html = buildReceiptHtml({
       ...base,

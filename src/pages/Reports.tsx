@@ -26,7 +26,7 @@ import { netProfit, fetchExpensesForReport } from "@/lib/expenditure";
 type Sale = { id: string; total_amount: number; created_at: string; staff_id?: string | null; tax_amount?: number };
 type SaleItem = { sale_id: string; product_id: string | null; quantity: number; unit_price: number };
 type Product = { id: string; name: string; stock_quantity: number; reorder_level: number; cost_price: number | null; selling_price: number; tax_id?: string | null };
-type MatPurchase = { supplier_id: string | null; total_cost: number; created_at: string };
+type MatPurchase = { supplier_id: string | null; total_cost: number; created_at: string; tax_amount?: number };
 type Supplier = { id: string; name: string };
 
 function isoDate(d: Date) { return d.toISOString().slice(0, 10); }
@@ -50,6 +50,7 @@ export default function Reports() {
   const [expensesTotal, setExpensesTotal] = useState(0);
   const [prevExpensesTotal, setPrevExpensesTotal] = useState(0);
   const [inputVatTotal, setInputVatTotal] = useState(0);
+  const [procurementVatTotal, setProcurementVatTotal] = useState(0); // input VAT from material purchases + received POs
   const [outOfStockPage, setOutOfStockPage] = useState(1);
   const [lowStockPage, setLowStockPage] = useState(1);
   const [turnoverPage, setTurnoverPage] = useState(1);
@@ -65,7 +66,7 @@ export default function Reports() {
       const prevToIso = new Date(new Date(fromIso).getTime() - 1).toISOString();
       const prevFromIso = new Date(new Date(prevToIso).getTime() - periodMs).toISOString();
 
-      const [s, p, pr, mp, sup, prevS, prof, exp] = await Promise.all([
+      const [s, p, pr, mp, sup, prevS, prof, po, exp] = await Promise.all([
         supabase.from("sales").select("id,total_amount,created_at,staff_id,tax_amount").eq("business_id", business.id).eq("voided", false).gte("created_at", fromIso).lte("created_at", toIso),
         supabase.from("products").select("id,name,stock_quantity,reorder_level,cost_price,selling_price,tax_id").eq("business_id", business.id),
         // Only the items whose sale falls in the report window (previous period start → current
@@ -78,10 +79,12 @@ export default function Reports() {
           .eq("sales.voided", false)
           .gte("sales.created_at", prevFromIso)
           .lte("sales.created_at", toIso),
-        supabase.from("material_purchases").select("supplier_id,total_cost,created_at").eq("business_id", business.id).gte("created_at", fromIso).lte("created_at", toIso),
+        supabase.from("material_purchases").select("supplier_id,total_cost,created_at,tax_amount").eq("business_id", business.id).gte("created_at", fromIso).lte("created_at", toIso),
         supabase.from("suppliers").select("id,name").eq("business_id", business.id),
         supabase.from("sales").select("id,total_amount").eq("business_id", business.id).eq("voided", false).gte("created_at", prevFromIso).lte("created_at", prevToIso),
         supabase.from("profiles").select("id,owner_name").eq("business_id", business.id),
+        // Input VAT from received purchase orders in the window (material purchases carry theirs on mp).
+        supabase.from("purchase_orders").select("tax_amount,created_at").eq("business_id", business.id).eq("status", "received").gte("created_at", fromIso).lte("created_at", toIso),
         // Expenses across both periods (by expense_date); split in memory for the Net-profit change.
         showExpenses ? fetchExpensesForReport(business.id, prevFromIso.slice(0, 10), to) : Promise.resolve([]),
       ]);
@@ -94,7 +97,7 @@ export default function Reports() {
       setSales(salesData);
       setProducts((p.data as unknown as Product[]) || []); // tax_id postdates generated types
       setSaleItems(allSaleItems.filter(si => saleIds.has(si.sale_id)));
-      setPurchases((mp.data as MatPurchase[]) || []);
+      setPurchases((mp.data as unknown as MatPurchase[]) || []); // tax_amount postdates generated types
       setSuppliers((sup.data as Supplier[]) || []);
 
       const profileMap: Record<string, string> = {};
@@ -113,7 +116,12 @@ export default function Reports() {
       const currentExp = expRows.filter(e => e.expense_date >= from);
       setExpensesTotal(currentExp.reduce((t, e) => t + Number(e.amount || 0), 0));
       setPrevExpensesTotal(expRows.filter(e => e.expense_date < from).reduce((t, e) => t + Number(e.amount || 0), 0));
-      setInputVatTotal(currentExp.reduce((t, e) => t + Number(e.tax_amount || 0), 0)); // input VAT recoverable
+      setInputVatTotal(currentExp.reduce((t, e) => t + Number(e.tax_amount || 0), 0)); // input VAT on expense bills
+
+      // Input VAT on procurement: material purchases (window) + received POs (window).
+      const matVat = ((mp.data as unknown as MatPurchase[]) || []).reduce((t, m) => t + Number(m.tax_amount || 0), 0);
+      const poVat = ((po.data as unknown as { tax_amount: number }[]) || []).reduce((t, o) => t + Number(o.tax_amount || 0), 0);
+      setProcurementVatTotal(matVat + poVat);
 
       setLoading(false);
     })();
@@ -173,8 +181,9 @@ export default function Reports() {
       if (si.product_id && taxMap.get(si.product_id)) taxableSales += line;
       else exemptSales += line;
     }
-    return { output, input: inputVatTotal, net: output - inputVatTotal, taxableSales, exemptSales };
-  }, [sales, saleItems, products, inputVatTotal]);
+    const input = inputVatTotal + procurementVatTotal; // expense bills + procurement (purchases + POs)
+    return { output, input, net: output - input, taxableSales, exemptSales };
+  }, [sales, saleItems, products, inputVatTotal, procurementVatTotal]);
 
   const exportPdf = async () => {
     // jsPDF is heavy — load it only when the user actually exports (Experience Roadmap · Phase 1).
@@ -358,7 +367,7 @@ export default function Reports() {
           {taxEnabled && (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <Metric label="Output VAT" value={fmt(vat.output)} icon={Receipt} accent="brand" sub={`Taxable sales ${fmt(vat.taxableSales)}`} />
-              <Metric label="Input VAT" value={fmt(vat.input)} icon={Wallet} accent={vat.input ? "warning" : "muted"} sub="On expense bills" />
+              <Metric label="Input VAT" value={fmt(vat.input)} icon={Wallet} accent={vat.input ? "warning" : "muted"} sub="Bills & purchases" />
               <Metric label="Net VAT payable" value={fmt(vat.net)} icon={Receipt} accent={vat.net > 0 ? "dark" : "brand"} sub="Output − input" />
               <Metric label="Exempt sales" value={fmt(vat.exemptSales)} icon={Package} accent="muted" sub="No VAT charged" />
             </div>

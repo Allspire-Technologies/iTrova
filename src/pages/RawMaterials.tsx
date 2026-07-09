@@ -79,6 +79,8 @@ export default function RawMaterials() {
   const [purchaseFor, setPurchaseFor] = useState<Material | null>(null);
   const [pQty, setPQty] = useState<number>(0);
   const [pCost, setPCost] = useState<number>(0);
+  const [pTax, setPTax] = useState<number>(0); // input VAT on this purchase (from the supplier invoice)
+  const taxEnabled = !!business?.tax_enabled;
 
   const load = async () => {
     const [{ data: m }, { data: s }, { data: pur }] = await Promise.all([
@@ -141,10 +143,11 @@ export default function RawMaterials() {
       quantity: pQty,
       unit_cost: pCost,
       total_cost: pQty * pCost,
-    });
+      tax_amount: taxEnabled ? (pTax || 0) : 0,
+    } as never); // tax_amount postdates the generated types
     if (error) return toast.error(error.message);
     toast.success(`Recorded purchase of ${pQty} ${purchaseFor.unit}`);
-    setPurchaseOpen(false); setPQty(0); setPCost(0); load();
+    setPurchaseOpen(false); setPQty(0); setPCost(0); setPTax(0); load();
   };
 
   // Human-readable headers for the template/export. Import is case/spacing-insensitive and accepts
@@ -334,7 +337,7 @@ export default function RawMaterials() {
                   <div className="flex items-center justify-between gap-2">
                     <Badge variant="outline" className={s.className}>{s.label}</Badge>
                     <div className="flex gap-1 shrink-0">
-                      <Button variant="ghost" size="sm" onClick={() => { setPurchaseFor(m); setPCost(Number(m.cost_per_unit) || 0); setPurchaseOpen(true); }}><PackagePlus className="size-4" /> Purchase</Button>
+                      <Button variant="ghost" size="sm" onClick={() => { setPurchaseFor(m); setPCost(Number(m.cost_per_unit) || 0); setPTax(0); setPurchaseOpen(true); }}><PackagePlus className="size-4" /> Purchase</Button>
                       <Button variant="ghost" size="sm" onClick={() => setAdjustTarget(m)}><SlidersHorizontal className="size-4" /> Adjust</Button>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -380,7 +383,7 @@ export default function RawMaterials() {
                       <td className="px-4 py-3 text-right font-display font-semibold text-brand-dark">{fmt(m.cost_per_unit)}</td>
                       <td className="px-4 py-3"><Badge variant="outline" className={s.className}>{s.label}</Badge></td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
-                        <Button variant="ghost" size="sm" onClick={() => { setPurchaseFor(m); setPCost(Number(m.cost_per_unit) || 0); setPurchaseOpen(true); }}><PackagePlus className="size-4" /> Purchase</Button>
+                        <Button variant="ghost" size="sm" onClick={() => { setPurchaseFor(m); setPCost(Number(m.cost_per_unit) || 0); setPTax(0); setPurchaseOpen(true); }}><PackagePlus className="size-4" /> Purchase</Button>
                         <Button variant="ghost" size="sm" onClick={() => setAdjustTarget(m)}><SlidersHorizontal className="size-4" /> Adjust</Button>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -531,6 +534,12 @@ export default function RawMaterials() {
               <div className="space-y-2"><Label>Quantity ({purchaseFor?.unit})</Label><Input type="number" min="0" step="0.01" placeholder="0" value={pQty || ""} onChange={e => setPQty(Number(e.target.value))} /></div>
               <div className="space-y-2"><Label>Unit cost ({symbol})</Label><Input type="number" min="0" step="0.01" placeholder="0" value={pCost || ""} onChange={e => setPCost(Number(e.target.value))} /></div>
             </div>
+            {taxEnabled && (
+              <div className="space-y-2">
+                <Label>of which VAT ({symbol}) <span className="font-normal text-muted-foreground">(input VAT — optional)</span></Label>
+                <Input type="number" min="0" step="0.01" placeholder="0" value={pTax || ""} onChange={e => setPTax(Number(e.target.value))} />
+              </div>
+            )}
             <div className="text-sm text-muted-foreground">Total: <span className="font-semibold text-brand-dark">{fmt((pQty || 0) * (pCost || 0))}</span></div>
             <DialogFooter>
               <Button variant="ghost" onClick={() => setPurchaseOpen(false)}>Cancel</Button>

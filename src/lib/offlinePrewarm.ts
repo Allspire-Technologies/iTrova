@@ -1,6 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
-import { cacheProducts, cacheDashboard, cacheInvoices } from "@/lib/offlineStore";
+import { cacheProducts, cacheDashboard, cacheInvoices, cacheTaxes } from "@/lib/offlineStore";
 import { fetchDashboardSnapshot } from "@/lib/dashboardSnapshot";
+import { listTaxes } from "@/lib/tax";
 import type { CachedInvoice } from "@/lib/offlineTypes";
 
 // Pre-warms the offline caches for every offline-capable module so they work without visiting each
@@ -14,13 +15,18 @@ type Task = { key: string; label: string; run: (businessId: string) => Promise<v
 async function warmProducts(businessId: string): Promise<void> {
   const { data, error } = await supabase
     .from("products")
-    .select("id,name,sku,selling_price,stock_quantity,reorder_level,category");
+    .select("id,name,sku,selling_price,stock_quantity,reorder_level,category,tax_id");
   if (error) throw new Error(error.message);
-  await cacheProducts(businessId, (data ?? []).map((r) => ({
+  await cacheProducts(businessId, (data as unknown as ProductRow[] ?? []).map((r) => ({
     id: r.id, business_id: businessId, name: r.name, sku: r.sku,
     selling_price: r.selling_price, stock_quantity: r.stock_quantity, reorder_level: r.reorder_level, category: r.category,
+    tax_id: r.tax_id ?? null,
   })));
+  // Cache the tax catalogue alongside products so offline POS can resolve VAT rates (best-effort).
+  try { await cacheTaxes(businessId, await listTaxes()); } catch { /* taxes optional offline */ }
 }
+
+type ProductRow = { id: string; name: string; sku: string | null; selling_price: number; stock_quantity: number; reorder_level: number; category: string | null; tax_id: string | null };
 
 async function warmDashboard(businessId: string): Promise<void> {
   await cacheDashboard(businessId, await fetchDashboardSnapshot());

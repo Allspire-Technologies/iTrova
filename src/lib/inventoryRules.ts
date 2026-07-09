@@ -8,6 +8,8 @@ export type ProductFields = {
   reorder_level: number;
   /** Optional. undefined = column absent (leave unchanged on update); null = explicitly cleared. */
   expiry_date?: string | null;
+  /** Optional tax mapping. undefined = Tax column absent (unchanged on update); null = Exempt. */
+  tax_id?: string | null;
 };
 
 type CsvRow = Record<string, string | undefined>;
@@ -17,7 +19,7 @@ type ExistingProduct = { id: string; sku: string | null; stock_quantity: number 
 type CanonicalRow = {
   name?: string; category?: string; sku?: string; unit?: string;
   selling_price?: string; cost_price?: string; stock_quantity?: string;
-  reorder_level?: string; expiry_date?: string;
+  reorder_level?: string; expiry_date?: string; tax?: string;
 };
 
 // Import CSVs are hand-edited in spreadsheets, so headers vary in case, spacing and wording. Map the
@@ -42,6 +44,7 @@ const HEADER_ALIASES: Record<string, keyof CanonicalRow> = {
   "low stock level": "reorder_level",
   "expiry date": "expiry_date", "expiry": "expiry_date", "expiration date": "expiry_date",
   "expiration": "expiry_date", "best before": "expiry_date", "exp date": "expiry_date", "expires": "expiry_date",
+  "tax": "tax", "vat": "tax", "tax name": "tax", "tax type": "tax",
 };
 
 // The generic header/number helpers moved to csvImport.ts (shared by every import surface);
@@ -93,6 +96,25 @@ export function validateImportRow(r: CanonicalRow): string[] {
   return problems;
 }
 
+export type TaxRef = { id: string; name: string };
+
+/**
+ * Resolve a row's Tax column against the catalogue (by name, case-insensitive).
+ *   column absent            → {} (leave the product's tax unchanged on update)
+ *   blank / exempt / none    → { tax_id: null } (Exempt)
+ *   matches a catalogue tax  → { tax_id }
+ *   unknown name             → { error } (caller rejects the row)
+ * Only called when tax is enabled (taxes provided); otherwise the column is ignored entirely.
+ */
+export function resolveTax(canon: CanonicalRow, taxes: TaxRef[]): { tax_id?: string | null } | { error: string } {
+  if (!("tax" in canon)) return {};
+  const val = (canon.tax ?? "").trim();
+  if (!val || /^(exempt|none|no|n\/a|na|nil)$/i.test(val)) return { tax_id: null };
+  const match = taxes.find(t => t.name.trim().toLowerCase() === val.toLowerCase());
+  if (!match) return { error: `Unknown tax "${val}" — add it under Settings → Tax or leave the column blank for Exempt` };
+  return { tax_id: match.id };
+}
+
 /** Find another product using the same SKU (case-insensitive), excluding the one being edited. */
 export function findSkuConflict<T extends { id: string; sku: string | null }>(
   sku: string,
@@ -130,6 +152,7 @@ export function buildImportPlan(
   existing: ExistingProduct[],
   currentCount: number,
   limit: number | null,
+  taxes?: TaxRef[], // provided only when tax is enabled; enables the Tax column (by name)
 ): ImportPlan {
   const rejected: RejectedRow[] = [];
 
@@ -164,6 +187,11 @@ export function buildImportPlan(
     }
     const { raw, canon } = group[0];
     const fields = fieldsFromRow(canon);
+    if (taxes) {
+      const t = resolveTax(canon, taxes);
+      if ("error" in t) { rejected.push({ row: raw, reason: t.error }); continue; }
+      if ("tax_id" in t) fields.tax_id = t.tax_id;
+    }
     const qty = parseImportNumber(canon.stock_quantity) || 0;
     const ex = existingBySku.get(key);
     if (ex) updates.push({ id: ex.id, fields, stock: Number(ex.stock_quantity) + qty });

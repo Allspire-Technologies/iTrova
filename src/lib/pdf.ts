@@ -1,4 +1,14 @@
-import { formatNaira } from "./format";
+// jsPDF's built-in Helvetica is Latin-1 only, so currency SYMBOLS like ₦/₵/₦ render as tofu (and
+// can mangle nearby digits). For print we format with the ASCII currency CODE instead — "NGN 22,050.00".
+function pdfMoneyFormatter(currency?: string): (n: number) => string {
+  const code = (currency || "NGN").toUpperCase();
+  try {
+    const nf = new Intl.NumberFormat("en-US", { style: "currency", currency: code, currencyDisplay: "code", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return (n) => nf.format(Number(n) || 0);
+  } catch {
+    return (n) => `${code} ${(Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+}
 
 // jsPDF (+autotable and its transitive html2canvas/dompurify chunks) is heavy — load it only when
 // someone actually exports a PDF, not at app startup (Experience Roadmap · Phase 1).
@@ -24,7 +34,7 @@ export type PdfDocInput = {
   discount?: number;
   tax?: number;
   total: number;
-  formatMoney?: (n: number) => string;
+  formatMoney?: (n: number) => string; // ignored for print — amounts use the ASCII currency code (see pdfMoneyFormatter)
   notes?: string | null;
 };
 
@@ -33,7 +43,8 @@ export async function buildPdf(input: PdfDocInput) {
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
   const M = 40;
-  const money = input.formatMoney ?? formatNaira;
+  // Always print with the ASCII currency code (symbols break in the built-in PDF font).
+  const money = pdfMoneyFormatter(input.business.currency);
 
   // Header
   doc.setFont("helvetica", "bold").setFontSize(22);
@@ -81,29 +92,37 @@ export async function buildPdf(input: PdfDocInput) {
     margin: { left: M, right: M },
   });
 
-  // Totals
+  // Totals. When there's VAT the shown subtotal is the NET (total − VAT), so subtotal + VAT = total
+  // (prices are typically VAT-inclusive, so the stored subtotal already contains the VAT). The
+  // discount is already baked into the total, so it isn't itemised again on a taxed document.
   // @ts-expect-error autoTable adds lastAutoTable
-  const endY: number = doc.lastAutoTable.finalY + 16;
-  const lx = pageW - M - 180;
+  const endY: number = doc.lastAutoTable.finalY + 20;
+  const hasTax = !!input.tax && input.tax > 0;
+  const shownSubtotal = hasTax ? input.total - (input.tax as number) : input.subtotal;
+  const lx = pageW - M - 200;
   const vx = pageW - M;
-  doc.setFont("helvetica", "normal").setFontSize(10);
+  doc.setFont("helvetica", "normal").setFontSize(10).setTextColor(60);
   let row = endY;
   doc.text("Subtotal", lx, row);
-  doc.text(money(input.subtotal), vx, row, { align: "right" });
-  if (input.discount && input.discount > 0) {
+  doc.text(money(shownSubtotal), vx, row, { align: "right" });
+  if (!hasTax && input.discount && input.discount > 0) {
     row += 16;
     doc.text("Discount", lx, row);
     doc.text(`-${money(input.discount)}`, vx, row, { align: "right" });
   }
-  if (input.tax) {
+  if (hasTax) {
     row += 16;
-    doc.text("Tax", lx, row);
-    doc.text(money(input.tax), vx, row, { align: "right" });
+    doc.text("VAT", lx, row);
+    doc.text(money(input.tax as number), vx, row, { align: "right" });
   }
-  row += 22;
-  doc.setFont("helvetica", "bold").setFontSize(12);
+  // Divider above the grand total for a cleaner finish.
+  row += 12;
+  doc.setDrawColor(200).setLineWidth(0.5).line(lx, row, vx, row);
+  row += 16;
+  doc.setFont("helvetica", "bold").setFontSize(12).setTextColor(30);
   doc.text("Total", lx, row);
   doc.text(money(input.total), vx, row, { align: "right" });
+  doc.setTextColor(0);
 
   if (input.notes) {
     doc.setFont("helvetica", "normal").setFontSize(9);
