@@ -129,10 +129,13 @@ export default function Inventory() {
   // Human-readable headers for the template/export. Import is case/spacing-insensitive and accepts
   // these plus common aliases (see inventoryRules canonicalizeRow), so re-importing either an old
   // snake_case export or this friendlier one both work.
-  const CSV_HEADERS = ["Name", "Category", "SKU", "Unit", "Selling Price", "Cost Price", "Stock Quantity", "Reorder Level", "Expiry Date"];
+  // The Tax column (by tax name) only appears when tax is enabled — non-tax businesses keep the
+  // original 9-column shape, and old exports still re-import fine (a missing Tax column = unchanged).
+  const CSV_HEADERS = ["Name", "Category", "SKU", "Unit", "Selling Price", "Cost Price", "Stock Quantity", "Reorder Level", "Expiry Date", ...(taxEnabled ? ["Tax"] : [])];
+  const taxNameOf = (id: string | null | undefined) => (id ? taxes.find(t => t.id === id)?.name ?? "" : "");
 
   const downloadTemplate = () => {
-    const example = ["Garri 50kg", "Foodstuff", "GAR-50", "bag", "8500", "6000", "20", "5", "2026-12-31"];
+    const example = ["Garri 50kg", "Foodstuff", "GAR-50", "bag", "8500", "6000", "20", "5", "2026-12-31", ...(taxEnabled ? ["VAT"] : [])];
     const csv = [CSV_HEADERS.join(","), example.join(",")].join("\n");
     downloadCsv("products-template.csv", csv);
     toast.success("Template downloaded");
@@ -143,7 +146,7 @@ export default function Inventory() {
       "Name": p.name, "Category": p.category || "", "SKU": p.sku || "", "Unit": p.unit || "pcs",
       "Selling Price": p.selling_price, "Cost Price": p.cost_price,
       "Stock Quantity": p.stock_quantity, "Reorder Level": p.reorder_level,
-      "Expiry Date": p.expiry_date || "",
+      "Expiry Date": p.expiry_date || "", "Tax": taxNameOf(p.tax_id),
     }));
     downloadCsv(`products-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(rows, CSV_HEADERS));
     toast.success(`Exported ${rows.length} product${rows.length === 1 ? "" : "s"}`);
@@ -156,12 +159,14 @@ export default function Inventory() {
       "Name": c.name ?? "", "Category": c.category ?? "", "SKU": c.sku ?? "", "Unit": c.unit ?? "",
       "Selling Price": c.selling_price ?? "", "Cost Price": c.cost_price ?? "",
       "Stock Quantity": c.stock_quantity ?? "", "Reorder Level": c.reorder_level ?? "", "Expiry Date": c.expiry_date ?? "",
+      "Tax": c.tax ?? "",
     };
   };
   const templateValuesFromFields = (f: ProductFields, stock: number): Record<string, string> => ({
     "Name": f.name, "Category": f.category ?? "", "SKU": f.sku, "Unit": f.unit,
     "Selling Price": String(f.selling_price), "Cost Price": String(f.cost_price),
     "Stock Quantity": String(stock), "Reorder Level": String(f.reorder_level), "Expiry Date": f.expiry_date ?? "",
+    "Tax": taxNameOf(f.tax_id),
   });
 
   const importCsv = async (file: File) => {
@@ -169,7 +174,7 @@ export default function Inventory() {
     try {
       const text = await readFileText(file);
       const rows = parseCsv(text);
-      const plan = buildImportPlan(rows, items, items.length, getLimit(business.subscription_tier, "products"));
+      const plan = buildImportPlan(rows, items, items.length, getLimit(business.subscription_tier, "products"), taxEnabled ? taxes.map(t => ({ id: t.id, name: t.name })) : undefined);
       if (plan.inserts.length === 0 && plan.updates.length === 0 && plan.rejected.length === 0) {
         return toast.error("No rows found in the file.");
       }
@@ -189,7 +194,7 @@ export default function Inventory() {
 
       let restocked = 0;
       for (const u of plan.updates) {
-        const { error } = await supabase.from("products").update({ ...u.fields, stock_quantity: u.stock }).eq("id", u.id);
+        const { error } = await supabase.from("products").update({ ...u.fields, stock_quantity: u.stock } as never).eq("id", u.id);
         if (error) failed.push({ values: templateValuesFromFields(u.fields, u.stock), reason: `Update failed: ${error.message}` });
         else restocked++;
         tick();
