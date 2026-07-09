@@ -308,7 +308,7 @@ export default function PermissionsAccess() {
 
       {/* Role editor dialog */}
       <Dialog open={!!roleForm} onOpenChange={(o) => !o && setRoleForm(null)}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent variant="wide">
           <DialogHeader><DialogTitle>{roleForm?.system_key ? `Edit ${roleForm.name} defaults` : roleForm?.id ? "Edit role" : "New role"}</DialogTitle></DialogHeader>
           {roleForm && (
             <div className="space-y-3">
@@ -333,7 +333,7 @@ export default function PermissionsAccess() {
 
       {/* Member override dialog */}
       <Dialog open={!!overrideForm} onOpenChange={(o) => !o && setOverrideForm(null)}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent variant="wide">
           <DialogHeader><DialogTitle>Customize access — {overrideForm?.member.name}</DialogTitle></DialogHeader>
           {overrideForm && (
             <div className="space-y-2">

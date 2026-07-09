@@ -203,7 +203,7 @@ export default function MaterialApprovals({ onChanged, onPendingCount }: {
 
       {/* Approve: reduce quantities before issuing. */}
       <Dialog open={!!approving} onOpenChange={(o) => !o && setApproving(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent variant="wide">
           <DialogHeader><DialogTitle className="font-display">Approve and issue materials</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">

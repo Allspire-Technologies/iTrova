@@ -405,7 +405,7 @@ export default function Expenditure() {
 
       {/* Add / Edit */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent variant="wide">
           <DialogHeader><DialogTitle className="font-display">{form.id ? "Edit expense" : "Add expense"}</DialogTitle></DialogHeader>
           <form onSubmit={save} className="space-y-4">
             <div className="grid grid-cols-2 gap-3">

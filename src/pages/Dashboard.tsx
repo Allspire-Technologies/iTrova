@@ -343,7 +343,7 @@ export default function Dashboard() {
       </div>
 
       <Dialog open={activityOpen} onOpenChange={setActivityOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent variant="wide">
           <DialogHeader>
             <DialogTitle className="font-display flex items-center gap-2"><Clock className="size-4 text-brand" /> Recent activity</DialogTitle>
           </DialogHeader>

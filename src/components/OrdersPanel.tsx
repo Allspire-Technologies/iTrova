@@ -318,7 +318,7 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
           <DialogTrigger asChild>
             <Button variant="brand"><Plus className="size-4" /> New order</Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogContent variant="wide" className="max-h-[90vh] overflow-y-auto">
             <DialogHeader><DialogTitle className="font-display">{editing ? "Edit order" : "Create order"}</DialogTitle></DialogHeader>
             <div className="space-y-4">
               <div className="grid sm:grid-cols-2 gap-3">

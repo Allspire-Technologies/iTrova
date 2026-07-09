@@ -491,7 +491,7 @@ export default function RawMaterials() {
 
       {/* Add/Edit Dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent variant="wide">
           <DialogHeader><DialogTitle className="font-display">{editing ? "Edit material" : "Add raw material"}</DialogTitle></DialogHeader>
           <form onSubmit={save} className="space-y-4">
             <div className="space-y-2"><Label>Name</Label><Input required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Cassava flour" /></div>

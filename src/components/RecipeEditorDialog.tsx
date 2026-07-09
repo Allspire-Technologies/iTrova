@@ -82,7 +82,7 @@ export default function RecipeEditorDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent variant="wide">
         <DialogHeader>
           <DialogTitle className="font-display">{productId ? "Edit recipe" : "Link materials to a product"}</DialogTitle>
         </DialogHeader>

@@ -490,7 +490,7 @@ export default function PurchaseOrders() {
       </Card>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent variant="wide" className="max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>New purchase order</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
@@ -567,7 +567,7 @@ export default function PurchaseOrders() {
       </Dialog>
 
       <Dialog open={!!viewing} onOpenChange={(o) => !o && setViewing(null)}>
-        <DialogContent className="max-w-xl">
+        <DialogContent variant="wide">
           {viewing && (
             <>
               <DialogHeader>
