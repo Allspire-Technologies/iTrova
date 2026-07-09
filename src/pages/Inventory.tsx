@@ -113,7 +113,8 @@ export default function Inventory() {
       cost_price: Number(form.cost_price) || 0,
       reorder_level: Number(form.reorder_level) || 0,
       expiry_date: form.expiry_date || null,
-      tax_id: taxEnabled ? (form.tax_id || null) : (form.tax_id ?? null),
+      // Empty string (Exempt, or tax disabled) must become NULL — "" is not a valid uuid.
+      tax_id: form.tax_id || null,
     };
     // tax_id postdates the generated Supabase types — cast until types are regenerated.
     const { error } = editing
