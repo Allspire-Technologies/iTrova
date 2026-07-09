@@ -39,6 +39,30 @@ test.describe("Inventory", () => {
     await expect(page.getByText("Expiry date")).toBeVisible();
   });
 
+  test("adds a product with tax off — sends tax_id null, not an empty string (uuid guard)", async ({ page }) => {
+    let body: Record<string, unknown> | null = null;
+    await page.route("**/rest/v1/products**", (r) => {
+      if (r.request().method() === "POST") {
+        body = r.request().postDataJSON();
+        return r.fulfill({ status: 201, contentType: "application/json", body: "[]" });
+      }
+      return r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([product]) });
+    });
+    await page.getByRole("button", { name: "Add product" }).first().click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByPlaceholder("Garri (50kg)").fill("Rice 25kg");
+    await dialog.getByPlaceholder("GAR-50").fill("RICE-25");
+    const nums = dialog.locator('input[type="number"]');
+    await nums.nth(0).fill("8000"); // selling
+    await nums.nth(1).fill("6000"); // cost
+    await nums.nth(2).fill("10");   // stock
+    await nums.nth(3).fill("3");    // reorder
+    await dialog.getByRole("button", { name: "Add product" }).click();
+    await expect(page.getByText("Product added")).toBeVisible();
+    expect(body).not.toBeNull();
+    expect(body!.tax_id).toBeNull(); // must be null, never "" (invalid uuid)
+  });
+
   test("shows expiry in its own column and badges a product expiring within 90 days", async ({ page }) => {
     const soon = new Date(Date.now() + 10 * 86_400_000).toISOString().slice(0, 10);
     await stubRows(page, "products", [{ ...product, expiry_date: soon }]);
