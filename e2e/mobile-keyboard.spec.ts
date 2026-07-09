@@ -11,9 +11,12 @@ async function checkDialog(page: Page, name: string, submitName: string | RegExp
   await dialog.waitFor();
   await page.waitForTimeout(350); // let the open animation settle before measuring
   const box = await dialog.boundingBox();
-  const fits = !!box && box.height <= KBD.height;
+  // +1px tolerance: a full-screen mobile dialog is exactly viewport-height, which renders as a
+  // fractional value (e.g. 450.4) in a headed browser from the device pixel ratio.
+  const fits = !!box && box.height <= KBD.height + 1;
   // Form dialogs are full-page takeovers on phones — the whole width, scrolling internally.
-  expect(box?.width, `${name} should span the full mobile width`).toBe(KBD.width);
+  // Allow ≤1px: headed browsers render fractional widths (e.g. 390.4) from the device pixel ratio.
+  expect(Math.abs((box?.width ?? 0) - KBD.width), `${name} should span the full mobile width`).toBeLessThanOrEqual(1);
   // The submit button must be reachable by scrolling within the dialog.
   const btn = dialog.getByRole("button", { name: submitName }).last();
   await btn.scrollIntoViewIfNeeded();
