@@ -296,7 +296,7 @@ export default function Inventory() {
             <DialogTrigger asChild>
               <Button variant="hero" onClick={openAdd} disabled={atProductLimit} title={atProductLimit ? limitMessage("products") : undefined}><Plus className="size-4" /> Add product</Button>
             </DialogTrigger>
-            <DialogContent className="max-w-lg">
+            <DialogContent variant="wide">
               <DialogHeader>
                 <DialogTitle className="font-display">{editing ? "Edit product" : "Add a new product"}</DialogTitle>
               </DialogHeader>

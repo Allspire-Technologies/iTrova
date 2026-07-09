@@ -144,7 +144,7 @@ export default function OnboardingDialog({ open, onClose }: { open: boolean; onC
     <>
     {/* X / Escape don't dismiss outright — the confirm below guards the one-time trial offer. */}
     <Dialog open={open} onOpenChange={(o) => { if (!o) setCloseConfirm(true); }}>
-      <DialogContent className="max-w-lg" onPointerDownOutside={(e) => e.preventDefault()}>
+      <DialogContent variant="wide" onPointerDownOutside={(e) => e.preventDefault()}>
         <DialogHeader>
           <div className="size-12 rounded-xl bg-gradient-brand grid place-items-center text-brand-foreground mx-auto mb-2">
             {stepIcon}

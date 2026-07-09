@@ -512,7 +512,7 @@ export default function Production() {
 
       {/* ------------------------------------------------ dialogs */}
       <Dialog open={requestOpen} onOpenChange={(o) => { if (!o) { setRequestOpen(false); setEditingReq(null); } }}>
-        <DialogContent className="max-w-lg">
+        <DialogContent variant="wide">
           <DialogHeader><DialogTitle className="font-display">{editingReq ? "Edit materials request" : "Request materials"}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
@@ -543,7 +543,7 @@ export default function Production() {
       />
 
       <Dialog open={runOpen} onOpenChange={(o) => !o && setRunOpen(false)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent variant="wide">
           <DialogHeader><DialogTitle className="font-display">Record production</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">

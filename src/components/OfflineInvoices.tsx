@@ -359,7 +359,7 @@ export function OfflineInvoices() {
 
       {/* View */}
       <Dialog open={!!viewing} onOpenChange={(o) => !o && setViewing(null)}>
-        <DialogContent>
+        <DialogContent variant="wide">
           {viewing && (
             <>
               <DialogHeader><DialogTitle className="font-display">{viewing.invoiceNumber}</DialogTitle></DialogHeader>
@@ -394,7 +394,7 @@ export function OfflineInvoices() {
 
       {/* Edit (full: customer + line qty/price + discount) */}
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent variant="wide">
           <DialogHeader><DialogTitle className="font-display">Edit {editing?.invoiceNumber}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -464,7 +464,7 @@ export function OfflineInvoices() {
 
       {/* New invoice (offline) */}
       <Dialog open={creating} onOpenChange={(o) => !o && setCreating(false)}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent variant="wide" className="max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle className="font-display">New invoice (offline)</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

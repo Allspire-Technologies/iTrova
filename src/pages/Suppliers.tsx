@@ -219,7 +219,7 @@ export default function Suppliers() {
             <DialogTrigger asChild>
               <Button variant="hero" onClick={openAdd} disabled={atSupplierLimit} title={atSupplierLimit ? limitMessage("suppliers") : undefined}><Plus className="size-4" /> Add supplier</Button>
             </DialogTrigger>
-            <DialogContent className="max-w-lg">
+            <DialogContent variant="wide">
               <DialogHeader><DialogTitle className="font-display">{editing ? "Edit supplier" : "Add a supplier"}</DialogTitle></DialogHeader>
               <form onSubmit={save} className="space-y-4">
                 <div className="space-y-2"><Label>Business name</Label><Input required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Olu Farms Ltd" /></div>

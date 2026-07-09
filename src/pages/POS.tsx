@@ -623,7 +623,7 @@ export default function POS() {
 
       {/* Offline sales needing review (server couldn't satisfy stock on sync) */}
       <Dialog open={reviewOpen} onOpenChange={setReviewOpen}>
-        <DialogContent>
+        <DialogContent variant="wide">
           <DialogHeader>
             <DialogTitle className="font-display">Sales needing review</DialogTitle>
           </DialogHeader>

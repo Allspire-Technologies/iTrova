@@ -379,7 +379,7 @@ export default function GeneralStore() {
 
       {/* Item form dialog */}
       <Dialog open={!!itemForm} onOpenChange={(o) => !o && setItemForm(null)}>
-        <DialogContent>
+        <DialogContent variant="wide">
           <DialogHeader><DialogTitle>{itemForm?.id ? "Edit item" : "Add item"}</DialogTitle></DialogHeader>
           {itemForm && (
             <div className="space-y-3">
@@ -430,7 +430,7 @@ export default function GeneralStore() {
 
       {/* Checkout dialog */}
       <Dialog open={!!checkoutForm} onOpenChange={(o) => !o && setCheckoutForm(null)}>
-        <DialogContent>
+        <DialogContent variant="wide">
           <DialogHeader><DialogTitle>Give out an item</DialogTitle></DialogHeader>
           {checkoutForm && (
             <div className="space-y-3">

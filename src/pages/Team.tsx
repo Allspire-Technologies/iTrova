@@ -300,7 +300,7 @@ export default function Team() {
           <DialogTrigger asChild>
             <Button variant="hero" disabled={atStaffLimit} title={atStaffLimit ? limitMessage("staff") : undefined}><UserPlus className="size-4" /> Invite teammate</Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent variant="wide">
             <DialogHeader><DialogTitle>Invite a teammate</DialogTitle></DialogHeader>
             <div className="space-y-4">
               <div>
