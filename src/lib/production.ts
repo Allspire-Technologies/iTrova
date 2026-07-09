@@ -201,7 +201,7 @@ export async function cancelRequisition(id: string): Promise<void> {
 export async function recordProductionRun(args: {
   businessId: string;
   requisitionId: string | null;
-  outputs: { product_id: string; quantity: number }[];
+  outputs: { product_id: string; quantity: number; cost_price?: number }[];
   materials: { raw_material_id: string; quantity_used: number; quantity_wasted: number }[];
   notes: string;
 }): Promise<void> {

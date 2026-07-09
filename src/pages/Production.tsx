@@ -32,8 +32,8 @@ const TABS = [{ key: "requests", label: "Requests" }, { key: "runs", label: "Run
 type TabKey = (typeof TABS)[number]["key"];
 
 type MaterialRow = { id: string; name: string; unit: string | null; stock_quantity: number };
-type ProductRow = { id: string; name: string; unit: string | null };
-type QtyLine = { key_id: string; quantity: string; waste?: string };
+type ProductRow = { id: string; name: string; unit: string | null; cost_price: number | null };
+type QtyLine = { key_id: string; quantity: string; waste?: string; cost?: string; issued?: string };
 
 export default function Production() {
   const { business, user, can } = useAuth();
@@ -67,7 +67,7 @@ export default function Production() {
       const [req, rn, mat, prod] = await Promise.all([
         listRequisitions(), listRuns(),
         supabase.from("raw_materials").select("id,name,unit,stock_quantity").order("name"),
-        supabase.from("products").select("id,name,unit").order("name"),
+        supabase.from("products").select("id,name,unit,cost_price").order("name"),
       ]);
       setRequisitions(req); setRuns(rn);
       setMaterials((mat.data as MaterialRow[]) ?? []);
@@ -158,7 +158,10 @@ export default function Production() {
   // (or the one whose "Produce" button was clicked).
   const materialsFromReq = (id: string) => {
     const req = approvedReqs.find(r => r.id === id);
-    return req ? req.production_requisition_items.map(i => ({ key_id: i.raw_material_id, quantity: String(i.quantity_issued ?? i.quantity_requested), waste: "" })) : [];
+    return req ? req.production_requisition_items.map(i => {
+      const issued = String(i.quantity_issued ?? i.quantity_requested);
+      return { key_id: i.raw_material_id, quantity: issued, waste: "", issued };
+    }) : [];
   };
   const openRun = (requisitionId?: string) => {
     const id = requisitionId ?? approvedReqs[0]?.id ?? "";
@@ -177,7 +180,12 @@ export default function Production() {
   const submitRun = async () => {
     if (!business) return;
     if (!runReq) return toast.error("Pick an approved materials request to produce from.");
-    const outputs = runOutputs.map(l => ({ product_id: l.key_id, quantity: Number(l.quantity) }));
+    const outputs = runOutputs.map(l => {
+      const line: { product_id: string; quantity: number; cost_price?: number } = { product_id: l.key_id, quantity: Number(l.quantity) };
+      // Only send a cost when the manager typed one — otherwise the product keeps its current cost.
+      if (l.cost != null && l.cost !== "" && Number(l.cost) >= 0) line.cost_price = Number(l.cost);
+      return line;
+    });
     if (outputs.length === 0 || outputs.some(o => !o.product_id || !(o.quantity > 0))) {
       return toast.error("Add at least one produced product with a quantity above zero.");
     }
@@ -268,7 +276,17 @@ export default function Production() {
             type="number" min="0" step="any" placeholder="Waste" className="w-20"
             aria-label={`Material wasted quantity ${idx + 1}`}
             value={l.waste ?? ""}
-            onChange={(e) => setRunMaterials(prev => prev.map((x, i) => i === idx ? { ...x, waste: e.target.value } : x))}
+            onChange={(e) => {
+              const w = e.target.value;
+              setRunMaterials(prev => prev.map((x, i) => {
+                if (i !== idx) return x;
+                // For a requisition-issued line, waste comes out of what was issued (already deducted
+                // at approval), so reduce Used to keep used + waste ≤ issued — no double deduction.
+                if (x.issued == null || x.issued === "") return { ...x, waste: w };
+                const used = Math.max(0, (Number(x.issued) || 0) - (Number(w) || 0));
+                return { ...x, waste: w, quantity: String(used) };
+              }));
+            }}
           />
           <span className="w-10 shrink-0 text-xs text-muted-foreground">{l.key_id ? matUnit(l.key_id) : ""}</span>
           <Button variant="ghost" size="icon" className="shrink-0 text-muted-foreground hover:text-destructive"
@@ -279,6 +297,56 @@ export default function Production() {
         </div>
       ))}
       <Button variant="outline" size="sm" onClick={() => setRunMaterials(prev => [...prev, { key_id: "", quantity: "", waste: "" }])}>
+        <Plus className="size-4" /> Add line
+      </Button>
+    </div>
+  );
+
+  // Run outputs editor — product + quantity + an optional new cost price per unit. Leaving cost blank
+  // keeps the product's current cost; entering one updates it (production cost drifts batch to batch).
+  const runOutputsEditor = () => (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
+        <span className="flex-1">Product</span>
+        <span className="w-20 text-center">Qty</span>
+        <span className="w-24 text-center">Cost/unit</span>
+        <span className="w-10" /><span className="size-9 shrink-0" />
+      </div>
+      {runOutputs.map((l, idx) => {
+        const prod = products.find(p => p.id === l.key_id);
+        return (
+          <div key={idx} className="flex items-center gap-2">
+            <div className="flex-1 min-w-0">
+              <SearchableSelect
+                value={l.key_id}
+                onValueChange={(v) => setRunOutputs(prev => prev.map((x, i) => i === idx ? { ...x, key_id: v } : x))}
+                placeholder="Product"
+                options={products.map(p => ({ value: p.id, label: p.name }))}
+              />
+            </div>
+            <Input
+              type="number" min="0" step="any" placeholder="Qty" className="w-20"
+              aria-label={`Product quantity ${idx + 1}`}
+              value={l.quantity}
+              onChange={(e) => setRunOutputs(prev => prev.map((x, i) => i === idx ? { ...x, quantity: e.target.value } : x))}
+            />
+            <Input
+              type="number" min="0" step="any" className="w-24"
+              placeholder={prod && prod.cost_price != null ? String(prod.cost_price) : "Cost"}
+              aria-label={`Product cost price ${idx + 1}`}
+              value={l.cost ?? ""}
+              onChange={(e) => setRunOutputs(prev => prev.map((x, i) => i === idx ? { ...x, cost: e.target.value } : x))}
+            />
+            <span className="w-10 shrink-0 text-xs text-muted-foreground">{prod?.unit || ""}</span>
+            <Button variant="ghost" size="icon" className="shrink-0 text-muted-foreground hover:text-destructive"
+              aria-label={`Remove product line ${idx + 1}`}
+              onClick={() => setRunOutputs(prev => prev.filter((_, i) => i !== idx))}>
+              <Trash2 className="size-4" />
+            </Button>
+          </div>
+        );
+      })}
+      <Button variant="outline" size="sm" onClick={() => setRunOutputs(prev => [...prev, { key_id: "", quantity: "" }])}>
         <Plus className="size-4" /> Add line
       </Button>
     </div>
@@ -492,8 +560,8 @@ export default function Production() {
               <p className="text-xs text-muted-foreground">Production is recorded against the materials issued for an approved request.</p>
             </div>
             <div className="space-y-2">
-              <Label>Products produced *</Label>
-              {qtyLineEditor(runOutputs, setRunOutputs, products.map(p => ({ value: p.id, label: p.name })), "Product", (id) => products.find(p => p.id === id)?.unit || "")}
+              <Label>Products produced * <span className="font-normal text-muted-foreground">(set a cost/unit to update the product's cost price; leave blank to keep it)</span></Label>
+              {runOutputsEditor()}
             </div>
             <div className="space-y-2">
               <Label>Materials used &amp; wasted <span className="font-normal text-muted-foreground">(issued amounts prefilled — adjust to what was actually used, and record any waste; leftovers restock automatically)</span></Label>
