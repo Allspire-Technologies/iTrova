@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import SearchableSelect from "@/components/SearchableSelect";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { Plus, Search, ClipboardList, Trash2, Download, Upload, Eye, ArrowUp, ArrowDown, ArrowUpDown, MoreHorizontal } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
@@ -30,7 +31,10 @@ type PO = {
 type Supplier = { id: string; name: string; phone: string | null; email: string | null; address: string | null };
 type RawMat = { id: string; name: string; unit: string; cost_per_unit: number };
 type Product = { id: string; name: string; unit: string | null; cost_price: number };
-type Item = { id?: string; product_id: string | null; raw_material_id: string | null; description: string; quantity: number; unit_cost: number; line_total: number };
+type LineSource = "product" | "material" | "custom";
+// A saved PO item row (read for the view dialog + PDF). The editable form line adds `source`.
+type POItemRow = { id?: string; product_id: string | null; raw_material_id: string | null; description: string; quantity: number; unit_cost: number; line_total: number };
+type Item = POItemRow & { source: LineSource };
 
 const STATUSES = ["draft", "sent", "received", "cancelled"];
 type SortCol = "po_number" | "created_at" | "supplier" | "expected_date" | "total_amount" | "status";
@@ -52,9 +56,9 @@ export default function PurchaseOrders() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [open, setOpen] = useState(false);
   const [viewing, setViewing] = useState<PO | null>(null);
-  const [viewItems, setViewItems] = useState<Item[]>([]);
+  const [viewItems, setViewItems] = useState<POItemRow[]>([]);
   const [form, setForm] = useState({ supplier_id: "", expected_date: "", notes: "" });
-  const [lines, setLines] = useState<Item[]>([{ product_id: null, raw_material_id: null, description: "", quantity: 1, unit_cost: 0, line_total: 0 }]);
+  const [lines, setLines] = useState<Item[]>([{ product_id: null, raw_material_id: null, description: "", quantity: 1, unit_cost: 0, line_total: 0, source: "product" }]);
   const [poTax, setPoTax] = useState<number>(0); // input VAT on this order (from the supplier invoice)
   const taxEnabled = !!business?.tax_enabled;
   const [pending, setPending] = useState<{ title: string; description: string; confirmLabel?: string; variant?: "destructive" | "default"; onConfirm: () => void } | null>(null);
@@ -132,21 +136,15 @@ export default function PurchaseOrders() {
       return merged;
     }));
   };
-  // Source value is encoded "product:<id>" / "material:<id>" / "_custom".
-  const sourceValue = (l: Item) =>
-    l.product_id ? `product:${l.product_id}` : l.raw_material_id ? `material:${l.raw_material_id}` : "_custom";
-  const sourceOptions = [
-    { value: "_custom", label: "Custom item (enter manually)" },
-    ...products.map(p => ({ value: `product:${p.id}`, label: `Inventory · ${p.name}` })),
-    ...materials.map(m => ({ value: `material:${m.id}`, label: `Raw material · ${m.name}` })),
-  ];
-  const pickSource = (idx: number, value: string) => {
-    if (value === "_custom") {
-      updateLine(idx, { product_id: null, raw_material_id: null });
-      return;
-    }
-    const [kind, id] = value.split(":");
-    if (kind === "product") {
+  // Per-line source filter drives which catalogue the item dropdown shows.
+  const productOptions = products.map(p => ({ value: p.id, label: p.name }));
+  const materialOptions = materials.map(m => ({ value: m.id, label: m.name }));
+  const currentItemValue = (l: Item) => l.product_id ?? l.raw_material_id ?? "";
+  // Switching source clears the picked item + its auto-filled description/cost.
+  const setLineSource = (idx: number, source: LineSource) =>
+    updateLine(idx, { source, product_id: null, raw_material_id: null, description: "", unit_cost: 0 });
+  const pickItem = (idx: number, source: LineSource, id: string) => {
+    if (source === "product") {
       const p = products.find(x => x.id === id);
       if (!p) return;
       updateLine(idx, { product_id: id, raw_material_id: null, description: p.unit ? `${p.name} (${p.unit})` : p.name, unit_cost: Number(p.cost_price) });
@@ -156,7 +154,7 @@ export default function PurchaseOrders() {
       updateLine(idx, { raw_material_id: id, product_id: null, description: `${m.name} (${m.unit})`, unit_cost: Number(m.cost_per_unit) });
     }
   };
-  const addLine = () => setLines(prev => [...prev, { product_id: null, raw_material_id: null, description: "", quantity: 1, unit_cost: 0, line_total: 0 }]);
+  const addLine = () => setLines(prev => [...prev, { product_id: null, raw_material_id: null, description: "", quantity: 1, unit_cost: 0, line_total: 0, source: "product" }]);
   const removeLine = (idx: number) => setLines(prev => prev.length === 1 ? prev : prev.filter((_, i) => i !== idx));
 
   const subtotal = lines.reduce((s, l) => s + (l.line_total || 0), 0);
@@ -192,7 +190,7 @@ export default function PurchaseOrders() {
     toast.success(`Purchase order ${po_number} created`);
     setOpen(false);
     setForm({ supplier_id: "", expected_date: "", notes: "" });
-    setLines([{ product_id: null, raw_material_id: null, description: "", quantity: 1, unit_cost: 0, line_total: 0 }]);
+    setLines([{ product_id: null, raw_material_id: null, description: "", quantity: 1, unit_cost: 0, line_total: 0, source: "product" }]);
     setPoTax(0);
     load();
   };
@@ -235,7 +233,7 @@ export default function PurchaseOrders() {
   const openView = async (i: PO) => {
     setViewing(i);
     const { data } = await supabase.from("purchase_order_items").select("*").eq("purchase_order_id", i.id);
-    setViewItems((data as Item[]) || []);
+    setViewItems((data as POItemRow[]) || []);
   };
 
   const exportPdf = async (i: PO) => {
@@ -247,7 +245,7 @@ export default function PurchaseOrders() {
       business: { name: business?.name || "", currency: business?.currency },
       partyLabel: "Supplier",
       party: { name: sup?.name || "—", phone: sup?.phone, email: sup?.email, address: sup?.address },
-      items: ((data as Item[]) || []).map(d => ({
+      items: ((data as POItemRow[]) || []).map(d => ({
         description: d.description, quantity: Number(d.quantity), unit_price: Number(d.unit_cost), line_total: Number(d.line_total),
       })),
       subtotal: Number(i.total_amount), total: Number(i.total_amount),
@@ -510,32 +508,43 @@ export default function PurchaseOrders() {
             <div className="space-y-2">
               <Label>Line items</Label>
               <p className="text-xs text-muted-foreground -mt-1">
-                Pick an item from Inventory or Raw materials to auto-fill its name and cost, or choose “Custom” to enter a one-off. Stock is updated when you mark the PO as received.
+                Pick a source per line — <span className="font-medium">Inventory</span>, <span className="font-medium">Raw material</span>, or <span className="font-medium">Custom</span> — then choose the item (or type a one-off). Stock is updated when you mark the PO as received.
               </p>
-              <div className="hidden sm:grid grid-cols-12 gap-2 px-1 pt-1 text-xs font-medium text-muted-foreground">
-                <div className="col-span-4">Item (Inventory / Raw material)</div>
-                <div className="col-span-3">Description</div>
-                <div className="col-span-2">Qty</div>
-                <div className="col-span-2">Unit cost</div>
-                <div className="col-span-1 sr-only">Remove</div>
-              </div>
               {lines.map((l, idx) => (
-                // Phones: stack Item + Description full-width, then Qty/Cost/Remove in one row.
-                // sm+: the wrapper dissolves (sm:contents) back into the original 12-col row.
-                <div key={idx} className="rounded-lg border border-border/60 p-2 space-y-2 sm:border-0 sm:p-0 sm:space-y-0 sm:grid sm:grid-cols-12 sm:gap-2 sm:items-center">
-                  <SearchableSelect
-                    value={sourceValue(l)}
-                    onValueChange={(v) => pickSource(idx, v)}
-                    className="sm:col-span-4"
-                    placeholder="Choose item"
-                    searchPlaceholder="Search inventory & materials…"
-                    options={sourceOptions}
-                  />
-                  <Input className="sm:col-span-3" placeholder="Description" value={l.description} onChange={e => updateLine(idx, { description: e.target.value })} />
-                  <div className="flex gap-2 sm:contents">
-                    <Input className="flex-1 sm:col-span-2" type="number" min={0} placeholder="Qty" value={l.quantity} onChange={e => updateLine(idx, { quantity: Number(e.target.value) })} />
-                    <Input className="flex-1 sm:col-span-2" type="number" min={0} placeholder="Cost" value={l.unit_cost || ""} onChange={e => updateLine(idx, { unit_cost: Number(e.target.value) })} />
-                    <Button variant="ghost" size="icon" className="shrink-0 sm:col-span-1" onClick={() => removeLine(idx)} aria-label="Remove line"><Trash2 className="size-4" /></Button>
+                <div key={idx} className="rounded-lg border border-border/60 p-2 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <ToggleGroup
+                      type="single"
+                      value={l.source}
+                      onValueChange={(v) => v && setLineSource(idx, v as LineSource)}
+                      size="sm"
+                      variant="outline"
+                      className="justify-start"
+                    >
+                      <ToggleGroupItem value="product" className="text-xs px-2.5" aria-label="Inventory">Inventory</ToggleGroupItem>
+                      <ToggleGroupItem value="material" className="text-xs px-2.5" aria-label="Raw material">Raw material</ToggleGroupItem>
+                      <ToggleGroupItem value="custom" className="text-xs px-2.5" aria-label="Custom">Custom</ToggleGroupItem>
+                    </ToggleGroup>
+                    <Button variant="ghost" size="icon" className="shrink-0" onClick={() => removeLine(idx)} aria-label="Remove line"><Trash2 className="size-4" /></Button>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-12 sm:items-center">
+                    {l.source === "custom" ? (
+                      <Input className="sm:col-span-8" placeholder="Item description" value={l.description} onChange={e => updateLine(idx, { description: e.target.value })} />
+                    ) : (
+                      <>
+                        <SearchableSelect
+                          value={currentItemValue(l)}
+                          onValueChange={(v) => pickItem(idx, l.source, v)}
+                          className="sm:col-span-5"
+                          placeholder={l.source === "product" ? "Choose product" : "Choose material"}
+                          searchPlaceholder={l.source === "product" ? "Search inventory…" : "Search materials…"}
+                          options={l.source === "product" ? productOptions : materialOptions}
+                        />
+                        <Input className="sm:col-span-3" placeholder="Description" value={l.description} onChange={e => updateLine(idx, { description: e.target.value })} />
+                      </>
+                    )}
+                    <Input className="sm:col-span-2" type="number" min={0} placeholder="Qty" value={l.quantity} onChange={e => updateLine(idx, { quantity: Number(e.target.value) })} />
+                    <Input className="sm:col-span-2" type="number" min={0} placeholder="Cost" value={l.unit_cost || ""} onChange={e => updateLine(idx, { unit_cost: Number(e.target.value) })} />
                   </div>
                 </div>
               ))}
