@@ -10,6 +10,7 @@ export interface CachedProduct {
   stock_quantity: number;
   reorder_level: number;
   category: string | null;
+  tax_id?: string | null; // so offline sales can resolve the VAT rate from the cached catalogue
 }
 
 export interface QueuedSaleItem {
@@ -31,6 +32,7 @@ export interface QueuedSale {
   paymentMethod: string;
   discount: number;
   subtotal: number;
+  tax?: number; // VAT captured offline (optional: sales queued before this shipped default to 0)
   total: number;
   customerName: string;
   customerPhone?: string | null;

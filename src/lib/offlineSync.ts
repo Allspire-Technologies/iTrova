@@ -31,6 +31,7 @@ function toPayload(s: QueuedSale) {
     payment_method: s.paymentMethod,
     discount: s.discount,
     subtotal: s.subtotal,
+    tax: s.tax ?? 0, // sales queued before offline VAT shipped default to 0
     total: s.total,
     customer_name: s.customerName,
     customer_phone: s.customerPhone ?? null,

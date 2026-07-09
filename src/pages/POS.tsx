@@ -22,7 +22,7 @@ import { POSSkeleton } from "@/components/Skeletons";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { summarizeHeldSale, heldItemsPreview, parseHeldSales, serializeHeldSales, heldStorageKey, reconcileHeldItems, type HeldSale } from "@/lib/heldSales";
 import { useOnline } from "@/contexts/OnlineContext";
-import { cacheProducts, readCachedProducts, applyLocalStockDelta, enqueueSale, countPending, listReviewSales, retryReviewSale, discardReviewSale, getLastSync, setLastSync } from "@/lib/offlineStore";
+import { cacheProducts, readCachedProducts, applyLocalStockDelta, enqueueSale, countPending, listReviewSales, retryReviewSale, discardReviewSale, getLastSync, setLastSync, cacheTaxes, readCachedTaxes } from "@/lib/offlineStore";
 import { drainQueue } from "@/lib/offlineSync";
 import type { ReviewSale } from "@/lib/offlineTypes";
 
@@ -114,10 +114,11 @@ export default function POS() {
       // (see `filtered`), the same as online; cached stock is last-synced guidance and may differ.
       const cached = await readCachedProducts(business.id);
       setProducts(cached as Product[]);
+      if (taxEnabled) setTaxes(await readCachedTaxes<Tax>(business.id)); // cached rates → offline VAT
       setLoading(false);
       return;
     }
-    if (taxEnabled) listTaxes().then(setTaxes).catch(() => {});
+    if (taxEnabled) listTaxes().then(t => { setTaxes(t); void cacheTaxes(business.id, t); }).catch(() => {});
     const { data, error } = await supabase.from("products").select("id,name,sku,selling_price,stock_quantity,reorder_level,category,tax_id").gt("stock_quantity", 0).order("name");
     if (error) {
       // Don't render an empty grid as if the shop had no stock — tell the cashier and fall back to
@@ -131,7 +132,7 @@ export default function POS() {
     const rows = (data as unknown as Product[]) || []; // tax_id postdates generated types
     setProducts(rows);
     setLoading(false);
-    void cacheProducts(business.id, rows.map(r => ({ id: r.id, business_id: business.id, name: r.name, sku: r.sku, selling_price: r.selling_price, stock_quantity: r.stock_quantity, reorder_level: r.reorder_level, category: r.category })));
+    void cacheProducts(business.id, rows.map(r => ({ id: r.id, business_id: business.id, name: r.name, sku: r.sku, selling_price: r.selling_price, stock_quantity: r.stock_quantity, reorder_level: r.reorder_level, category: r.category, tax_id: r.tax_id ?? null })));
   };
 
   useEffect(() => { if (business) load(); }, [business, online]);
@@ -250,8 +251,8 @@ export default function POS() {
   };
 
   const subtotal = cart.reduce((a, i) => a + i.qty * Number(i.product.selling_price), 0);
-  // Tax is resolved per line from the product's tax_id (online only — cached offline products carry
-  // no rate, so offline sales record tax 0). Inclusive → total unchanged; exclusive → VAT added.
+  // Tax is resolved per line from the product's tax_id against the tax catalogue (both cached for
+  // offline, so offline sales record real VAT too). Inclusive → total unchanged; exclusive → VAT added.
   const taxInfo = summariseCart(
     cart.map(i => ({ unitPrice: Number(i.product.selling_price), qty: i.qty, ratePct: taxEnabled ? productRate(i.product.tax_id, taxes) : null })),
     discount, inclusive,
@@ -273,7 +274,7 @@ export default function POS() {
           saleId: newId(), invoiceId: newId(), invoiceNumber,
           businessId: business.id, staffId: user?.id ?? null,
           createdAt: new Date().toISOString(), paymentMethod: method,
-          discount, subtotal, total, customerName: "Walk-in Customer",
+          discount, subtotal, tax: taxTotal, total, customerName: "Walk-in Customer",
           items, status: "pending", attempts: 0,
         });
         await applyLocalStockDelta(business.id, items);
