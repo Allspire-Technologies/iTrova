@@ -32,13 +32,13 @@ type Supplier = { id: string; name: string };
 type Form = {
   id: string | null; expense_date: string; category: string; categoryOther: string; amount: string;
   payment_method: string; payee: string; supplier_id: string; description: string;
-  status: ExpenseStatus; due_date: string; receipt_ref: string;
+  status: ExpenseStatus; due_date: string; receipt_ref: string; tax_amount: string;
 };
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
 const emptyForm = (): Form => ({
   id: null, expense_date: todayStr(), category: "", categoryOther: "", amount: "", payment_method: "cash",
-  payee: "", supplier_id: "", description: "", status: "paid", due_date: "", receipt_ref: "",
+  payee: "", supplier_id: "", description: "", status: "paid", due_date: "", receipt_ref: "", tax_amount: "",
 });
 // Custom categories are stored/displayed as "Other: <label>". Split a stored value back into the
 // dropdown selection + the free-text specifier.
@@ -55,8 +55,9 @@ const STATUS_BADGE: Record<"paid" | "pending" | "overdue", { label: string; clas
 
 export default function Expenditure() {
   const { business, user, hasModule, can } = useAuth();
-  const { fmt } = useCurrency();
+  const { fmt, symbol } = useCurrency();
   const { fmtDate } = useDateFormat();
+  const taxEnabled = !!business?.tax_enabled;
   const [searchParams] = useSearchParams();
 
   const canCreate = can("expenditure", "create");
@@ -111,6 +112,7 @@ export default function Expenditure() {
       id: e.id, expense_date: e.expense_date, ...splitCategory(e.category), amount: String(e.amount),
       payment_method: e.payment_method || "cash", payee: e.payee || "", supplier_id: e.supplier_id || "",
       description: e.description || "", status: e.status, due_date: e.due_date || "", receipt_ref: e.receipt_ref || "",
+      tax_amount: e.tax_amount ? String(e.tax_amount) : "",
     });
     setOpen(true);
   };
@@ -131,6 +133,7 @@ export default function Expenditure() {
         status: form.status, due_date: form.status === "pending" ? (form.due_date || null) : null,
         paid_date: form.status === "paid" ? form.expense_date : null,
         receipt_ref: form.receipt_ref.trim() || null,
+        tax_amount: taxEnabled ? (Number(form.tax_amount) || 0) : 0,
       });
       toast.success(form.id ? "Expense updated" : "Expense added");
       setOpen(false); load();
@@ -147,6 +150,7 @@ export default function Expenditure() {
         expense_date: e.expense_date, category: e.category, amount: Number(e.amount),
         payment_method: e.payment_method, payee: e.payee, supplier_id: e.supplier_id,
         description: e.description, status: "paid", due_date: null, paid_date: today, receipt_ref: e.receipt_ref,
+        tax_amount: Number(e.tax_amount) || 0,
       });
       toast.success("Marked as paid"); load();
     } catch (err) {
@@ -188,7 +192,7 @@ export default function Expenditure() {
   const CSV_HEADERS = [...templateHeaders(EXPENSE_FIELDS)];
   const exportCsv = () => {
     const rows = filtered.map(e => ({
-      "Date": e.expense_date, "Category": e.category, "Amount": e.amount,
+      "Date": e.expense_date, "Category": e.category, "Amount": e.amount, "VAT": e.tax_amount ?? 0,
       "Payment Method": e.payment_method || "", "Payee": e.payee || "", "Description": e.description || "",
       "Status": e.status, "Due Date": e.due_date || "",
     }));
@@ -205,7 +209,7 @@ export default function Expenditure() {
 
   // ---- CSV import
   const downloadTemplate = () => {
-    const example = ["2026-07-01", "Rent", "150000", "transfer", "Landlord", "July shop rent", "paid", ""];
+    const example = ["2026-07-01", "Rent", "150000", "0", "transfer", "Landlord", "July shop rent", "paid", ""];
     downloadCsv("expenses-template.csv", [CSV_HEADERS.join(","), example.join(",")].join("\n"));
     toast.success("Template downloaded");
   };
@@ -360,7 +364,10 @@ export default function Expenditure() {
                   <div key={e.id} className="p-4 space-y-1">
                     <div className="flex items-center justify-between gap-2">
                       <p className="font-medium text-brand-dark">{e.category}</p>
-                      <p className="font-display font-bold text-brand-dark">{fmt(Number(e.amount))}</p>
+                      <div className="text-right">
+                        <p className="font-display font-bold text-brand-dark">{fmt(Number(e.amount))}</p>
+                        {Number(e.tax_amount) > 0 && <p className="text-xs text-muted-foreground">incl. VAT {fmt(Number(e.tax_amount))}</p>}
+                      </div>
                     </div>
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-xs text-muted-foreground truncate">{e.payee || "—"} · {fmtDate(e.expense_date)}</p>
@@ -390,7 +397,7 @@ export default function Expenditure() {
                         <TableCell className="font-medium text-brand-dark">{e.category}{e.description ? <span className="block text-xs font-normal text-muted-foreground">{e.description}</span> : null}</TableCell>
                         <TableCell className="text-muted-foreground">{e.payee || "—"}</TableCell>
                         <TableCell><Badge variant="outline" className={s.className}>{s.label}{s.label !== "Paid" && e.due_date ? ` · ${fmtDate(e.due_date)}` : ""}</Badge></TableCell>
-                        <TableCell className="text-right font-display font-semibold text-brand-dark">{fmt(Number(e.amount))}</TableCell>
+                        <TableCell className="text-right font-display font-semibold text-brand-dark">{fmt(Number(e.amount))}{Number(e.tax_amount) > 0 && <span className="block text-xs font-normal text-muted-foreground">incl. VAT {fmt(Number(e.tax_amount))}</span>}</TableCell>
                         <TableCell className="text-right"><RowActions e={e} /></TableCell>
                       </TableRow>
                     );
@@ -412,6 +419,12 @@ export default function Expenditure() {
               <div className="space-y-2"><Label>Date *</Label><Input type="date" required value={form.expense_date} onChange={e => setForm({ ...form, expense_date: e.target.value })} /></div>
               <div className="space-y-2"><Label>Amount *</Label><Input type="number" required min="0" step="0.01" placeholder="0" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></div>
             </div>
+            {taxEnabled && (
+              <div className="space-y-2 max-w-[calc(50%-0.375rem)]">
+                <Label>of which VAT ({symbol}) <span className="font-normal text-muted-foreground">(input VAT — optional)</span></Label>
+                <Input type="number" min="0" step="0.01" placeholder="0" value={form.tax_amount} onChange={e => setForm({ ...form, tax_amount: e.target.value })} />
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Category *</Label>
               <SearchableSelect value={form.category} onValueChange={v => setForm({ ...form, category: v })}

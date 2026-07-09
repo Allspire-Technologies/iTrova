@@ -22,6 +22,7 @@ export type Expense = {
   due_date: string | null;
   paid_date: string | null;
   receipt_ref: string | null;
+  tax_amount: number; // input VAT portion of `amount` (from the supplier bill); 0 when none
   created_by: string | null;
   created_at: string;
 };
@@ -79,7 +80,7 @@ export function friendlyExpenseError(message: string | undefined, fallback: stri
 
 export async function listExpenses(fromIso: string, toIso: string): Promise<Expense[]> {
   const { data, error } = await sb.from("expenses")
-    .select("id,business_id,expense_date,category,amount,payment_method,payee,supplier_id,description,status,due_date,paid_date,receipt_ref,created_by,created_at")
+    .select("id,business_id,expense_date,category,amount,payment_method,payee,supplier_id,description,status,due_date,paid_date,receipt_ref,tax_amount,created_by,created_at")
     .gte("expense_date", fromIso).lte("expense_date", toIso)
     .order("expense_date", { ascending: false });
   if (error) throw new Error(error.message);
@@ -90,6 +91,7 @@ export type ExpenseInput = {
   expense_date: string; category: string; amount: number; payment_method: string | null;
   payee: string | null; supplier_id: string | null; description: string | null;
   status: ExpenseStatus; due_date: string | null; paid_date: string | null; receipt_ref: string | null;
+  tax_amount: number; // input VAT (of which VAT); 0 when none
 };
 
 export async function saveExpense(businessId: string, userId: string | null, id: string | null, input: ExpenseInput): Promise<void> {
@@ -140,12 +142,14 @@ export async function downloadExpensesPdf(
 
   const cats = byCategory(expenses);
   const total = periodTotal(expenses);
+  const totalVat = expenses.reduce((s, e) => s + (Number(e.tax_amount) || 0), 0);
+  const hasVat = totalVat > 0; // only surface VAT when some was recorded
 
   autoTable(doc, {
     startY: 32,
     head: [["Category", "Total"]],
     body: cats.map(c => [c.category, meta.fmt(c.total)]),
-    foot: [["Total", meta.fmt(total)]],
+    foot: hasVat ? [["Total", meta.fmt(total)], ["of which input VAT", meta.fmt(totalVat)]] : [["Total", meta.fmt(total)]],
     theme: "grid", headStyles: { fillColor: [22, 101, 52] }, footStyles: { fillColor: [240, 240, 240], textColor: 0, fontStyle: "bold" },
   });
 
@@ -153,10 +157,12 @@ export async function downloadExpensesPdf(
   const afterY = (doc as any).lastAutoTable?.finalY ?? 60;
   autoTable(doc, {
     startY: afterY + 8,
-    head: [["Date", "Category", "Payee", "Status", "Amount"]],
-    body: expenses.map(e => [
-      e.expense_date, e.category, e.payee || "—", EXPENSE_STATUS_LABEL[e.status], meta.fmt(Number(e.amount) || 0),
-    ]),
+    head: [hasVat ? ["Date", "Category", "Payee", "Status", "Amount", "VAT"] : ["Date", "Category", "Payee", "Status", "Amount"]],
+    body: expenses.map(e => {
+      const row = [e.expense_date, e.category, e.payee || "—", EXPENSE_STATUS_LABEL[e.status], meta.fmt(Number(e.amount) || 0)];
+      if (hasVat) row.push(meta.fmt(Number(e.tax_amount) || 0));
+      return row;
+    }),
     theme: "striped", headStyles: { fillColor: [22, 101, 52] }, styles: { fontSize: 9 },
   });
 
