@@ -1,8 +1,13 @@
 import { test, expect } from "@playwright/test";
+import { readFileSync } from "fs";
 import { authenticate, stubRows } from "./support/auth";
 
 const RICE = { id: "p1", business_id: "biz-1", name: "Rice 25kg", unit: "bag", cost_price: 6000, selling_price: 8000, category: null, sku: "R25", stock_quantity: 5, reorder_level: 1, created_at: "2026-06-01T00:00:00Z" };
 const CASSAVA = { id: "m1", business_id: "biz-1", name: "Cassava", sku: "CV", unit: "kg", stock_quantity: 50, reorder_level: 10, cost_per_unit: 1200, supplier_id: null, notes: null, created_at: "2026-06-01T00:00:00Z" };
+
+// A received PO carrying input VAT: total 107,500 of which 7,500 VAT → net subtotal 100,000.
+const PO_WITH_TAX = { id: "po-1", business_id: "biz-1", po_number: "PO-0007", supplier_id: null, status: "draft", expected_date: null, total_amount: 107500, notes: null, created_at: "2026-06-01T00:00:00Z", tax_amount: 7500 };
+const PO_ITEM = { id: "poi1", purchase_order_id: "po-1", product_id: null, raw_material_id: null, description: "Flour", quantity: 10, unit_cost: 10750, line_total: 107500 };
 
 test.describe("Purchase Orders", () => {
   test.beforeEach(async ({ page }) => {
@@ -69,6 +74,32 @@ test.describe("Purchase Orders", () => {
     expect(itemsBody[0].raw_material_id).toBeNull();
     expect(itemsBody[1].raw_material_id).toBe("m1");
     expect(itemsBody[1].product_id).toBeNull();
+  });
+
+  test("View dialog shows a net subtotal + VAT that add up to the total", async ({ page }) => {
+    await stubRows(page, "purchase_orders", [PO_WITH_TAX]);
+    await stubRows(page, "purchase_order_items", [PO_ITEM]);
+    await page.reload();
+    await page.locator("table").getByRole("button", { name: "View" }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByText(/Subtotal: .*100,?000/)).toBeVisible(); // net = total − VAT
+    await expect(dialog.getByText(/VAT: .*7,?500/)).toBeVisible();
+    await expect(dialog.getByText(/Total: .*107,?500/)).toBeVisible();
+  });
+
+  test("Download PDF includes the VAT line and net subtotal", async ({ page }) => {
+    await stubRows(page, "purchase_orders", [PO_WITH_TAX]);
+    await stubRows(page, "purchase_order_items", [PO_ITEM]);
+    await page.reload();
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("table").getByRole("button", { name: "PDF" }).click(),
+    ]);
+    expect(download.suggestedFilename()).toBe("PO-0007.pdf");
+    const pdf = readFileSync(await download.path()).toString("latin1");
+    expect(pdf).toContain("NGN");
+    expect(pdf).toMatch(/100[,.]?000/); // net subtotal = total − VAT
+    expect(pdf).toMatch(/7[,.]?500/);   // VAT line
   });
 
   test("renders the page with an empty state", async ({ page }) => {

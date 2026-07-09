@@ -26,7 +26,7 @@ import { useDateFormat } from "@/hooks/useDateFormat";
 
 type PO = {
   id: string; po_number: string; supplier_id: string | null; status: string;
-  expected_date: string | null; total_amount: number; notes: string | null; created_at: string;
+  expected_date: string | null; total_amount: number; notes: string | null; created_at: string; tax_amount?: number;
 };
 type Supplier = { id: string; name: string; phone: string | null; email: string | null; address: string | null };
 type RawMat = { id: string; name: string; unit: string; cost_per_unit: number };
@@ -70,13 +70,13 @@ export default function PurchaseOrders() {
   const load = async () => {
     const [{ data: pos }, { data: sup }, { data: mat }, { data: prod }] = await Promise.all([
       supabase.from("purchase_orders")
-        .select("id,po_number,supplier_id,status,expected_date,total_amount,notes,created_at")
+        .select("id,po_number,supplier_id,status,expected_date,total_amount,notes,created_at,tax_amount")
         .order("created_at", { ascending: false }),
       supabase.from("suppliers").select("id, name, phone, email, address"),
       supabase.from("raw_materials").select("id, name, unit, cost_per_unit"),
       supabase.from("products").select("id, name, unit, cost_price").order("name"),
     ]);
-    setItems((pos as PO[]) || []);
+    setItems((pos as unknown as PO[]) || []); // tax_amount postdates the generated types
     setSuppliers((sup as Supplier[]) || []);
     setMaterials((mat as RawMat[]) || []);
     setProducts((prod as Product[]) || []);
@@ -248,7 +248,7 @@ export default function PurchaseOrders() {
       items: ((data as POItemRow[]) || []).map(d => ({
         description: d.description, quantity: Number(d.quantity), unit_price: Number(d.unit_cost), line_total: Number(d.line_total),
       })),
-      subtotal: Number(i.total_amount), total: Number(i.total_amount),
+      subtotal: Number(i.total_amount), tax: Number(i.tax_amount) || 0, total: Number(i.total_amount),
       notes: i.notes,
     }, `${i.po_number}.pdf`);
   };
@@ -589,7 +589,16 @@ export default function PurchaseOrders() {
                     </tbody>
                   </table>
                 </div>
-                <div className="text-right font-semibold">Total: {fmt(viewing.total_amount)}</div>
+                {/* With input VAT, show the NET subtotal (total − VAT) so subtotal + VAT = total. */}
+                {Number(viewing.tax_amount) > 0 ? (
+                  <div className="space-y-1 text-right">
+                    <div className="text-sm text-muted-foreground">Subtotal: {fmt(Number(viewing.total_amount) - Number(viewing.tax_amount))}</div>
+                    <div className="text-sm text-muted-foreground">VAT: {fmt(Number(viewing.tax_amount))}</div>
+                    <div className="font-semibold">Total: {fmt(viewing.total_amount)}</div>
+                  </div>
+                ) : (
+                  <div className="text-right font-semibold">Total: {fmt(viewing.total_amount)}</div>
+                )}
                 {viewing.notes && <div className="text-muted-foreground">{viewing.notes}</div>}
               </div>
               <DialogFooter>

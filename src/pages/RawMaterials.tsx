@@ -36,7 +36,7 @@ type Material = {
 type Supplier = { id: string; name: string; phone: string | null; contact_name: string | null };
 type Purchase = {
   id: string; created_at: string; quantity: number; unit_cost: number; total_cost: number;
-  raw_material_id: string; supplier_id: string | null; notes: string | null;
+  raw_material_id: string; supplier_id: string | null; notes: string | null; tax_amount?: number;
 };
 
 const empty = { name: "", sku: "", unit: "kg", stock_quantity: "", reorder_level: 5, cost_per_unit: "", supplier_id: "", notes: "" };
@@ -89,12 +89,12 @@ export default function RawMaterials() {
         .order("created_at", { ascending: false }),
       supabase.from("suppliers").select("id,name,phone,contact_name").order("name"),
       supabase.from("material_purchases")
-        .select("id,created_at,quantity,unit_cost,total_cost,raw_material_id,supplier_id,notes")
+        .select("id,created_at,quantity,unit_cost,total_cost,raw_material_id,supplier_id,notes,tax_amount")
         .order("created_at", { ascending: false }),
     ]);
     setItems((m as Material[]) || []);
     setSuppliers((s as Supplier[]) || []);
-    setPurchases((pur as Purchase[]) || []);
+    setPurchases((pur as unknown as Purchase[]) || []); // tax_amount postdates the generated types
     setLoading(false);
     // Seed the Requests-tab badge on page entry (the panel itself refreshes it once opened).
     if (canApproveRequests) {
@@ -432,6 +432,7 @@ export default function RawMaterials() {
                       </div>
                       <div className="text-right shrink-0">
                         <div className="font-display font-semibold text-brand-dark">{fmt(p.total_cost)}</div>
+                        {Number(p.tax_amount) > 0 && <div className="text-xs text-muted-foreground">incl. VAT {fmt(Number(p.tax_amount))}</div>}
                         <div className="text-xs text-muted-foreground">{Number(p.quantity)} {mat?.unit} · {fmt(p.unit_cost)}</div>
                       </div>
                     </div>
@@ -467,7 +468,7 @@ export default function RawMaterials() {
                           <td className="px-4 py-3 text-muted-foreground">{supp?.name || "—"}</td>
                           <td className="px-4 py-3 text-right font-medium">{Number(p.quantity)} <span className="text-xs text-muted-foreground">{mat?.unit}</span></td>
                           <td className="px-4 py-3 text-right text-muted-foreground">{fmt(p.unit_cost)}</td>
-                          <td className="px-4 py-3 text-right font-display font-semibold text-brand-dark">{fmt(p.total_cost)}</td>
+                          <td className="px-4 py-3 text-right font-display font-semibold text-brand-dark">{fmt(p.total_cost)}{Number(p.tax_amount) > 0 && <span className="block text-xs font-normal text-muted-foreground">incl. VAT {fmt(Number(p.tax_amount))}</span>}</td>
                         </tr>
                       );
                     })}

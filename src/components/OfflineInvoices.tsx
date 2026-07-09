@@ -216,11 +216,11 @@ export function OfflineInvoices() {
       date: r.createdAt.slice(0, 10),
       dueDate: null,
       status: "paid",
-      business: { name: business?.name || "" },
+      business: { name: business?.name || "", currency: business?.currency, tin: business?.tin },
       partyLabel: "Bill to",
       party: { name: r.customerName || "Walk-in Customer", phone: r.customerPhone ?? null, email: r.customerEmail ?? null },
       items: r.items.map((i) => ({ description: i.name, quantity: Number(i.quantity), unit_price: Number(i.unit_price), line_total: Number(i.quantity) * Number(i.unit_price) })),
-      subtotal: Number(r.subtotal), discount: Number(r.discount) || 0, tax: 0, total: Number(r.total),
+      subtotal: Number(r.subtotal), discount: Number(r.discount) || 0, tax: Number(r.tax) || 0, total: Number(r.total),
       formatMoney: fmt,
       notes: r.notes ?? null,
     }, `${r.invoiceNumber}.pdf`);
