@@ -263,6 +263,18 @@ describe("buildExpenseImportPlan", () => {
     expect(plan.inserts[1]).toMatchObject({ category: "Transport", amount: 4500, payee: "Musa" });
   });
 
+  it("imports an optional VAT (input VAT) column, defaulting to 0", () => {
+    const plan = buildExpenseImportPlan([
+      { Date: "2026-07-01", Category: "Rent", Amount: "150000", VAT: "11,250" }, // "VAT" header
+      { Date: "2026-07-01", Category: "Fuel", Amount: "8000", "of which vat": "558" }, // alias
+      { Date: "2026-07-01", Category: "Bank charges", Amount: "500" }, // no VAT → 0
+    ]);
+    expect(plan.rejected).toEqual([]);
+    expect(plan.inserts[0].tax_amount).toBe(11250);
+    expect(plan.inserts[1].tax_amount).toBe(558);
+    expect(plan.inserts[2].tax_amount).toBe(0);
+  });
+
   it("keeps due date only for pending, and validates it", () => {
     const plan = buildExpenseImportPlan([
       { Date: "2026-07-01", Category: "Utilities", Amount: "20000", Status: "pending", "Due Date": "2026-07-20" },

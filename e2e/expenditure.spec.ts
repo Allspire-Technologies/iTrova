@@ -1,5 +1,19 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page, type Route } from "@playwright/test";
 import { authenticate, stubRows } from "./support/auth";
+import { FAKE_USER } from "./support/supabase";
+
+// A VAT-registered business (authenticate's default has tax off).
+function taxEnabledBusiness(page: Page) {
+  const business = {
+    id: "biz-1", name: "Sunrise Stores", owner_id: FAKE_USER.id, currency: "NGN",
+    timezone: "Africa/Lagos", subscription_tier: "free", whatsapp_number: null,
+    created_at: "2026-06-01T00:00:00Z", tax_enabled: true, prices_include_tax: true, tin: "12345678-0001",
+  };
+  return page.route("**/rest/v1/businesses**", (r: Route) => {
+    const accept = r.request().headers()["accept"] || "";
+    return r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(accept.includes("vnd.pgrst.object") ? business : [business]) });
+  });
+}
 
 const PAID = {
   id: "ex1", business_id: "biz-1", expense_date: "2026-07-05", category: "Rent", amount: 150000,
@@ -51,6 +65,31 @@ test.describe("Expenditure", () => {
     await expect(page.getByText("Expense added")).toBeVisible();
     const row = Array.isArray(posted) ? posted[0] : posted;
     expect(row).toMatchObject({ category: "Transport", amount: 45000, status: "paid", payee: "Musa", business_id: "biz-1" });
+  });
+
+  test("captures input VAT on an expense (tax enabled) and shows it in the list", async ({ page }) => {
+    await authenticate(page, { role: "owner", onRoutes: taxEnabledBusiness });
+    const TAXED = { ...PAID, id: "ex9", category: "Transport", amount: 50000, tax_amount: 3488 };
+    let posted: any = null;
+    await page.route("**/rest/v1/expenses**", (r) => {
+      if (r.request().method() === "POST") { posted = r.request().postDataJSON(); return r.fulfill({ status: 201, contentType: "application/json", body: "[]" }); }
+      return r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([TAXED]) });
+    });
+    await stubRows(page, "suppliers", []);
+    await page.goto("/expenditure");
+    // The existing taxed expense shows an "incl. VAT" hint in the list.
+    await expect(page.getByRole("table").getByText(/incl\. VAT/)).toBeVisible();
+    // Add a new expense with an "of which VAT" amount.
+    await page.getByRole("button", { name: "Add expense" }).first().click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByPlaceholder("0").nth(0).fill("50000"); // Amount
+    await dialog.getByPlaceholder("0").nth(1).fill("3488");  // of which VAT
+    await dialog.getByRole("combobox").filter({ hasText: "Select category" }).click();
+    await page.getByRole("option", { name: "Transport" }).click();
+    await dialog.getByRole("button", { name: "Add expense" }).click();
+    await expect(page.getByText("Expense added")).toBeVisible();
+    const row = Array.isArray(posted) ? posted[0] : posted;
+    expect(Number(row.tax_amount)).toBe(3488);
   });
 
   test("Other category asks for a label and saves it as 'Other: …'", async ({ page }) => {

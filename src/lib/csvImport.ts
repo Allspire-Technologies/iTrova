@@ -445,6 +445,7 @@ export const EXPENSE_FIELDS: FieldSpec[] = [
   { key: "expense_date", label: "Date", aliases: ["expense date", "date paid", "day"], required: true },
   { key: "category", label: "Category", aliases: ["type", "expense category"], required: true },
   { key: "amount", label: "Amount", aliases: ["cost", "value", "total", "price"], required: true, numeric: true },
+  { key: "tax_amount", label: "VAT", aliases: ["of which vat", "input vat", "vat amount", "tax"], numeric: true },
   { key: "payment_method", label: "Payment Method", aliases: ["method", "paid via", "payment"] },
   { key: "payee", label: "Payee", aliases: ["paid to", "vendor", "supplier", "recipient"] },
   { key: "description", label: "Description", aliases: ["note", "notes", "memo", "details"] },
@@ -453,7 +454,7 @@ export const EXPENSE_FIELDS: FieldSpec[] = [
 ];
 
 export type ExpenseImportFields = {
-  expense_date: string; category: string; amount: number; payment_method: string | null;
+  expense_date: string; category: string; amount: number; tax_amount: number; payment_method: string | null;
   payee: string | null; description: string | null; status: "paid" | "pending"; due_date: string | null;
 };
 
@@ -484,6 +485,7 @@ export function buildExpenseImportPlan(rows: CsvRow[]): ExpenseImportPlan {
     inserts.push({
       expense_date: date!, category: canon.category!.trim(),
       amount: parseImportNumber(canon.amount) || 0,
+      tax_amount: parseImportNumber(canon.tax_amount) || 0,
       payment_method: str(canon.payment_method), payee: str(canon.payee),
       description: str(canon.description), status, due_date: status === "pending" ? due : null,
     });
