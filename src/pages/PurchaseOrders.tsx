@@ -244,7 +244,7 @@ export default function PurchaseOrders() {
     downloadPdf({
       docType: "PURCHASE ORDER", docNumber: i.po_number, date: i.created_at.slice(0, 10),
       dueDate: i.expected_date, status: i.status,
-      business: { name: business?.name || "" },
+      business: { name: business?.name || "", currency: business?.currency },
       partyLabel: "Supplier",
       party: { name: sup?.name || "—", phone: sup?.phone, email: sup?.email, address: sup?.address },
       items: ((data as Item[]) || []).map(d => ({

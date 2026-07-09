@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import type { Page, Route } from "@playwright/test";
+import { readFileSync } from "fs";
 import { authenticate, stubRows } from "./support/auth";
 import { FAKE_USER } from "./support/supabase";
 
@@ -139,6 +140,11 @@ test.describe("Tax v1 — input VAT on procurement", () => {
       page.getByRole("dialog").getByRole("button", { name: "Download" }).click(),
     ]);
     expect(download.suggestedFilename()).toBe("INV-009.pdf");
+    // The generated PDF must print the ASCII currency code, not the ₦ glyph (tofu in the PDF font).
+    const path = await download.path();
+    const pdf = readFileSync(path).toString("latin1");
+    expect(pdf).toContain("NGN");
+    expect(pdf).not.toContain("₦");
   });
 
   test("Purchase Order create dialog shows the input-VAT field when tax is enabled", async ({ page }) => {

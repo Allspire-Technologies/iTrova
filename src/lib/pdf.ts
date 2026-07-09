@@ -1,4 +1,14 @@
-import { formatNaira } from "./format";
+// jsPDF's built-in Helvetica is Latin-1 only, so currency SYMBOLS like ₦/₵/₦ render as tofu (and
+// can mangle nearby digits). For print we format with the ASCII currency CODE instead — "NGN 22,050.00".
+function pdfMoneyFormatter(currency?: string): (n: number) => string {
+  const code = (currency || "NGN").toUpperCase();
+  try {
+    const nf = new Intl.NumberFormat("en-US", { style: "currency", currency: code, currencyDisplay: "code", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return (n) => nf.format(Number(n) || 0);
+  } catch {
+    return (n) => `${code} ${(Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+}
 
 // jsPDF (+autotable and its transitive html2canvas/dompurify chunks) is heavy — load it only when
 // someone actually exports a PDF, not at app startup (Experience Roadmap · Phase 1).
@@ -24,7 +34,7 @@ export type PdfDocInput = {
   discount?: number;
   tax?: number;
   total: number;
-  formatMoney?: (n: number) => string;
+  formatMoney?: (n: number) => string; // ignored for print — amounts use the ASCII currency code (see pdfMoneyFormatter)
   notes?: string | null;
 };
 
@@ -33,7 +43,8 @@ export async function buildPdf(input: PdfDocInput) {
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
   const M = 40;
-  const money = input.formatMoney ?? formatNaira;
+  // Always print with the ASCII currency code (symbols break in the built-in PDF font).
+  const money = pdfMoneyFormatter(input.business.currency);
 
   // Header
   doc.setFont("helvetica", "bold").setFontSize(22);

@@ -24,22 +24,26 @@ describe("buildPdf", () => {
     expect(out.length).toBeGreaterThan(1000);
   });
 
-  it("builds a VAT invoice (net subtotal = total − VAT) with a TIN", async () => {
+  it("builds a VAT invoice (net subtotal = total − VAT) with a TIN, printing the ASCII currency code", async () => {
     const doc = await buildPdf({
       docType: "INVOICE",
       docNumber: "INV-009",
       date: "2026-06-23",
       status: "paid",
-      business: { name: "Sunrise Stores", tin: "12345678-0001" },
+      business: { name: "Sunrise Stores", tin: "12345678-0001", currency: "NGN" },
       partyLabel: "Bill to",
       party: { name: "Ada" },
       items: [{ description: "Garri 50kg", quantity: 2, unit_price: 12500, line_total: 25000 }],
       subtotal: 25000,
       tax: 1744, // net subtotal shown = 25000 − 1744 = 23256
       total: 25000,
-      formatMoney: (n) => "₦" + n,
     });
-    expect(doc.output("datauristring").startsWith("data:application/pdf")).toBe(true);
+    const out = doc.output("datauristring");
+    expect(out.startsWith("data:application/pdf")).toBe(true);
+    // Amounts print with the ASCII currency code (the ₦ glyph is not in the built-in PDF font).
+    const pdf = Buffer.from(out.split(",")[1], "base64").toString("latin1");
+    expect(pdf).toContain("NGN");
+    expect(pdf).not.toContain("₦"); // no raw Naira symbol
   });
 
   it("falls back to the default formatter and omits the discount line when zero", async () => {

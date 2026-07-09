@@ -432,7 +432,7 @@ export default function Invoices() {
     downloadPdf({
       docType: "INVOICE", docNumber: i.invoice_number, date: i.issue_date,
       dueDate: i.due_date, status: i.status,
-      business: { name: business?.name || "", tin: business?.tin },
+      business: { name: business?.name || "", tin: business?.tin, currency: business?.currency },
       partyLabel: "Bill to",
       party: { name: i.customer_name, phone: i.customer_phone, email: i.customer_email },
       items: (data as Item[]) || [],
