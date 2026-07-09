@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { LayoutDashboard, Package, ShoppingCart, Truck, FileText, ClipboardList, Users, BarChart3, Sparkles, Settings, LogOut, Store, Menu, Boxes, ChevronLeft, ChevronRight, AlertTriangle, Clock, WifiOff, Ship, Warehouse, Factory, Wallet } from "lucide-react";
+import { visiblePinned, visibleSections, allVisibleModuleItems, sectionKeyForPath, SETTINGS_ITEM, type NavItem } from "@/lib/nav";
+import { LogOut, Store, Menu, ChevronLeft, ChevronRight, ChevronDown, AlertTriangle, Clock, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
@@ -21,64 +22,88 @@ import { toast } from "sonner";
 
 import type { AppRole } from "@/contexts/AuthContext";
 
-type NavItem = { to: string; label: string; icon: any; end?: boolean; soon?: boolean; module?: string };
-
-const nav: NavItem[] = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
-  { to: "/inventory", label: "Inventory", icon: Package, module: "inventory" },
-  { to: "/pos", label: "Point of Sale", icon: ShoppingCart, module: "pos" },
-  { to: "/suppliers", label: "Suppliers", icon: Truck, module: "suppliers" },
-  { to: "/raw-materials", label: "Raw Materials", icon: Boxes, module: "raw_materials" },
-  { to: "/general-store", label: "General Store", icon: Warehouse, module: "general_store" },
-  { to: "/production", label: "Production", icon: Factory, module: "production" },
-  { to: "/invoices", label: "Invoices", icon: FileText, module: "invoices" },
-  { to: "/export-invoice", label: "Export Invoice", icon: Ship, module: "export_invoices" },
-  { to: "/purchase-orders", label: "Purchase Orders", icon: ClipboardList, module: "purchase_orders" },
-  { to: "/expenditure", label: "Expenditure", icon: Wallet, module: "expenditure" },
-  { to: "/team", label: "Team", icon: Users, module: "team" },
-  { to: "/reports", label: "Reports", icon: BarChart3, module: "reports" },
-  { to: "/insights", label: "AI Insights", icon: Sparkles, soon: true, module: "insights" },
-  { to: "/settings", label: "Settings", icon: Settings },
-];
-
 // Modules usable with no internet (POS + the read-only cached views). Everything else is dimmed
 // and non-navigable while offline.
 const OFFLINE_OK = new Set(["/", "/pos", "/inventory", "/invoices"]);
 
-function NavList({ onNavigate, can, hasModule, collapsed, online = true }: { onNavigate?: () => void; can: (module: string, action: string) => boolean; hasModule: (key: string) => boolean; collapsed?: boolean; online?: boolean }) {
-  // Visibility = plan grants the module AND the member's permissions include it (owner: always).
-  const visible = nav.filter(item =>
-    !item.module || (hasModule(item.module) && can(item.module, "view"))
+/** A single sidebar link (used for pinned items, section items, the icon rail and bottom Settings). */
+function NavItemLink({ item, collapsed = false, online = true, onNavigate }: { item: NavItem; collapsed?: boolean; online?: boolean; onNavigate?: () => void }) {
+  const offlineBlocked = !online && !OFFLINE_OK.has(item.to);
+  const disabled = item.soon || offlineBlocked;
+  return (
+    <NavLink
+      to={item.to}
+      end={item.end}
+      title={collapsed ? item.label : offlineBlocked ? "Unavailable offline" : undefined}
+      onClick={(e) => { if (disabled) { e.preventDefault(); return; } onNavigate?.(); }}
+      className={({ isActive }) =>
+        `group flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors ${
+          collapsed ? "justify-center" : ""
+        } ${
+          disabled
+            ? "text-sidebar-foreground/40 cursor-not-allowed"
+            : isActive
+            ? "bg-sidebar-accent text-sidebar-accent-foreground"
+            : "text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
+        }`
+      }
+    >
+      <item.icon className="size-5 shrink-0" />
+      {!collapsed && <span className="flex-1">{item.label}</span>}
+      {!collapsed && item.soon && <span className="text-[10px] uppercase tracking-wider opacity-60">Soon</span>}
+      {!collapsed && offlineBlocked && <WifiOff className="size-3.5 opacity-60" />}
+    </NavLink>
   );
+}
+
+function NavList({ onNavigate, can, hasModule, collapsed = false, online = true, openSections, onToggleSection, activeSectionKey }: {
+  onNavigate?: () => void;
+  can: (module: string, action: string) => boolean;
+  hasModule: (key: string) => boolean;
+  collapsed?: boolean;
+  online?: boolean;
+  openSections: Record<string, boolean>;
+  onToggleSection: (key: string) => void;
+  activeSectionKey: string | null;
+}) {
+  const grants = { hasModule, can };
+
+  // Collapsed icon rail: grouping only applies when expanded, so render every module icon flat.
+  if (collapsed) {
+    return (
+      <nav className="flex-1 px-2 space-y-1 overflow-y-auto">
+        {allVisibleModuleItems(grants).map((item) => (
+          <NavItemLink key={item.to} item={item} collapsed online={online} onNavigate={onNavigate} />
+        ))}
+      </nav>
+    );
+  }
+
+  const pinned = visiblePinned(grants);
+  const sections = visibleSections(grants);
   return (
     <nav className="flex-1 px-2 space-y-1 overflow-y-auto">
-      {visible.map((item) => {
-        const offlineBlocked = !online && !OFFLINE_OK.has(item.to);
-        const disabled = item.soon || offlineBlocked;
+      {pinned.map((item) => <NavItemLink key={item.to} item={item} online={online} onNavigate={onNavigate} />)}
+      {sections.map((s) => {
+        // Default open; the section owning the active route is always open so it can't be hidden.
+        const open = (openSections[s.key] ?? true) || s.key === activeSectionKey;
         return (
-        <NavLink
-          key={item.to}
-          to={item.to}
-          end={item.end}
-          title={collapsed ? item.label : offlineBlocked ? "Unavailable offline" : undefined}
-          onClick={(e) => { if (disabled) { e.preventDefault(); return; } onNavigate?.(); }}
-          className={({ isActive }) =>
-            `group flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors ${
-              collapsed ? "justify-center" : ""
-            } ${
-              disabled
-                ? "text-sidebar-foreground/40 cursor-not-allowed"
-                : isActive
-                ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                : "text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
-            }`
-          }
-        >
-          <item.icon className="size-5 shrink-0" />
-          {!collapsed && <span className="flex-1">{item.label}</span>}
-          {!collapsed && item.soon && <span className="text-[10px] uppercase tracking-wider opacity-60">Soon</span>}
-          {!collapsed && offlineBlocked && <WifiOff className="size-3.5 opacity-60" />}
-        </NavLink>
+          <div key={s.key} className="pt-2">
+            <button
+              type="button"
+              onClick={() => onToggleSection(s.key)}
+              aria-expanded={open}
+              className="w-full flex items-center justify-between gap-2 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/50 hover:text-sidebar-foreground/80 transition-colors"
+            >
+              <span>{s.label}</span>
+              <ChevronDown className={`size-3.5 shrink-0 transition-transform ${open ? "" : "-rotate-90"}`} />
+            </button>
+            {open && (
+              <div className="space-y-1 mt-0.5">
+                {s.items.map((item) => <NavItemLink key={item.to} item={item} online={online} onNavigate={onNavigate} />)}
+              </div>
+            )}
+          </div>
         );
       })}
     </nav>
@@ -98,6 +123,16 @@ export default function AppShell() {
   const [gateBusy, setGateBusy] = useState(false);
   const [prewarmGateOpen, setPrewarmGateOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem("sidebar-collapsed") === "true");
+  // Per-section open/closed state (independent; default open), remembered across sessions.
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>(() => {
+    try { return JSON.parse(localStorage.getItem("sidebar-sections") || "{}"); } catch { return {}; }
+  });
+  const toggleSection = (key: string) => setOpenSections(prev => {
+    const next = { ...prev, [key]: !(prev[key] ?? true) };
+    localStorage.setItem("sidebar-sections", JSON.stringify(next));
+    return next;
+  });
+  const activeSectionKey = sectionKeyForPath(location.pathname);
 
   const confirmSignOut = () => { signOut(); navigate("/auth"); };
 
@@ -186,7 +221,8 @@ export default function AppShell() {
   );
 
   const MobileSignOut = (
-    <div className="p-4 border-t border-sidebar-border">
+    <div className="p-4 border-t border-sidebar-border space-y-1">
+      <NavItemLink item={SETTINGS_ITEM} online={online} onNavigate={() => setMobileOpen(false)} />
       <button onClick={requestSignOut} className="flex items-center gap-3 px-3 py-2 w-full rounded-lg text-sm text-sidebar-foreground/80 hover:bg-sidebar-accent/50 transition-colors">
         <LogOut className="size-4" /> Sign out
       </button>
@@ -226,10 +262,11 @@ export default function AppShell() {
           )}
         </div>
 
-        <NavList can={can} hasModule={hasModule} collapsed={collapsed} online={online} />
+        <NavList can={can} hasModule={hasModule} collapsed={collapsed} online={online} openSections={openSections} onToggleSection={toggleSection} activeSectionKey={activeSectionKey} />
 
-        {/* Sign out */}
-        <div className={`p-3 border-t border-sidebar-border shrink-0`}>
+        {/* Settings + Sign out, pinned at the bottom */}
+        <div className={`p-3 border-t border-sidebar-border shrink-0 space-y-1`}>
+          <NavItemLink item={SETTINGS_ITEM} collapsed={collapsed} online={online} />
           <button
             onClick={requestSignOut}
             title={collapsed ? "Sign out" : undefined}
@@ -268,7 +305,7 @@ export default function AppShell() {
               <SheetContent side="left" className="p-0 w-72 bg-sidebar text-sidebar-foreground border-sidebar-border flex flex-col">
                 <SheetTitle className="sr-only">Navigation</SheetTitle>
                 {MobileBrand}
-                <NavList can={can} hasModule={hasModule} onNavigate={() => setMobileOpen(false)} online={online} />
+                <NavList can={can} hasModule={hasModule} onNavigate={() => setMobileOpen(false)} online={online} openSections={openSections} onToggleSection={toggleSection} activeSectionKey={activeSectionKey} />
                 {MobileSignOut}
               </SheetContent>
             </Sheet>

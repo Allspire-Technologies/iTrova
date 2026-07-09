@@ -1,0 +1,79 @@
+import { test, expect } from "@playwright/test";
+import { authenticate, stubRows } from "./support/auth";
+
+const ALL_MODULES = [
+  "inventory", "pos", "suppliers", "raw_materials", "general_store", "production",
+  "invoices", "export_invoices", "purchase_orders", "expenditure", "team", "reports", "insights",
+];
+const planWith = (modules: string[]) => ({
+  id: "pl-1", key: "free", name: "Free", description: null,
+  price_amount: 0, price_currency: "NGN", billing_period: null,
+  features: [], limits: {}, is_active: true, sort_order: 1,
+  business_id: null, promo_percent: 0, promo_label: null, promo_until: null,
+  modules, prices: [],
+});
+
+test.describe("Sidebar grouping", () => {
+  test("pinned items, section headers and bottom Settings render for a full plan", async ({ page }) => {
+    await authenticate(page, { role: "owner" });
+    await stubRows(page, "plans", [planWith(ALL_MODULES)]);
+    await page.goto("/");
+    const side = page.locator("aside");
+    // Pinned (flat, top)
+    for (const label of ["Dashboard", "Point of Sale", "Inventory", "Reports"]) {
+      await expect(side.getByRole("link", { name: label })).toBeVisible();
+    }
+    // Collapsible section headers
+    for (const section of ["Sales", "Stock", "Buy", "More"]) {
+      await expect(side.getByRole("button", { name: section })).toBeVisible();
+    }
+    // Settings pinned at the bottom (with Sign out)
+    await expect(side.getByRole("link", { name: "Settings" })).toBeVisible();
+    await expect(side.getByRole("button", { name: "Sign out" })).toBeVisible();
+  });
+
+  test("a section header toggles its items open and closed", async ({ page }) => {
+    await authenticate(page, { role: "owner" });
+    await stubRows(page, "plans", [planWith(ALL_MODULES)]);
+    await page.goto("/"); // on Dashboard, so no section is force-open
+    const side = page.locator("aside");
+    await expect(side.getByRole("link", { name: "Suppliers" })).toBeVisible(); // Buy open by default
+    await side.getByRole("button", { name: "Buy" }).click();
+    await expect(side.getByRole("link", { name: "Suppliers" })).toHaveCount(0); // collapsed
+    await side.getByRole("button", { name: "Buy" }).click();
+    await expect(side.getByRole("link", { name: "Suppliers" })).toBeVisible(); // expanded again
+  });
+
+  test("the section owning the active route is open", async ({ page }) => {
+    await authenticate(page, { role: "owner" });
+    await stubRows(page, "plans", [planWith(ALL_MODULES)]);
+    await stubRows(page, "invoices", []);
+    await page.goto("/invoices"); // Sales section owns this route
+    const side = page.locator("aside");
+    await expect(side.getByRole("link", { name: "Invoices" })).toBeVisible();
+  });
+
+  test("sections with no visible modules are hidden entirely", async ({ page }) => {
+    await authenticate(page, { role: "owner" });
+    // Only Sales (invoices) + Buy (suppliers) have any granted module here.
+    await stubRows(page, "plans", [planWith(["inventory", "pos", "suppliers", "invoices"])]);
+    await page.goto("/");
+    const side = page.locator("aside");
+    await expect(side.getByRole("button", { name: "Sales" })).toBeVisible();
+    await expect(side.getByRole("button", { name: "Buy" })).toBeVisible();
+    await expect(side.getByRole("button", { name: "Stock" })).toHaveCount(0);
+    await expect(side.getByRole("button", { name: "More" })).toHaveCount(0);
+    await expect(side.getByRole("link", { name: "Reports" })).toHaveCount(0); // pinned but not granted
+  });
+
+  test("collapsing to the icon rail drops the section headers but keeps the module icons", async ({ page }) => {
+    await authenticate(page, { role: "owner" });
+    await stubRows(page, "plans", [planWith(ALL_MODULES)]);
+    await page.goto("/");
+    const side = page.locator("aside");
+    await side.getByRole("button", { name: "Collapse sidebar" }).click();
+    await expect(side.getByRole("button", { name: "Sales" })).toHaveCount(0); // no section chrome
+    await expect(side.getByRole("link", { name: "Point of Sale" })).toBeVisible(); // icons still there (title)
+    await expect(side.getByRole("link", { name: "Settings" })).toBeVisible();
+  });
+});
