@@ -77,13 +77,13 @@ test.describe("Production", () => {
     const RUN = {
       id: "run1", business_id: "biz-1", requisition_id: "rq3", produced_by: "user-1", notes: null, created_at: "2026-07-06T02:00:00Z",
       production_run_outputs: [{ product_id: "p1", quantity: 3, products: { name: "Garri 50kg", unit: "bag" } }],
-      production_run_materials: [{ raw_material_id: "m1", quantity_used: 7, raw_materials: { name: "Cassava Flour", unit: "kg" } }],
+      production_run_materials: [{ raw_material_id: "m1", quantity_used: 7, quantity_wasted: 1, raw_materials: { name: "Cassava Flour", unit: "kg" } }],
     };
     await stubProduction(page, { reqs: [COMPLETED_REQ], runs: [RUN] });
     await page.goto("/production?tab=requests");
-    // Issued (reduced at approval) + used-in-production trails, scoped to the desktop table.
+    // Issued (reduced at approval) + used-in-production trails (incl. waste), scoped to the desktop table.
     await expect(page.getByRole("table").getByText("Issued: Cassava Flour × 8")).toBeVisible();
-    await expect(page.getByRole("table").getByText("Used in production: Cassava Flour × 7 kg")).toBeVisible();
+    await expect(page.getByRole("table").getByText("Used in production: Cassava Flour × 7 kg (+1 waste)")).toBeVisible();
   });
 
   test("record production from an approved request prefills materials and sends the run RPC", async ({ page }) => {
@@ -98,21 +98,42 @@ test.describe("Production", () => {
     await page.getByRole("button", { name: "Produce" }).first().click();
 
     // Materials prefilled from the requisition's issued quantities.
-    await expect(page.getByLabel("Material quantity 1")).toHaveValue("10");
+    await expect(page.getByLabel("Material used quantity 1")).toHaveValue("10");
 
     await page.getByRole("dialog").getByRole("combobox").nth(1).click(); // first = requisition select, second = product line
     await page.getByRole("option", { name: "Garri 50kg" }).click();
     await page.getByLabel("Product quantity 1").fill("4");
-    await page.getByLabel("Material quantity 1").fill("8"); // used less than issued
+    await page.getByLabel("Product cost price 1").fill("6250"); // new cost price for the produced product
+    // Waste is carved out of the issued amount: entering 2 waste drops Used from 10 → 8.
+    await page.getByLabel("Material wasted quantity 1").fill("2");
+    await expect(page.getByLabel("Material used quantity 1")).toHaveValue("8");
     await page.getByRole("button", { name: "Record production", exact: true }).click();
     await expect(page.getByText("Production recorded — product stock updated")).toBeVisible();
     expect(runPayload).toEqual({
       _business_id: "biz-1",
       _requisition_id: "rq2",
-      _outputs: [{ product_id: "p1", quantity: 4 }],
-      _materials: [{ raw_material_id: "m1", quantity_used: 8 }],
+      _outputs: [{ product_id: "p1", quantity: 4, cost_price: 6250 }],
+      _materials: [{ raw_material_id: "m1", quantity_used: 8, quantity_wasted: 2 }],
       _notes: null,
     });
+  });
+
+  test("producing without a cost price omits it (product keeps its current cost)", async ({ page }) => {
+    await authenticate(page, { role: "owner" });
+    await stubProduction(page, { reqs: [APPROVED_REQ] });
+    let runPayload: any = null;
+    await page.route("**/rest/v1/rpc/record_production_run**", (r) => {
+      runPayload = r.request().postDataJSON();
+      return r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ id: "run9" }) });
+    });
+    await page.goto("/production?tab=requests");
+    await page.getByRole("button", { name: "Produce" }).first().click();
+    await page.getByRole("dialog").getByRole("combobox").nth(1).click();
+    await page.getByRole("option", { name: "Garri 50kg" }).click();
+    await page.getByLabel("Product quantity 1").fill("4"); // no cost entered
+    await page.getByRole("button", { name: "Record production", exact: true }).click();
+    await expect(page.getByText("Production recorded — product stock updated")).toBeVisible();
+    expect(runPayload._outputs).toEqual([{ product_id: "p1", quantity: 4 }]); // no cost_price key
   });
 
   test("production cannot be recorded without an approved request (button disabled)", async ({ page }) => {
