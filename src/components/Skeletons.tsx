@@ -2,6 +2,27 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Store } from "lucide-react";
 
+// ── Payroll sub-section (sub-tabs + a short list) ──
+export function PayrollSkeleton({ rows = 4 }: { rows?: number }) {
+  return (
+    <div className="space-y-4 animate-fade-in">
+      <div className="flex items-center justify-between gap-4">
+        <Skeleton className="h-9 w-48" />
+        <Skeleton className="h-10 w-36 shrink-0" />
+      </div>
+      <div className="rounded-xl border border-border/60 bg-card divide-y">
+        {Array.from({ length: rows }).map((_, i) => (
+          <div key={i} className="flex items-center justify-between gap-4 px-4 py-3.5">
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-5 w-24" />
+            <Skeleton className="h-8 w-28 shrink-0" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Table-based list pages (Inventory, Suppliers, RawMaterials, Invoices, POs) ──
 export function TablePageSkeleton({ rows = 7 }: { rows?: number }) {
   const cols = ["w-1/6", "w-1/4", "w-1/5", "w-1/5", "w-1/6"];
