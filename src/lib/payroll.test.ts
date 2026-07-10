@@ -1,4 +1,7 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+// payroll.ts imports the supabase client at module load; stub it so unit tests don't need env vars
+// (same pattern as expenditure.test.ts). Only the pure helpers are exercised here.
+vi.mock("@/integrations/supabase/client", () => ({ supabase: { from: vi.fn(), rpc: vi.fn() } }));
 import { deductionTotal, lineNet, grossFor, summarisePayroll, friendlyPayrollError } from "./payroll";
 
 describe("deductionTotal", () => {
