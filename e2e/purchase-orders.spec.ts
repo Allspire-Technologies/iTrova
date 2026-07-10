@@ -102,6 +102,62 @@ test.describe("Purchase Orders", () => {
     expect(pdf).toMatch(/7[,.]?500/);   // VAT line
   });
 
+  const PO_LANDED = { id: "po-1", business_id: "biz-1", po_number: "PO-0007", supplier_id: null, status: "draft", expected_date: null, total_amount: 60000, notes: null, created_at: "2026-06-01T00:00:00Z", tax_amount: 0, landed_costs: [{ label: "Freight", amount: 6000 }] };
+  const PO_LANDED_ITEM = { id: "li1", purchase_order_id: "po-1", product_id: "p1", raw_material_id: null, description: "Rice 25kg", quantity: 10, unit_cost: 6000, line_total: 60000 };
+
+  test("captures landed costs on the New PO form", async ({ page }) => {
+    await stubRows(page, "products", [RICE]);
+    await stubRows(page, "raw_materials", []);
+    await page.reload();
+    await page.route("**/rest/v1/rpc/next_doc_number**", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify("PO-0009") }));
+    let poBody: any = null;
+    await page.route("**/rest/v1/purchase_orders**", (r) => {
+      if (r.request().method() === "POST") { poBody = r.request().postDataJSON(); return r.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ id: "po-9", po_number: "PO-0009" }) }); }
+      return r.fallback();
+    });
+    await page.route("**/rest/v1/purchase_order_items**", (r) => r.request().method() === "POST" ? r.fulfill({ status: 201, contentType: "application/json", body: "[]" }) : r.fallback());
+
+    await page.getByRole("button", { name: "New PO" }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("combobox").nth(1).click();
+    await page.getByRole("option", { name: "Rice 25kg" }).click(); // auto-fills unit cost 6000
+    await dialog.getByLabel("Freight amount").fill("5000"); // Duty left blank → dropped
+    await dialog.getByRole("button", { name: "Create PO" }).click();
+    await expect(page.getByText(/Purchase order PO-0009 created/)).toBeVisible();
+    expect(poBody.landed_costs).toEqual([{ label: "Freight", amount: 5000 }]);
+  });
+
+  test("View shows the landed-cost breakdown and effective cost per unit", async ({ page }) => {
+    await stubRows(page, "purchase_orders", [PO_LANDED]);
+    await stubRows(page, "purchase_order_items", [PO_LANDED_ITEM]);
+    await page.reload();
+    await page.locator("table").getByRole("button", { name: "View" }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByText("Landed costs")).toBeVisible();
+    await expect(dialog.getByText(/Landed cost total/)).toBeVisible();
+    await expect(dialog.getByText(/66,?000/)).toBeVisible();  // 60,000 goods + 6,000 landed
+    await expect(dialog.getByText(/6,?600/)).toBeVisible();   // 6,000 → 6,600 landed unit cost
+  });
+
+  test("Receiving a PO opens the landed-cost dialog and sends the final costs", async ({ page }) => {
+    await stubRows(page, "purchase_orders", [PO_LANDED]);
+    await stubRows(page, "purchase_order_items", [PO_LANDED_ITEM]);
+    await page.reload();
+    let patchBody: any = null;
+    await page.route("**/rest/v1/purchase_orders**", (r) => {
+      if (r.request().method() === "PATCH") { patchBody = r.request().postDataJSON(); return r.fulfill({ status: 200, contentType: "application/json", body: "[]" }); }
+      return r.fallback();
+    });
+    await page.locator("table").getByRole("combobox").first().click(); // the row's status control
+    await page.getByRole("option", { name: "Received" }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByText("Receive PO-0007")).toBeVisible();
+    await dialog.getByRole("button", { name: "Receive & value stock" }).click();
+    await expect(page.getByText(/PO received/)).toBeVisible();
+    expect(patchBody.status).toBe("received");
+    expect(patchBody.landed_costs).toEqual([{ label: "Freight", amount: 6000 }]);
+  });
+
   test("renders the page with an empty state", async ({ page }) => {
     await expect(page.getByRole("heading", { name: "Purchase Orders" })).toBeVisible();
     await expect(page.getByText("No purchase orders yet.")).toBeVisible();
