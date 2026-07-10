@@ -27,6 +27,8 @@ import {
   type Expense, type ExpenseStatus,
 } from "@/lib/expenditure";
 import { supabase } from "@/integrations/supabase/client";
+import { cn } from "@/lib/utils";
+import PayrollPanel from "@/components/PayrollPanel";
 
 type Supplier = { id: string; name: string };
 type Form = {
@@ -75,6 +77,7 @@ export default function Expenditure() {
   const [q, setQ] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState(searchParams.get("status") === "pending" ? "pending" : "all");
+  const [tab, setTab] = useState<"expenses" | "payroll">(searchParams.get("tab") === "payroll" ? "payroll" : "expenses");
 
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<Form>(emptyForm());
@@ -251,7 +254,7 @@ export default function Expenditure() {
     downloadCsv(`expenses-not-imported-${todayStr()}.csv`, toCsv(rows, cols));
   };
 
-  if (loading) return <TablePageSkeleton />;
+  if (loading && tab === "expenses") return <TablePageSkeleton />;
 
   const RowActions = ({ e }: { e: Expense }) => {
     const isPending = e.status === "pending";
@@ -285,8 +288,9 @@ export default function Expenditure() {
       <div className="flex items-end justify-between flex-wrap gap-4">
         <div>
           <h1 className="font-display text-3xl lg:text-4xl font-bold text-brand-dark flex items-center gap-2"><Wallet className="size-7" /> Expenditure</h1>
-          <p className="text-muted-foreground mt-1">Record what your business spends and track bills to pay.</p>
+          <p className="text-muted-foreground mt-1">Record what your business spends, run payroll, and track bills to pay.</p>
         </div>
+        {tab === "expenses" && (
         <div className="flex gap-2 flex-wrap">
           <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => e.target.files?.[0] && importCsv(e.target.files[0])} />
           <Button variant="outline" onClick={downloadTemplate}><Download className="size-4" /> CSV Template</Button>
@@ -304,8 +308,22 @@ export default function Expenditure() {
           )}
           {canCreate && <Button variant="hero" onClick={openAdd}><Plus className="size-4" /> Add expense</Button>}
         </div>
+        )}
       </div>
 
+      {/* Tabs */}
+      <div className="flex flex-wrap gap-1 border-b border-border/60">
+        {([{ key: "expenses", label: "Expenses" }, { key: "payroll", label: "Payroll" }] as const).map((t) => (
+          <button key={t.key} type="button" onClick={() => setTab(t.key)}
+            className={cn("-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors", tab === t.key ? "border-brand text-brand-dark" : "border-transparent text-muted-foreground hover:text-foreground")}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "payroll" && <PayrollPanel />}
+
+      {tab === "expenses" && <>
       {/* Bills due strip */}
       {pending.length > 0 && (
         <Card className="shadow-card border-border/60 p-4 flex flex-wrap items-center gap-x-6 gap-y-2">
@@ -409,6 +427,7 @@ export default function Expenditure() {
           </>
         )}
       </Card>
+      </>}
 
       {/* Add / Edit */}
       <Dialog open={open} onOpenChange={setOpen}>
