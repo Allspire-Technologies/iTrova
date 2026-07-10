@@ -48,6 +48,9 @@ type Business = {
   prices_include_tax: boolean | null;
   tin: string | null;
   valuation_method: "last_cost" | "moving_average" | null;
+  opening_cash: number | null;
+  opening_capital: number | null;
+  books_opening_date: string | null;
 };
 
 /** Subscription view that keeps the raw paid tier (for display) even once expired. */

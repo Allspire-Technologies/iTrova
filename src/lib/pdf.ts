@@ -1,6 +1,6 @@
 // jsPDF's built-in Helvetica is Latin-1 only, so currency SYMBOLS like ₦/₵/₦ render as tofu (and
 // can mangle nearby digits). For print we format with the ASCII currency CODE instead — "NGN 22,050.00".
-function pdfMoneyFormatter(currency?: string): (n: number) => string {
+export function pdfMoneyFormatter(currency?: string): (n: number) => string {
   const code = (currency || "NGN").toUpperCase();
   try {
     const nf = new Intl.NumberFormat("en-US", { style: "currency", currency: code, currencyDisplay: "code", minimumFractionDigits: 2, maximumFractionDigits: 2 });

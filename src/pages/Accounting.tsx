@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import DatePicker from "@/components/DatePicker";
+import CashFlowTab from "@/components/accounting/CashFlowTab";
+import BalanceSheetTab from "@/components/accounting/BalanceSheetTab";
 import { TablePageSkeleton } from "@/components/Skeletons";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -36,10 +38,12 @@ function pdfMoney(currency?: string): (n: number) => string {
 type Empty = null;
 
 export default function Accounting() {
-  const { business, can } = useAuth();
+  const { business, can, role } = useAuth();
   const { fmt } = useCurrency();
   const canExport = can("accounting", "export");
+  const isOwner = role === "owner";
 
+  const [tab, setTab] = useState<"pnl" | "balance" | "cashflow">("pnl");
   const [from, setFrom] = useState(daysAgo(30));
   const [to, setTo] = useState(todayStr());
   const [loading, setLoading] = useState(true);
@@ -162,16 +166,16 @@ export default function Accounting() {
     <span className={cn("tabular-nums", n < 0 && "text-muted-foreground")}>{n < 0 ? `(${fmt(Math.abs(n))})` : fmt(n)}</span>
   );
 
-  if (loading) return <TablePageSkeleton />;
+  const TABS = [{ k: "pnl", l: "Profit & Loss" }, { k: "balance", l: "Balance Sheet" }, { k: "cashflow", l: "Cash Flow" }] as const;
 
   return (
     <div className="space-y-6 w-full">
       <div className="flex items-end justify-between flex-wrap gap-4">
         <div>
           <h1 className="font-display text-3xl lg:text-4xl font-bold text-brand-dark flex items-center gap-2"><Calculator className="size-7" /> Accounting</h1>
-          <p className="text-muted-foreground mt-1">Your Profit &amp; Loss statement — what you earned, what it cost, what's left.</p>
+          <p className="text-muted-foreground mt-1">See how your business is doing — Profit &amp; Loss, Balance Sheet and Cash Flow.</p>
         </div>
-        {canExport && (
+        {tab === "pnl" && canExport && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline"><FileDown className="size-4" /> Export</Button>
@@ -184,15 +188,31 @@ export default function Accounting() {
         )}
       </div>
 
-      {/* Period picker */}
-      <Card className="shadow-card border-border/60 p-4 flex flex-wrap items-center gap-3">
-        <span className="text-sm font-medium text-brand-dark">Period</span>
-        <DatePicker value={from} onChange={setFrom} className="w-40" aria-label="From date" />
-        <span className="text-muted-foreground text-sm">to</span>
-        <DatePicker value={to} onChange={setTo} className="w-40" aria-label="To date" />
-        <span className="ml-auto text-xs text-muted-foreground">vs previous {prevFrom} → {prevTo}</span>
-      </Card>
+      {/* Tabs */}
+      <div className="flex flex-wrap gap-1 border-b border-border/60">
+        {TABS.map((t) => (
+          <button key={t.k} type="button" onClick={() => setTab(t.k)}
+            className={cn("-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors", tab === t.k ? "border-brand text-brand-dark" : "border-transparent text-muted-foreground hover:text-foreground")}>
+            {t.l}
+          </button>
+        ))}
+      </div>
 
+      {/* Period picker — P&L + Cash Flow use a date range; the Balance Sheet uses its own as-at date. */}
+      {tab !== "balance" && (
+        <Card className="shadow-card border-border/60 p-4 flex flex-wrap items-center gap-3">
+          <span className="text-sm font-medium text-brand-dark">Period</span>
+          <DatePicker value={from} onChange={setFrom} className="w-40" aria-label="From date" />
+          <span className="text-muted-foreground text-sm">to</span>
+          <DatePicker value={to} onChange={setTo} className="w-40" aria-label="To date" />
+          {tab === "pnl" && <span className="ml-auto text-xs text-muted-foreground">vs previous {prevFrom} → {prevTo}</span>}
+        </Card>
+      )}
+
+      {tab === "cashflow" && <CashFlowTab from={from} to={to} canExport={canExport} />}
+      {tab === "balance" && <BalanceSheetTab canExport={canExport} isOwner={isOwner} />}
+
+      {tab === "pnl" && (loading ? <TablePageSkeleton /> : <>
       {/* Accuracy hint when sold items have no recorded cost */}
       {missingUnits > 0 && (
         <div className="flex items-start gap-3 rounded-xl border border-warning/30 bg-warning/5 p-4">
@@ -259,6 +279,7 @@ export default function Accounting() {
           <p><span className="font-medium text-foreground">Net profit = Gross profit − Operating expenses.</span> It's only as accurate as your product cost prices, so keep those up to date in Inventory.</p>
         </div>
       </details>
+      </>)}
     </div>
   );
 }
