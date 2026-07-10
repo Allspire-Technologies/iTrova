@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import DatePicker from "@/components/DatePicker";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
@@ -450,8 +451,8 @@ export default function PurchaseOrders() {
             ...STATUSES.map(s => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) })),
           ]}
         />
-        <Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }} className="w-36" title="Created from" />
-        <Input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }} className="w-36" title="Created to" />
+        <DatePicker value={dateFrom} onChange={v => { setDateFrom(v); setPage(1); }} className="w-36" clearable placeholder="Created from" aria-label="Created from" />
+        <DatePicker value={dateTo} onChange={v => { setDateTo(v); setPage(1); }} className="w-36" clearable placeholder="Created to" aria-label="Created to" />
       </Card>
 
       <Card className="overflow-hidden">
@@ -544,7 +545,7 @@ export default function PurchaseOrders() {
                   options={suppliers.map(s => ({ value: s.id, label: s.name }))}
                 />
               </div>
-              <div><Label>Expected delivery</Label><Input type="date" value={form.expected_date} onChange={e => setForm({ ...form, expected_date: e.target.value })} /></div>
+              <div><Label>Expected delivery</Label><DatePicker value={form.expected_date} onChange={v => setForm({ ...form, expected_date: v })} clearable placeholder="Select date" /></div>
             </div>
             <div className="space-y-2">
               <Label>Line items</Label>

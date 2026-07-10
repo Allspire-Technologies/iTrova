@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import DatePicker from "@/components/DatePicker";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
@@ -649,9 +650,9 @@ export default function Invoices() {
           options={creatorOptions}
         />
         <div className="flex items-center gap-2">
-          <Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }} className="w-36" title="From date" />
+          <DatePicker value={dateFrom} onChange={v => { setDateFrom(v); setPage(1); }} className="w-36" clearable placeholder="From" aria-label="From date" />
           <span className="text-muted-foreground text-sm shrink-0">to</span>
-          <Input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }} className="w-36" title="To date" />
+          <DatePicker value={dateTo} onChange={v => { setDateTo(v); setPage(1); }} className="w-36" clearable placeholder="To" aria-label="To date" />
         </div>
       </Card>
 
@@ -765,7 +766,7 @@ export default function Invoices() {
               <div><Label>Customer name *</Label><Input value={form.customer_name} onChange={e => setForm({ ...form, customer_name: e.target.value })} /></div>
               <div><Label>Phone</Label><Input value={form.customer_phone} onChange={e => setForm({ ...form, customer_phone: e.target.value })} /></div>
               <div><Label>Email</Label><Input value={form.customer_email} onChange={e => setForm({ ...form, customer_email: e.target.value })} /></div>
-              <div><Label>Due date</Label><Input type="date" value={form.due_date} onChange={e => setForm({ ...form, due_date: e.target.value })} /></div>
+              <div><Label>Due date</Label><DatePicker value={form.due_date} onChange={v => setForm({ ...form, due_date: v })} clearable placeholder="Select date" /></div>
             </div>
             <div className="space-y-2">
               <Label>Line items</Label>

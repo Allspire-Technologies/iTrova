@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import DatePicker from "@/components/DatePicker";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
@@ -341,7 +342,7 @@ export default function Inventory() {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label>Expiry date <span className="font-normal text-muted-foreground">(optional)</span></Label>
-                    <Input type="date" value={form.expiry_date || ""} onChange={e => setForm({ ...form, expiry_date: e.target.value })} />
+                    <DatePicker value={form.expiry_date || ""} onChange={v => setForm({ ...form, expiry_date: v })} clearable placeholder="Select date" />
                   </div>
                   <div className="space-y-2">
                     <Label>Weight per unit <span className="font-normal text-muted-foreground">(optional)</span></Label>

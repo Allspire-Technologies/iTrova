@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import DatePicker from "@/components/DatePicker";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -337,9 +338,9 @@ export default function Expenditure() {
       <Card className="shadow-card border-border/60">
         <div className="p-4 border-b border-border flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2">
-            <Input type="date" value={from} onChange={e => setFrom(e.target.value)} className="w-40" aria-label="From date" />
+            <DatePicker value={from} onChange={setFrom} className="w-40" aria-label="From date" />
             <span className="text-muted-foreground text-sm">to</span>
-            <Input type="date" value={to} onChange={e => setTo(e.target.value)} className="w-40" aria-label="To date" />
+            <DatePicker value={to} onChange={setTo} className="w-40" aria-label="To date" />
           </div>
           <div className="relative flex-1 min-w-[160px] max-w-xs">
             <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -435,7 +436,7 @@ export default function Expenditure() {
           <DialogHeader><DialogTitle className="font-display">{form.id ? "Edit expense" : "Add expense"}</DialogTitle></DialogHeader>
           <form onSubmit={save} className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2"><Label>Date *</Label><Input type="date" required value={form.expense_date} onChange={e => setForm({ ...form, expense_date: e.target.value })} /></div>
+              <div className="space-y-2"><Label>Date *</Label><DatePicker value={form.expense_date} onChange={v => setForm({ ...form, expense_date: v })} placeholder="Select date" /></div>
               <div className="space-y-2"><Label>Amount *</Label><Input type="number" required min="0" step="0.01" placeholder="0" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></div>
             </div>
             {taxEnabled && (
@@ -474,7 +475,7 @@ export default function Expenditure() {
                   options={[{ value: "paid", label: "Paid" }, { value: "pending", label: "Pending (bill to pay)" }]} />
               </div>
               {form.status === "pending" && (
-                <div className="space-y-2"><Label>Due date</Label><Input type="date" value={form.due_date} onChange={e => setForm({ ...form, due_date: e.target.value })} /></div>
+                <div className="space-y-2"><Label>Due date</Label><DatePicker value={form.due_date} onChange={v => setForm({ ...form, due_date: v })} clearable placeholder="Select date" /></div>
               )}
             </div>
             <div className="space-y-2"><Label>Description / receipt ref <span className="font-normal text-muted-foreground">(optional)</span></Label>

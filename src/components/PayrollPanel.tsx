@@ -4,6 +4,7 @@ import { useCurrency } from "@/hooks/useCurrency";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import DatePicker from "@/components/DatePicker";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -327,10 +328,10 @@ export default function PayrollPanel() {
             <div className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-4">
                 <div className="space-y-2 sm:col-span-2"><Label>Pay period *</Label><Input value={editor.period_label} onChange={(e) => setEditor({ ...editor, period_label: e.target.value })} placeholder="e.g. July 2026" /></div>
-                <div className="space-y-2"><Label>Pay date</Label><Input type="date" value={editor.pay_date} onChange={(e) => setEditor({ ...editor, pay_date: e.target.value, period_label: editor.period_label.trim() ? editor.period_label : monthLabel(e.target.value) })} /></div>
+                <div className="space-y-2"><Label>Pay date</Label><DatePicker value={editor.pay_date} onChange={(v) => setEditor({ ...editor, pay_date: v, period_label: editor.period_label.trim() ? editor.period_label : monthLabel(v) })} placeholder="Select date" /></div>
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-2"><Label className="text-xs">Period from</Label><Input type="date" value={editor.period_start} onChange={(e) => setEditor({ ...editor, period_start: e.target.value })} /></div>
-                  <div className="space-y-2"><Label className="text-xs">to</Label><Input type="date" value={editor.period_end} onChange={(e) => setEditor({ ...editor, period_end: e.target.value })} /></div>
+                  <div className="space-y-2"><Label className="text-xs">Period from</Label><DatePicker value={editor.period_start} onChange={(v) => setEditor({ ...editor, period_start: v })} clearable placeholder="Start" /></div>
+                  <div className="space-y-2"><Label className="text-xs">to</Label><DatePicker value={editor.period_end} onChange={(v) => setEditor({ ...editor, period_end: v })} clearable placeholder="End" /></div>
                 </div>
               </div>
 

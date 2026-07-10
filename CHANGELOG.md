@@ -3,6 +3,20 @@
 All notable, user-facing changes to iTrova are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); entries are grouped by ship date, newest first.
 
+## 2026-07-10 — Date picker & date format
+
+A cleaner, consistent way to pick and read dates across the whole app.
+
+### Added
+- **New date picker** — every date field is now a clean, tappable field with a **calendar icon** that
+  opens a proper calendar to pick a day. Replaces the old browser date box, so it looks and behaves
+  the same on every device and browser (Inventory expiry, Invoice/PO/expense dates, report and list
+  date filters, payroll dates, and more). Optional date fields can be cleared with one tap.
+
+### Changed
+- **One date format everywhere** — dates now display consistently as **DD MMM YYYY** (e.g. `05 Jun
+  2026`) across lists, receipts, invoices, reports and pickers.
+
 ## 2026-07-10 — Payroll & Salaries
 
 Run staff payroll straight from the Expenditure module, with salaries flowing into your books

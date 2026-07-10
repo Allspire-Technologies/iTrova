@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import DatePicker from "@/components/DatePicker";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
@@ -190,7 +191,7 @@ export default function ExportInvoice() {
               <p className="text-xs text-muted-foreground">Suggested automatically — edit it if you need a different one.</p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-2"><Label>Date</Label><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
+              <div className="space-y-2"><Label>Date</Label><DatePicker value={date} onChange={setDate} placeholder="Select date" /></div>
               <div className="space-y-2">
                 <Label>Currency</Label>
                 <select className={selectCls} value={currency} onChange={(e) => setCurrency(e.target.value)} aria-label="Currency">

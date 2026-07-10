@@ -1,8 +1,8 @@
 import { useAuth } from "@/contexts/AuthContext";
 import { formatDate } from "@/lib/format";
 
-const DATE_OPTS: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", year: "numeric" };
-const DATETIME_OPTS: Intl.DateTimeFormatOptions = { dateStyle: "medium", timeStyle: "short" };
+const DATE_OPTS: Intl.DateTimeFormatOptions = { day: "2-digit", month: "short", year: "numeric" }; // DD MMM YYYY
+const DATETIME_OPTS: Intl.DateTimeFormatOptions = { day: "2-digit", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" };
 
 /**
  * Date/time formatting bound to the logged-in business's timezone.

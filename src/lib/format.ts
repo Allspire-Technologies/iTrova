@@ -45,7 +45,7 @@ export const formatNaira = (n: number | string | null | undefined) => formatMone
 export function formatDate(
   value: string | number | Date | null | undefined,
   timezone = "Africa/Lagos",
-  opts: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", year: "numeric" },
+  opts: Intl.DateTimeFormatOptions = { day: "2-digit", month: "short", year: "numeric" }, // DD MMM YYYY
   locale = "en-NG",
 ): string {
   if (value === null || value === undefined || value === "") return "";

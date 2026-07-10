@@ -3,6 +3,7 @@ import { Download, Eye, Pencil, Plus, Printer, Trash2, Wallet, WifiOff } from "l
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import DatePicker from "@/components/DatePicker";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
@@ -485,7 +486,7 @@ export function OfflineInvoices() {
               <Button variant="outline" size="sm" onClick={addNewLine}><Plus className="size-4" /> Add line</Button>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1"><Label>Due date</Label><Input type="date" value={newForm.dueDate} onChange={(e) => setNewForm({ ...newForm, dueDate: e.target.value })} /></div>
+              <div className="space-y-1"><Label>Due date</Label><DatePicker value={newForm.dueDate} onChange={(v) => setNewForm({ ...newForm, dueDate: v })} clearable placeholder="Select date" /></div>
               <div className="self-end text-right">
                 <div className="text-xs text-muted-foreground">Total</div>
                 <div className="font-display text-lg font-bold text-brand-dark">{fmt(newSubtotal)}</div>
