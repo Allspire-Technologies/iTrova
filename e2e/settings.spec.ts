@@ -50,6 +50,25 @@ test.describe("Settings", () => {
     expect(patched.valuation_method).toBe("last_cost");
   });
 
+  test("module-specific Settings are hidden when the business lacks the module", async ({ page }) => {
+    // The Free plan resolves to FREE_MODULES (no export_invoices / general_store / production /
+    // expenditure), so those modules' Settings should not render.
+    await authenticate(page, { role: "owner" });
+    await stubRows(page, "plans", plans);
+    await page.goto("/settings");
+
+    // Business tab: no Exporter Profile (Export Invoice module absent).
+    await expect(page.getByText("Exporter Profile", { exact: true })).toHaveCount(0);
+
+    // Preferences: core alerts stay; module-specific alerts are gone.
+    await page.getByRole("button", { name: "Preferences", exact: true }).click();
+    await expect(page.getByText("Low stock alerts")).toBeVisible();
+    await expect(page.getByText("Overdue invoice alerts")).toBeVisible();
+    await expect(page.getByText("General Store alerts")).toHaveCount(0);
+    await expect(page.getByText("Production alerts")).toHaveCount(0);
+    await expect(page.getByText("Expenditure alerts")).toHaveCount(0);
+  });
+
   test("subscription plans come from the catalogue (Billing tab)", async ({ page }) => {
     await authenticate(page, { role: "owner", businessName: "Sunrise Stores" });
     await stubRows(page, "plans", plans);

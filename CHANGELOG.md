@@ -3,6 +3,17 @@
 All notable, user-facing changes to iTrova are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); entries are grouped by ship date, newest first.
 
+## 2026-07-10 — Tidier Settings for your plan
+
+### Changed
+- **Settings now only shows what applies to your business.** Options for modules you don't have are
+  hidden instead of sitting there unusable:
+  - **Exporter Profile** shows only if you have the **Export Invoice** module.
+  - **Notification preferences** — *General Store*, *Production* and *Expenditure* alerts appear only
+    if you have those modules.
+  - **Inventory costing** (valuation method) appears only if you have **Purchase Orders** or **Raw
+    Materials** (it only matters when you procure stock).
+
 ## 2026-07-10 — Date picker & date format
 
 A cleaner, consistent way to pick and read dates across the whole app.

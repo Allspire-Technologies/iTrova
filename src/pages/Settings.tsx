@@ -243,7 +243,7 @@ function CustomPlanCard({ reference }: { reference: { name: string; features: st
 }
 
 export default function Settings() {
-  const { user, profile, business, role, subscription, plans, refresh } = useAuth();
+  const { user, profile, business, role, subscription, plans, refresh, hasModule } = useAuth();
   const { fmtDate } = useDateFormat();
   const isOwner = role === "owner";
 
@@ -575,11 +575,14 @@ export default function Settings() {
       )}
 
       {/* Tax (VAT) — owner only; defines the tax catalogue mapped onto Inventory */}
-      {tab === "business" && isOwner && <CostingSettings />}
+      {/* Inventory costing (valuation method) only matters if you procure stock — hide it for
+          businesses without Purchase Orders and without Raw Materials. */}
+      {tab === "business" && isOwner && (hasModule("purchase_orders") || hasModule("raw_materials")) && <CostingSettings />}
       {tab === "business" && isOwner && <TaxSettings />}
 
-      {/* Exporter Profile — owner only (prefills export invoices); View card until Edit */}
-      {tab === "business" && isOwner && (
+      {/* Exporter Profile — owner only, and only when the business has the Export Invoice module;
+          it prefills export (commercial) invoices, so it's noise for businesses without that module. */}
+      {tab === "business" && isOwner && hasModule("export_invoices") && (
         <Card className="shadow-card border-border/60">
           <CardHeader className="pb-4">
             <div className="flex items-center justify-between gap-3">
@@ -740,7 +743,7 @@ export default function Settings() {
           </div>
         </CardHeader>
         <CardContent className="divide-y divide-border/50">
-          {[
+          {([
             {
               key: "low_stock_alerts" as const,
               label: "Low stock alerts",
@@ -768,6 +771,7 @@ export default function Settings() {
               desc: "Get notified about low-stock store items and overdue borrowed items",
               disabled: false,
               soon: false,
+              module: "general_store",
             },
             {
               key: "production_alerts" as const,
@@ -775,6 +779,7 @@ export default function Settings() {
               desc: "Get notified about material requests awaiting approval and decisions on yours",
               disabled: false,
               soon: false,
+              module: "production",
             },
             {
               key: "expense_alerts" as const,
@@ -782,6 +787,7 @@ export default function Settings() {
               desc: "Get notified when a pending bill is past its due date",
               disabled: false,
               soon: false,
+              module: "expenditure",
             },
             {
               key: "daily_summary" as const,
@@ -790,7 +796,10 @@ export default function Settings() {
               disabled: true,
               soon: true,
             },
-          ].map(({ key, label, desc, disabled, soon }) => (
+          ] as { key: keyof NotifPrefs; label: string; desc: string; disabled: boolean; soon: boolean; module?: string }[])
+            // Hide alerts for modules this business doesn't have (e.g. Production/General Store/Expenditure).
+            .filter((t) => !t.module || hasModule(t.module))
+            .map(({ key, label, desc, disabled, soon }) => (
             <div key={key} className="flex items-center justify-between py-4">
               <div>
                 <div className="flex items-center gap-2 text-sm font-medium text-foreground">
