@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { landedTotal, allocateByValue, landedUnitCost, landedUnitCostsForPo } from "./landedCost";
+import { landedTotal, allocateByValue, allocateLanded, movingAverageCost, landedUnitCost, landedUnitCostsForPo } from "./landedCost";
 
 describe("landedTotal", () => {
   it("sums itemized landed-cost amounts (tolerates bad values)", () => {
@@ -25,6 +25,39 @@ describe("allocateByValue", () => {
     expect(allocateByValue([0, 0], 100)).toEqual([50, 50]);
     expect(allocateByValue([10, 20], 0)).toEqual([0, 0]);
     expect(allocateByValue([], 100)).toEqual([]);
+  });
+});
+
+describe("allocateLanded (per-line basis)", () => {
+  // Two items: A value 60,000 weight 10; B value 40,000 weight 40 (B is heavier).
+  const items = [{ value: 60000, weight: 10 }, { value: 40000, weight: 40 }];
+
+  it("splits a value-basis line by value and a weight-basis line by weight", () => {
+    // Freight 10,000 by weight (10/40 split) → 2,000 / 8,000. Duty 10,000 by value (60/40) → 6,000 / 4,000.
+    const out = allocateLanded(items, [
+      { label: "Freight", amount: 10000, basis: "weight" },
+      { label: "Duty", amount: 10000, basis: "value" },
+    ]);
+    expect(out).toEqual([8000, 12000]); // A: 2,000+6,000 ; B: 8,000+4,000
+  });
+
+  it("falls back to value when a weight-basis line has no weights", () => {
+    const noWeight = [{ value: 60000, weight: 0 }, { value: 40000, weight: 0 }];
+    expect(allocateLanded(noWeight, [{ label: "Freight", amount: 10000, basis: "weight" }])).toEqual([6000, 4000]);
+  });
+
+  it("defaults a line with no basis to value", () => {
+    expect(allocateLanded(items, [{ label: "Other", amount: 10000 }])).toEqual([6000, 4000]);
+  });
+});
+
+describe("movingAverageCost", () => {
+  it("blends old stock cost with the received value", () => {
+    // 20 @ ₦6,000 on hand, receive 100 valued at ₦674,000 → (120,000 + 674,000)/120 = ₦6,616.67.
+    expect(movingAverageCost(20, 6000, 100, 674000)).toBeCloseTo(6616.67, 2);
+  });
+  it("returns the old cost when nothing is on hand or received", () => {
+    expect(movingAverageCost(0, 6000, 0, 0)).toBe(6000);
   });
 });
 

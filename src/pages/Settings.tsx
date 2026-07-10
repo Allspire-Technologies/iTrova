@@ -29,6 +29,12 @@ const TaxSettings = () => (
     <TaxSettingsInner />
   </Suspense>
 );
+const CostingSettingsInner = lazy(() => import("@/components/settings/CostingSettings"));
+const CostingSettings = () => (
+  <Suspense fallback={<p className="py-8 text-center text-sm text-muted-foreground">Loading costing settings…</p>}>
+    <CostingSettingsInner />
+  </Suspense>
+);
 const PermissionsAccessInner = lazy(() => import("@/components/settings/PermissionsAccess"));
 const PermissionsAccess = () => (
   <Suspense fallback={<p className="py-8 text-center text-sm text-muted-foreground">Loading permissions…</p>}>
@@ -569,6 +575,7 @@ export default function Settings() {
       )}
 
       {/* Tax (VAT) — owner only; defines the tax catalogue mapped onto Inventory */}
+      {tab === "business" && isOwner && <CostingSettings />}
       {tab === "business" && isOwner && <TaxSettings />}
 
       {/* Exporter Profile — owner only (prefills export invoices); View card until Edit */}

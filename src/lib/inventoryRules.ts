@@ -10,6 +10,8 @@ export type ProductFields = {
   expiry_date?: string | null;
   /** Optional tax mapping. undefined = Tax column absent (unchanged on update); null = Exempt. */
   tax_id?: string | null;
+  /** Optional per-unit weight. undefined = column absent (unchanged); null = cleared. */
+  weight?: number | null;
 };
 
 type CsvRow = Record<string, string | undefined>;
@@ -19,7 +21,7 @@ type ExistingProduct = { id: string; sku: string | null; stock_quantity: number 
 type CanonicalRow = {
   name?: string; category?: string; sku?: string; unit?: string;
   selling_price?: string; cost_price?: string; stock_quantity?: string;
-  reorder_level?: string; expiry_date?: string; tax?: string;
+  reorder_level?: string; expiry_date?: string; tax?: string; weight?: string;
 };
 
 // Import CSVs are hand-edited in spreadsheets, so headers vary in case, spacing and wording. Map the
@@ -45,6 +47,7 @@ const HEADER_ALIASES: Record<string, keyof CanonicalRow> = {
   "expiry date": "expiry_date", "expiry": "expiry_date", "expiration date": "expiry_date",
   "expiration": "expiry_date", "best before": "expiry_date", "exp date": "expiry_date", "expires": "expiry_date",
   "tax": "tax", "vat": "tax", "tax name": "tax", "tax type": "tax",
+  "weight": "weight", "unit weight": "weight", "weight per unit": "weight", "kg": "weight",
 };
 
 // The generic header/number helpers moved to csvImport.ts (shared by every import surface);
@@ -137,6 +140,7 @@ function fieldsFromRow(r: CanonicalRow): ProductFields {
     reorder_level: parseImportNumber(r.reorder_level) || 5,
     // Only touch expiry when the column is present, so importing an old CSV never wipes it.
     expiry_date: "expiry_date" in r ? ((r.expiry_date ?? "").trim() || null) : undefined,
+    weight: "weight" in r ? (parseImportNumber(r.weight) || null) : undefined,
   };
 }
 

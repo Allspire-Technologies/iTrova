@@ -34,9 +34,9 @@ test.describe("Purchase Orders", () => {
     await expect(page.getByRole("option", { name: "Cassava" })).toBeVisible();
     await expect(page.getByRole("option", { name: "Rice 25kg" })).toHaveCount(0);
 
-    // Custom → no dropdown, a manual description input instead.
+    // Custom → the item picker is gone (no "Choose…" combobox), a manual description input instead.
     await dialog.getByRole("radio", { name: "Custom" }).click();
-    await expect(dialog.getByRole("combobox")).toHaveCount(1); // only the supplier picker remains
+    await expect(dialog.getByRole("combobox").filter({ hasText: /Choose|Cassava|Rice/ })).toHaveCount(0);
     await expect(dialog.getByPlaceholder("Item description")).toBeVisible();
   });
 
@@ -124,7 +124,7 @@ test.describe("Purchase Orders", () => {
     await dialog.getByLabel("Freight amount").fill("5000"); // Duty left blank → dropped
     await dialog.getByRole("button", { name: "Create PO" }).click();
     await expect(page.getByText(/Purchase order PO-0009 created/)).toBeVisible();
-    expect(poBody.landed_costs).toEqual([{ label: "Freight", amount: 5000 }]);
+    expect(poBody.landed_costs).toEqual([{ label: "Freight", amount: 5000, basis: "weight" }]); // Freight defaults to weight basis
   });
 
   test("View shows the landed-cost breakdown and effective cost per unit", async ({ page }) => {
@@ -155,7 +155,7 @@ test.describe("Purchase Orders", () => {
     await dialog.getByRole("button", { name: "Receive & value stock" }).click();
     await expect(page.getByText(/PO received/)).toBeVisible();
     expect(patchBody.status).toBe("received");
-    expect(patchBody.landed_costs).toEqual([{ label: "Freight", amount: 6000 }]);
+    expect(patchBody.landed_costs).toEqual([{ label: "Freight", amount: 6000, basis: "value" }]); // stub had no basis → defaults to value
   });
 
   test("renders the page with an empty state", async ({ page }) => {
