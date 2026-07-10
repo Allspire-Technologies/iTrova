@@ -17,7 +17,7 @@ import { TablePageSkeleton } from "@/components/Skeletons";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useDateFormat } from "@/hooks/useDateFormat";
-import { Factory, Plus, Pencil, Trash2, MoreHorizontal, ClipboardList, PackagePlus } from "lucide-react";
+import { Plus, Pencil, Trash2, MoreHorizontal, ClipboardList, PackagePlus } from "lucide-react";
 import {
   listRequisitions, listRuns,
   createRequisition, updateRequisition, deleteRequisition, recordProductionRun,
@@ -358,9 +358,7 @@ export default function Production() {
     <div className="space-y-6 w-full">
       <div className="flex items-end justify-between flex-wrap gap-4">
         <div>
-          <h1 className="font-display text-3xl lg:text-4xl font-bold text-brand-dark flex items-center gap-2">
-            <Factory className="size-7" /> Production
-          </h1>
+          <h1 className="font-display text-3xl lg:text-4xl font-bold text-brand-dark">Production</h1>
           <p className="text-muted-foreground mt-1">Request raw materials, then record production runs that turn them into product stock.</p>
         </div>
         <div className="flex gap-2 flex-wrap">

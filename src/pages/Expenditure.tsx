@@ -288,7 +288,7 @@ export default function Expenditure() {
     <div className="space-y-6 w-full">
       <div className="flex items-end justify-between flex-wrap gap-4">
         <div>
-          <h1 className="font-display text-3xl lg:text-4xl font-bold text-brand-dark flex items-center gap-2"><Wallet className="size-7" /> Expenditure</h1>
+          <h1 className="font-display text-3xl lg:text-4xl font-bold text-brand-dark">Expenditure</h1>
           <p className="text-muted-foreground mt-1">Record what your business spends, run payroll, and track bills to pay.</p>
         </div>
         {tab === "expenses" && (

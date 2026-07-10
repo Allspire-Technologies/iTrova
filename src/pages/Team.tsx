@@ -11,7 +11,7 @@ import ConfirmDialog from "@/components/ConfirmDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { UserPlus, Copy, Trash2, Users, TrendingUp, Search, Download, Upload, MoreHorizontal } from "lucide-react";
+import { UserPlus, Copy, Trash2, TrendingUp, Search, Download, Upload, MoreHorizontal } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { toCsv, downloadCsv, parseCsv, readFileText } from "@/lib/csv";
 import { buildTeamImportPlan, TEAM_FIELDS, templateHeaders, templateValues } from "@/lib/csvImport";
@@ -279,9 +279,7 @@ export default function Team() {
     <div className="space-y-6 w-full">
       <div className="flex items-end justify-between flex-wrap gap-4">
         <div>
-          <h1 className="font-display text-3xl lg:text-4xl font-bold text-brand-dark flex items-center gap-2">
-            <Users className="size-7" /> Team
-          </h1>
+          <h1 className="font-display text-3xl lg:text-4xl font-bold text-brand-dark">Team</h1>
           <p className="text-muted-foreground mt-1">Invite staff and decide what each person can do.</p>
         </div>
         <div className="flex gap-2 flex-wrap">

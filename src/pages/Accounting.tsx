@@ -11,7 +11,7 @@ import BalanceSheetTab from "@/components/accounting/BalanceSheetTab";
 import { TablePageSkeleton } from "@/components/Skeletons";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { Calculator, FileDown, Download, Info, TriangleAlert } from "lucide-react";
+import { FileDown, Download, Info, TriangleAlert } from "lucide-react";
 import { Link } from "react-router-dom";
 import { downloadCsv } from "@/lib/csv";
 import { loadPdf } from "@/lib/pdf";
@@ -172,7 +172,7 @@ export default function Accounting() {
     <div className="space-y-6 w-full">
       <div className="flex items-end justify-between flex-wrap gap-4">
         <div>
-          <h1 className="font-display text-3xl lg:text-4xl font-bold text-brand-dark flex items-center gap-2"><Calculator className="size-7" /> Accounting</h1>
+          <h1 className="font-display text-3xl lg:text-4xl font-bold text-brand-dark">Accounting</h1>
           <p className="text-muted-foreground mt-1">See how your business is doing — Profit &amp; Loss, Balance Sheet and Cash Flow.</p>
         </div>
         {tab === "pnl" && canExport && (
