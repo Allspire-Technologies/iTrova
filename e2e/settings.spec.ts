@@ -36,6 +36,20 @@ test.describe("Settings", () => {
     await expect(page.getByPlaceholder("Enter your business name")).toHaveCount(0);
   });
 
+  test("inventory costing method can be switched (Business tab)", async ({ page }) => {
+    await authenticate(page, { role: "owner" });
+    let patched: any = null;
+    await page.route("**/rest/v1/businesses**", (r) => {
+      if (r.request().method() === "PATCH") { patched = r.request().postDataJSON(); return r.fulfill({ status: 200, contentType: "application/json", body: "[]" }); }
+      return r.fallback();
+    });
+    await page.goto("/settings");
+    await expect(page.getByText("Inventory costing")).toBeVisible();
+    await page.getByText("Last cost", { exact: true }).click();
+    await expect(page.getByText("Costing method updated")).toBeVisible();
+    expect(patched.valuation_method).toBe("last_cost");
+  });
+
   test("subscription plans come from the catalogue (Billing tab)", async ({ page }) => {
     await authenticate(page, { role: "owner", businessName: "Sunrise Stores" });
     await stubRows(page, "plans", plans);

@@ -32,8 +32,8 @@ type PO = {
   landed_costs?: LandedCostLine[];
 };
 type Supplier = { id: string; name: string; phone: string | null; email: string | null; address: string | null };
-type RawMat = { id: string; name: string; unit: string; cost_per_unit: number };
-type Product = { id: string; name: string; unit: string | null; cost_price: number };
+type RawMat = { id: string; name: string; unit: string; cost_per_unit: number; weight?: number | null };
+type Product = { id: string; name: string; unit: string | null; cost_price: number; weight?: number | null };
 type LineSource = "product" | "material" | "custom";
 // A saved PO item row (read for the view dialog + PDF). The editable form line adds `source`.
 type POItemRow = { id?: string; product_id: string | null; raw_material_id: string | null; description: string; quantity: number; unit_cost: number; line_total: number };
@@ -82,13 +82,13 @@ export default function PurchaseOrders() {
         .select("id,po_number,supplier_id,status,expected_date,total_amount,notes,created_at,tax_amount,landed_costs")
         .order("created_at", { ascending: false }),
       supabase.from("suppliers").select("id, name, phone, email, address"),
-      supabase.from("raw_materials").select("id, name, unit, cost_per_unit"),
-      supabase.from("products").select("id, name, unit, cost_price").order("name"),
+      supabase.from("raw_materials").select("id, name, unit, cost_per_unit, weight"),
+      supabase.from("products").select("id, name, unit, cost_price, weight").order("name"),
     ]);
     setItems((pos as unknown as PO[]) || []); // tax_amount/landed_costs postdate the generated types
     setSuppliers((sup as Supplier[]) || []);
-    setMaterials((mat as RawMat[]) || []);
-    setProducts((prod as Product[]) || []);
+    setMaterials((mat as unknown as RawMat[]) || []); // weight postdates generated types
+    setProducts((prod as unknown as Product[]) || []);
     setLoading(false);
   };
   useEffect(() => { if (business) load(); }, [business]);
@@ -167,17 +167,22 @@ export default function PurchaseOrders() {
   const removeLine = (idx: number) => setLines(prev => prev.length === 1 ? prev : prev.filter((_, i) => i !== idx));
 
   const subtotal = lines.reduce((s, l) => s + (l.line_total || 0), 0);
+  // Per-unit weight of a line's item (for weight-basis landed allocation).
+  const unitWeightOf = (it: { product_id: string | null; raw_material_id: string | null }) =>
+    it.product_id ? Number(products.find(p => p.id === it.product_id)?.weight) || 0
+    : it.raw_material_id ? Number(materials.find(m => m.id === it.raw_material_id)?.weight) || 0
+    : 0;
   // Live landed-cost allocation for the create dialog preview (mirrors the receive-trigger math).
   const landedClean = fromLandedRows(landedRows);
   const landedSum = landedTotal(landedClean);
-  const landedPreview = landedUnitCostsForPo(lines.map(l => ({ unitCost: Number(l.unit_cost), qty: Number(l.quantity) })), landedClean);
+  const landedPreview = landedUnitCostsForPo(lines.map(l => ({ unitCost: Number(l.unit_cost), qty: Number(l.quantity), weight: unitWeightOf(l) })), landedClean);
   // View dialog landed-cost breakdown (from the saved PO + its items).
   const viewLanded = (viewing?.landed_costs as LandedCostLine[] | undefined) || [];
   const viewLandedSum = landedTotal(viewLanded);
-  const viewLandedPreview = landedUnitCostsForPo(viewItems.map(x => ({ unitCost: Number(x.unit_cost), qty: Number(x.quantity) })), viewLanded);
+  const viewLandedPreview = landedUnitCostsForPo(viewItems.map(x => ({ unitCost: Number(x.unit_cost), qty: Number(x.quantity), weight: unitWeightOf(x) })), viewLanded);
   // Receive dialog preview.
   const receiveLandedSum = landedTotal(fromLandedRows(receiveRows));
-  const receivePreview = landedUnitCostsForPo(receiveItems.map(x => ({ unitCost: Number(x.unit_cost), qty: Number(x.quantity) })), fromLandedRows(receiveRows));
+  const receivePreview = landedUnitCostsForPo(receiveItems.map(x => ({ unitCost: Number(x.unit_cost), qty: Number(x.quantity), weight: unitWeightOf(x) })), fromLandedRows(receiveRows));
 
   const create = async () => {
     if (!business) return;
@@ -590,7 +595,7 @@ export default function PurchaseOrders() {
 
             <div className="space-y-2 rounded-lg border border-border/60 p-3">
               <Label>Landed costs <span className="font-normal text-muted-foreground">(freight, duty, clearing… added to item cost, allocated across lines by value)</span></Label>
-              <LandedCostEditor value={landedRows} onChange={setLandedRows} fmt={fmt} />
+              <LandedCostEditor value={landedRows} onChange={setLandedRows} fmt={fmt} showBasis />
               {landedSum > 0 && lines.some(l => Number(l.quantity) > 0 && Number(l.unit_cost) > 0) && (
                 <div className="space-y-1 pt-2 border-t border-border/40 text-xs">
                   <div className="font-medium text-muted-foreground">Effective cost per unit</div>
@@ -696,7 +701,7 @@ export default function PurchaseOrders() {
           </p>
           <div className="space-y-2">
             <Label>Landed costs</Label>
-            <LandedCostEditor value={receiveRows} onChange={setReceiveRows} fmt={fmt} />
+            <LandedCostEditor value={receiveRows} onChange={setReceiveRows} fmt={fmt} showBasis />
           </div>
           {receiveLandedSum > 0 && receiveItems.length > 0 && (
             <div className="space-y-1 border-t border-border/40 pt-2 text-xs">

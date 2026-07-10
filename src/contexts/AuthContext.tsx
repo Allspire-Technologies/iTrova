@@ -47,6 +47,7 @@ type Business = {
   tax_enabled: boolean | null;
   prices_include_tax: boolean | null;
   tin: string | null;
+  valuation_method: "last_cost" | "moving_average" | null;
 };
 
 /** Subscription view that keeps the raw paid tier (for display) even once expired. */

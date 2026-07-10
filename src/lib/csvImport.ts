@@ -179,6 +179,7 @@ export const MATERIAL_FIELDS: FieldSpec[] = [
   { key: "reorder_level", label: "Reorder Level", aliases: ["reorder", "reorder point", "reorder qty", "min stock", "minimum stock", "low stock level"], numeric: true },
   { key: "cost_per_unit", label: "Cost Per Unit", aliases: ["cost", "cost price", "unit cost", "unit price", "price", "buying price", "purchase price"], required: true, numeric: true },
   { key: "supplier", label: "Supplier", aliases: ["supplier name", "vendor"] },
+  { key: "weight", label: "Weight", aliases: ["unit weight", "weight per unit", "kg"], numeric: true },
   { key: "notes", label: "Notes", aliases: ["note", "comment", "comments", "description"] },
 ];
 
@@ -190,6 +191,7 @@ export type MaterialFields = {
   cost_per_unit: number;
   supplier_id: string | null;
   notes: string | null;
+  weight: number | null;
 };
 
 export type MaterialImportPlan = {
@@ -246,6 +248,7 @@ export function buildMaterialImportPlan(
     cost_per_unit: parseImportNumber(canon.cost_per_unit) || 0,
     supplier_id: supplierId,
     notes: str(canon.notes),
+    weight: (canon.weight ?? "").trim() ? (parseImportNumber(canon.weight) || null) : null,
   });
 
   const updates: MaterialImportPlan["updates"] = [];

@@ -33,7 +33,7 @@ import { useDateFormat } from "@/hooks/useDateFormat";
 
 type Material = {
   id: string; name: string; sku: string | null; unit: string; stock_quantity: number;
-  reorder_level: number; cost_per_unit: number; supplier_id: string | null; notes: string | null;
+  reorder_level: number; cost_per_unit: number; supplier_id: string | null; notes: string | null; weight?: number | null;
 };
 type Supplier = { id: string; name: string; phone: string | null; contact_name: string | null };
 type Purchase = {
@@ -41,7 +41,7 @@ type Purchase = {
   raw_material_id: string; supplier_id: string | null; notes: string | null; tax_amount?: number; landed_total?: number;
 };
 
-const empty = { name: "", sku: "", unit: "kg", stock_quantity: "", reorder_level: 5, cost_per_unit: "", supplier_id: "", notes: "" };
+const empty = { name: "", sku: "", unit: "kg", stock_quantity: "", reorder_level: 5, cost_per_unit: "", supplier_id: "", notes: "", weight: "" };
 
 export default function RawMaterials() {
   const { business, hasModule, can } = useAuth();
@@ -88,14 +88,14 @@ export default function RawMaterials() {
   const load = async () => {
     const [{ data: m }, { data: s }, { data: pur }] = await Promise.all([
       supabase.from("raw_materials")
-        .select("id,name,sku,unit,stock_quantity,reorder_level,cost_per_unit,supplier_id,notes")
+        .select("id,name,sku,unit,stock_quantity,reorder_level,cost_per_unit,supplier_id,notes,weight")
         .order("created_at", { ascending: false }),
       supabase.from("suppliers").select("id,name,phone,contact_name").order("name"),
       supabase.from("material_purchases")
         .select("id,created_at,quantity,unit_cost,total_cost,raw_material_id,supplier_id,notes,tax_amount,landed_total")
         .order("created_at", { ascending: false }),
     ]);
-    setItems((m as Material[]) || []);
+    setItems((m as unknown as Material[]) || []); // weight postdates generated types
     setSuppliers((s as Supplier[]) || []);
     setPurchases((pur as unknown as Purchase[]) || []); // tax_amount/landed_total postdate the generated types
     setLoading(false);
@@ -127,10 +127,12 @@ export default function RawMaterials() {
       cost_per_unit: Number(form.cost_per_unit) || 0,
       supplier_id: form.supplier_id || null,
       notes: form.notes || null,
+      weight: Number(form.weight) || null, // per-unit weight for freight allocation
     };
+    // weight postdates the generated types — cast until regenerated.
     const { error } = editing
-      ? await supabase.from("raw_materials").update(payload).eq("id", editing.id)
-      : await supabase.from("raw_materials").insert({ ...payload, business_id: business.id });
+      ? await supabase.from("raw_materials").update(payload as never).eq("id", editing.id)
+      : await supabase.from("raw_materials").insert({ ...payload, business_id: business.id } as never);
     setBusy(false);
     if (error) return toast.error(error.message);
     toast.success(editing ? "Material updated" : "Material added");
@@ -206,7 +208,7 @@ export default function RawMaterials() {
 
       let restocked = 0;
       for (const u of plan.updates) {
-        const { error } = await supabase.from("raw_materials").update({ ...u.fields, stock_quantity: u.stock }).eq("id", u.id);
+        const { error } = await supabase.from("raw_materials").update({ ...u.fields, stock_quantity: u.stock } as never).eq("id", u.id);
         if (error) failed.push({ values: materialValues(u.fields, u.stock), reason: `Update failed: ${error.message}` });
         else restocked++;
         tick();
@@ -214,7 +216,7 @@ export default function RawMaterials() {
 
       let added = 0;
       for (const batch of insertBatches) {
-        const { error } = await supabase.from("raw_materials").insert(batch.map(i => ({ ...i, business_id: business.id })));
+        const { error } = await supabase.from("raw_materials").insert(batch.map(i => ({ ...i, business_id: business.id })) as never);
         if (error) batch.forEach(i => failed.push({ values: materialValues(i, i.stock_quantity), reason: `Upload failed: ${error.message}` }));
         else added += batch.length;
         tick();
@@ -523,6 +525,11 @@ export default function RawMaterials() {
               <div className="space-y-2"><Label>Stock</Label><Input type="number" min="0" step="0.01" placeholder="0" value={form.stock_quantity} onChange={e => setForm({ ...form, stock_quantity: e.target.value })} /></div>
               <div className="space-y-2"><Label>Reorder</Label><Input type="number" min="0" step="0.01" value={form.reorder_level} onChange={e => setForm({ ...form, reorder_level: e.target.value })} /></div>
               <div className="space-y-2"><Label>Cost/unit</Label><Input type="number" min="0" step="0.01" placeholder="0" value={form.cost_per_unit} onChange={e => setForm({ ...form, cost_per_unit: e.target.value })} /></div>
+            </div>
+            <div className="space-y-2">
+              <Label>Weight per unit <span className="font-normal text-muted-foreground">(optional)</span></Label>
+              <Input type="number" min="0" step="any" placeholder="e.g. 25" value={form.weight ?? ""} onChange={e => setForm({ ...form, weight: e.target.value })} />
+              <p className="text-xs text-muted-foreground">Used to split freight across a purchase order by weight.</p>
             </div>
             <div className="space-y-2"><Label>Notes</Label><Textarea rows={2} value={form.notes || ""} onChange={e => setForm({ ...form, notes: e.target.value })} /></div>
             <DialogFooter>

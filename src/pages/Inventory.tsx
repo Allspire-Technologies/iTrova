@@ -36,9 +36,10 @@ type Product = {
   reorder_level: number;
   expiry_date?: string | null;
   tax_id?: string | null;
+  weight?: number | null;
 };
 
-const empty = { name: "", category: "", sku: "", unit: "pcs", selling_price: "", cost_price: "", stock_quantity: "", reorder_level: 5, expiry_date: "", tax_id: "" };
+const empty = { name: "", category: "", sku: "", unit: "pcs", selling_price: "", cost_price: "", stock_quantity: "", reorder_level: 5, expiry_date: "", tax_id: "", weight: "" };
 
 export default function Inventory() {
   const { business, hasModule } = useAuth();
@@ -74,10 +75,10 @@ export default function Inventory() {
       return;
     }
     const { data, error } = await supabase.from("products")
-      .select("id,name,category,sku,unit,selling_price,cost_price,stock_quantity,reorder_level,expiry_date,tax_id")
+      .select("id,name,category,sku,unit,selling_price,cost_price,stock_quantity,reorder_level,expiry_date,tax_id,weight")
       .order("created_at", { ascending: false });
     if (error) return toast.error(error.message);
-    const rows = (data as unknown as Product[]) || []; // tax_id postdates generated types
+    const rows = (data as unknown as Product[]) || []; // tax_id/weight postdate generated types
     setItems(rows);
     if (taxEnabled) listTaxes().then(setTaxes).catch(() => {});
     setLoading(false);
@@ -115,6 +116,7 @@ export default function Inventory() {
       expiry_date: form.expiry_date || null,
       // Empty string (Exempt, or tax disabled) must become NULL — "" is not a valid uuid.
       tax_id: form.tax_id || null,
+      weight: Number(form.weight) || null, // per-unit weight for landed-cost (freight) allocation
     };
     // tax_id postdates the generated Supabase types — cast until types are regenerated.
     const { error } = editing
@@ -132,11 +134,11 @@ export default function Inventory() {
   // snake_case export or this friendlier one both work.
   // The Tax column (by tax name) only appears when tax is enabled — non-tax businesses keep the
   // original 9-column shape, and old exports still re-import fine (a missing Tax column = unchanged).
-  const CSV_HEADERS = ["Name", "Category", "SKU", "Unit", "Selling Price", "Cost Price", "Stock Quantity", "Reorder Level", "Expiry Date", ...(taxEnabled ? ["Tax"] : [])];
+  const CSV_HEADERS = ["Name", "Category", "SKU", "Unit", "Selling Price", "Cost Price", "Stock Quantity", "Reorder Level", "Expiry Date", "Weight", ...(taxEnabled ? ["Tax"] : [])];
   const taxNameOf = (id: string | null | undefined) => (id ? taxes.find(t => t.id === id)?.name ?? "" : "");
 
   const downloadTemplate = () => {
-    const example = ["Garri 50kg", "Foodstuff", "GAR-50", "bag", "8500", "6000", "20", "5", "2026-12-31", ...(taxEnabled ? ["VAT"] : [])];
+    const example = ["Garri 50kg", "Foodstuff", "GAR-50", "bag", "8500", "6000", "20", "5", "2026-12-31", "50", ...(taxEnabled ? ["VAT"] : [])];
     const csv = [CSV_HEADERS.join(","), example.join(",")].join("\n");
     downloadCsv("products-template.csv", csv);
     toast.success("Template downloaded");
@@ -147,7 +149,7 @@ export default function Inventory() {
       "Name": p.name, "Category": p.category || "", "SKU": p.sku || "", "Unit": p.unit || "pcs",
       "Selling Price": p.selling_price, "Cost Price": p.cost_price,
       "Stock Quantity": p.stock_quantity, "Reorder Level": p.reorder_level,
-      "Expiry Date": p.expiry_date || "", "Tax": taxNameOf(p.tax_id),
+      "Expiry Date": p.expiry_date || "", "Weight": p.weight ?? "", "Tax": taxNameOf(p.tax_id),
     }));
     downloadCsv(`products-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(rows, CSV_HEADERS));
     toast.success(`Exported ${rows.length} product${rows.length === 1 ? "" : "s"}`);
@@ -160,14 +162,14 @@ export default function Inventory() {
       "Name": c.name ?? "", "Category": c.category ?? "", "SKU": c.sku ?? "", "Unit": c.unit ?? "",
       "Selling Price": c.selling_price ?? "", "Cost Price": c.cost_price ?? "",
       "Stock Quantity": c.stock_quantity ?? "", "Reorder Level": c.reorder_level ?? "", "Expiry Date": c.expiry_date ?? "",
-      "Tax": c.tax ?? "",
+      "Weight": c.weight ?? "", "Tax": c.tax ?? "",
     };
   };
   const templateValuesFromFields = (f: ProductFields, stock: number): Record<string, string> => ({
     "Name": f.name, "Category": f.category ?? "", "SKU": f.sku, "Unit": f.unit,
     "Selling Price": String(f.selling_price), "Cost Price": String(f.cost_price),
     "Stock Quantity": String(stock), "Reorder Level": String(f.reorder_level), "Expiry Date": f.expiry_date ?? "",
-    "Tax": taxNameOf(f.tax_id),
+    "Weight": f.weight != null ? String(f.weight) : "", "Tax": taxNameOf(f.tax_id),
   });
 
   const importCsv = async (file: File) => {
@@ -336,10 +338,16 @@ export default function Inventory() {
                     <Input type="number" required min="0" step="1" value={form.reorder_level} onChange={e => setForm({ ...form, reorder_level: e.target.value })} />
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Expiry date <span className="font-normal text-muted-foreground">(optional)</span></Label>
-                  <Input type="date" value={form.expiry_date || ""} onChange={e => setForm({ ...form, expiry_date: e.target.value })} />
-                  <p className="text-xs text-muted-foreground">Inventory flags it from 90 days out; owners/managers also get a bell alert from 30 days.</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>Expiry date <span className="font-normal text-muted-foreground">(optional)</span></Label>
+                    <Input type="date" value={form.expiry_date || ""} onChange={e => setForm({ ...form, expiry_date: e.target.value })} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Weight per unit <span className="font-normal text-muted-foreground">(optional)</span></Label>
+                    <Input type="number" min="0" step="any" placeholder="e.g. 25" value={form.weight ?? ""} onChange={e => setForm({ ...form, weight: e.target.value })} />
+                    <p className="text-xs text-muted-foreground">Used to split freight across a purchase order by weight.</p>
+                  </div>
                 </div>
                 {taxEnabled && (
                   <div className="space-y-2">
