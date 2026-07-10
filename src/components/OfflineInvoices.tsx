@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Download, Eye, Pencil, Plus, Printer, Trash2, Wallet, WifiOff } from "lucide-react";
+import { Download, Eye, Pencil, Plus, Printer, Trash2, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -239,9 +239,7 @@ export function OfflineInvoices() {
     <div className="space-y-6 w-full">
       <div className="flex items-end justify-between flex-wrap gap-4">
         <div>
-          <h1 className="font-display text-3xl lg:text-4xl font-bold text-brand-dark flex items-center gap-2">
-            <WifiOff className="size-6 text-warning" /> Invoices (offline)
-          </h1>
+          <h1 className="font-display text-3xl lg:text-4xl font-bold text-brand-dark">Invoices (offline)</h1>
           <p className="text-muted-foreground mt-1">Create invoices and record deposits on this device. They sync when you{"'"}re back online.</p>
         </div>
         {canCreate && <Button variant="brand" onClick={() => { setNewForm(EMPTY_NEW_INVOICE); setCreating(true); }}><Plus className="size-4" /> New invoice</Button>}
