@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import DatePicker from "@/components/DatePicker";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -454,7 +455,7 @@ export default function GeneralStore() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-2"><Label>Quantity</Label><Input type="number" min={1} value={checkoutForm.quantity} onChange={(e) => setCheckoutForm({ ...checkoutForm, quantity: e.target.value })} aria-label="Quantity" /></div>
-                {checkoutForm.kind === "borrow" && <div className="space-y-2"><Label>Due date</Label><Input type="date" value={checkoutForm.due_date} onChange={(e) => setCheckoutForm({ ...checkoutForm, due_date: e.target.value })} /></div>}
+                {checkoutForm.kind === "borrow" && <div className="space-y-2"><Label>Due date</Label><DatePicker value={checkoutForm.due_date} onChange={(v) => setCheckoutForm({ ...checkoutForm, due_date: v })} clearable placeholder="Select date" /></div>}
               </div>
               <div className="space-y-2"><Label>Notes</Label><Input value={checkoutForm.notes} onChange={(e) => setCheckoutForm({ ...checkoutForm, notes: e.target.value })} placeholder="Optional" /></div>
             </div>

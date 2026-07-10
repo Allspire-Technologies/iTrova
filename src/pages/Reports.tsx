@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import DatePicker from "@/components/DatePicker";
 import { Label } from "@/components/ui/label";
 import { useCurrency } from "@/hooks/useCurrency";
 import { Download, TrendingUp, ShoppingCart, Package, AlertTriangle, Truck, Users, ArrowUpRight, ArrowDownRight, ChevronLeft, ChevronRight, Wallet, Receipt } from "lucide-react";
@@ -335,11 +335,11 @@ export default function Reports() {
         <CardContent className="p-4 flex flex-wrap items-end gap-3">
           <div>
             <Label htmlFor="from">From</Label>
-            <Input id="from" type="date" value={from} onChange={e => setFrom(e.target.value)} />
+            <DatePicker id="from" value={from} onChange={setFrom} className="w-40" />
           </div>
           <div>
             <Label htmlFor="to">To</Label>
-            <Input id="to" type="date" value={to} onChange={e => setTo(e.target.value)} />
+            <DatePicker id="to" value={to} onChange={setTo} className="w-40" />
           </div>
           <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={() => setPreset(7)}>7d</Button>
