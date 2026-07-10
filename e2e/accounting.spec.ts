@@ -52,6 +52,32 @@ test.describe("Accounting — Profit & Loss", () => {
     await expect(page.getByText(/8 sold units/)).toBeVisible();
   });
 
+  test("Cash Flow tab shows money in vs out and net movement", async ({ page }) => {
+    await authenticate(page, { role: "owner" });
+    await stubRows(page, "sales", [{ total_amount: 500000 }]);
+    await stubRows(page, "invoice_payments", [{ amount: 20000 }]);
+    await stubRows(page, "expenses", [{ category: "Rent", amount: 15000, status: "paid", paid_date: "2026-07-06" }]);
+    await stubRows(page, "material_purchases", [{ total_cost: 80000 }]);
+    await page.goto("/accounting");
+    await page.getByRole("button", { name: "Cash Flow", exact: true }).click();
+    await expect(page.locator("table").getByText("Cash in", { exact: true })).toBeVisible();
+    await expect(page.locator("table").getByText("Cash out", { exact: true })).toBeVisible();
+    await expect(page.locator("table").getByText("Net cash movement")).toBeVisible();
+    await expect(page.locator("table").getByText(/520,?000/).first()).toBeVisible(); // total cash in 500k + 20k
+  });
+
+  test("Balance Sheet tab shows the statement + opening-balances setup", async ({ page }) => {
+    await authenticate(page, { role: "owner" });
+    await stubRows(page, "products", [{ id: "p1", stock_quantity: 20, cost_price: 6000 }]); // inventory 120,000
+    await page.goto("/accounting");
+    await page.getByRole("button", { name: "Balance Sheet", exact: true }).click();
+    await expect(page.getByText("Opening balances", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Set opening balances" })).toBeVisible();
+    await expect(page.getByText("Total assets")).toBeVisible();
+    await expect(page.getByText(/120,?000/).first()).toBeVisible(); // inventory at cost
+    await expect(page.getByText("Total equity")).toBeVisible();
+  });
+
   test("cashier cannot access accounting", async ({ page }) => {
     await authenticate(page, { role: "cashier" });
     await expect(page.getByRole("link", { name: "Accounting" })).toHaveCount(0);

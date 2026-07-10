@@ -3,6 +3,26 @@
 All notable, user-facing changes to iTrova are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); entries are grouped by ship date, newest first.
 
+## 2026-07-10 — Accounting: Balance Sheet & Cash Flow
+
+Two more financial statements join Profit & Loss in the Accounting module.
+
+### Added
+- **Cash Flow statement** — cash **in** (POS sales + invoice payments) vs cash **out** (expenses paid,
+  incl. Payroll salaries, + stock/material purchases) for any period, with the **net cash movement**.
+- **Balance Sheet** — a position snapshot as at any date: **Assets** (cash, inventory at cost,
+  accounts receivable) · **Liabilities** (bills to pay, VAT payable) · **Equity** (owner's capital,
+  retained earnings), with an honest **reconciliation note** when the two sides don't perfectly tie.
+- **Opening balances setup** — owners enter starting cash/bank and owner's capital as of a date, so
+  the Balance Sheet can show real Cash and Equity.
+- Accounting is now **tabbed**: Profit & Loss · Balance Sheet · Cash Flow — each with its own
+  **"How this is calculated"** explainer and **PDF + CSV export**.
+
+### Notes
+- **Migration to apply:** `20260716100000_accounting_opening_balances.sql`.
+- Cash Flow is cash‑basis and VAT‑inclusive (real money moved); the Balance Sheet is an estimate
+  because iTrova isn't a full double‑entry ledger — any gap is shown transparently to reconcile.
+
 ## 2026-07-10 — Accounting: Profit & Loss (MVP)
 
 See how your business is really doing with a proper Profit & Loss statement.
