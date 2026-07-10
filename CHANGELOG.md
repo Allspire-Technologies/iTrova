@@ -3,6 +3,28 @@
 All notable, user-facing changes to iTrova are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); entries are grouped by ship date, newest first.
 
+## 2026-07-10 — Accounting: Profit & Loss (MVP)
+
+See how your business is really doing with a proper Profit & Loss statement.
+
+### Added
+- **New Accounting module** with a **Profit & Loss statement** for any date range:
+  Revenue → Cost of Goods Sold → **Gross Profit** → Operating Expenses (by category) → **Net Profit**,
+  with **profit margins** and a **previous‑period comparison** column.
+- **Accurate cost of goods sold** — each item's cost is now captured at the moment of sale, so profit
+  reflects what things actually cost (older sales fall back to the product's current cost).
+- **Export** the statement to **PDF** or **CSV**.
+- A built‑in **"How this is calculated"** explainer (accrual basis, VAT‑net, COGS, expenses) and a
+  **heads‑up when sold items have no cost price**, so you know when profit may be overstated.
+
+### Notes
+- Accounting is a **paid module** — enable it per plan. Access follows the new *Accounting* permission
+  (owners + managers by default).
+- Revenue is **net of VAT** and counted when invoiced (accrual). Salaries flow in from Payroll; stock
+  purchases are cost of goods sold when sold, not expenses.
+- **Migrations to apply (in order):** `20260715100000_sale_item_cost.sql`, then
+  `20260715110000_accounting_module.sql`.
+
 ## 2026-07-10 — Tidier Settings for your plan
 
 ### Changed
