@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Package, ShoppingCart, Truck, FileText, ClipboardList, Users,
-  BarChart3, Sparkles, Settings, Boxes, Warehouse, Factory, Wallet, Ship,
+  BarChart3, Sparkles, Settings, Boxes, Warehouse, Factory, Wallet, Ship, Calculator,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -36,6 +36,7 @@ export const NAV_SECTIONS: NavSection[] = [
     { to: "/expenditure", label: "Expenditure", icon: Wallet, module: "expenditure" },
   ] },
   { key: "more", label: "More", items: [
+    { to: "/accounting", label: "Accounting", icon: Calculator, module: "accounting" },
     { to: "/insights", label: "AI Insights", icon: Sparkles, soon: true, module: "insights" },
     { to: "/team", label: "Team", icon: Users, module: "team" },
   ] },
