@@ -34,6 +34,7 @@ export type PdfDocInput = {
   discount?: number;
   tax?: number;
   total: number;
+  landedCosts?: { label: string; amount: number }[]; // freight/duty/other (PO) — shown below the total
   formatMoney?: (n: number) => string; // ignored for print — amounts use the ASCII currency code (see pdfMoneyFormatter)
   notes?: string | null;
 };
@@ -123,6 +124,25 @@ export async function buildPdf(input: PdfDocInput) {
   doc.text("Total", lx, row);
   doc.text(money(input.total), vx, row, { align: "right" });
   doc.setTextColor(0);
+
+  // Landed costs (freight/duty/other) below the total, with a landed-cost grand total.
+  const landed = input.landedCosts?.filter(l => Number(l.amount) > 0) ?? [];
+  if (landed.length) {
+    const landedSum = landed.reduce((s, l) => s + Number(l.amount), 0);
+    doc.setFont("helvetica", "normal").setFontSize(9).setTextColor(90);
+    for (const l of landed) {
+      row += 14;
+      doc.text(l.label, lx, row);
+      doc.text(money(Number(l.amount)), vx, row, { align: "right" });
+    }
+    row += 12;
+    doc.setDrawColor(200).setLineWidth(0.5).line(lx, row, vx, row);
+    row += 14;
+    doc.setFont("helvetica", "bold").setFontSize(10).setTextColor(30);
+    doc.text("Landed cost total", lx, row);
+    doc.text(money(input.total + landedSum), vx, row, { align: "right" });
+    doc.setTextColor(0);
+  }
 
   if (input.notes) {
     doc.setFont("helvetica", "normal").setFontSize(9);

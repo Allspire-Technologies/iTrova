@@ -27,6 +27,8 @@ import MaterialApprovals from "@/components/MaterialApprovals";
 import { TablePageSkeleton } from "@/components/Skeletons";
 import { getLimit, isAtLimit, limitMessage } from "@/lib/planLimits";
 import { useCurrency } from "@/hooks/useCurrency";
+import { LandedCostEditor, defaultLandedRows, fromLandedRows, type LandedRow } from "@/components/LandedCostEditor";
+import { landedTotal, landedUnitCost } from "@/lib/landedCost";
 import { useDateFormat } from "@/hooks/useDateFormat";
 
 type Material = {
@@ -36,7 +38,7 @@ type Material = {
 type Supplier = { id: string; name: string; phone: string | null; contact_name: string | null };
 type Purchase = {
   id: string; created_at: string; quantity: number; unit_cost: number; total_cost: number;
-  raw_material_id: string; supplier_id: string | null; notes: string | null; tax_amount?: number;
+  raw_material_id: string; supplier_id: string | null; notes: string | null; tax_amount?: number; landed_total?: number;
 };
 
 const empty = { name: "", sku: "", unit: "kg", stock_quantity: "", reorder_level: 5, cost_per_unit: "", supplier_id: "", notes: "" };
@@ -80,6 +82,7 @@ export default function RawMaterials() {
   const [pQty, setPQty] = useState<number>(0);
   const [pCost, setPCost] = useState<number>(0);
   const [pTax, setPTax] = useState<number>(0); // input VAT on this purchase (from the supplier invoice)
+  const [pLanded, setPLanded] = useState<LandedRow[]>(defaultLandedRows()); // freight/duty/other → item cost
   const taxEnabled = !!business?.tax_enabled;
 
   const load = async () => {
@@ -89,12 +92,12 @@ export default function RawMaterials() {
         .order("created_at", { ascending: false }),
       supabase.from("suppliers").select("id,name,phone,contact_name").order("name"),
       supabase.from("material_purchases")
-        .select("id,created_at,quantity,unit_cost,total_cost,raw_material_id,supplier_id,notes,tax_amount")
+        .select("id,created_at,quantity,unit_cost,total_cost,raw_material_id,supplier_id,notes,tax_amount,landed_total")
         .order("created_at", { ascending: false }),
     ]);
     setItems((m as Material[]) || []);
     setSuppliers((s as Supplier[]) || []);
-    setPurchases((pur as unknown as Purchase[]) || []); // tax_amount postdates the generated types
+    setPurchases((pur as unknown as Purchase[]) || []); // tax_amount/landed_total postdate the generated types
     setLoading(false);
     // Seed the Requests-tab badge on page entry (the panel itself refreshes it once opened).
     if (canApproveRequests) {
@@ -136,6 +139,7 @@ export default function RawMaterials() {
 
   const recordPurchase = async () => {
     if (!business || !purchaseFor || pQty <= 0) return;
+    const landedLines = fromLandedRows(pLanded);
     const { error } = await supabase.from("material_purchases").insert({
       business_id: business.id,
       supplier_id: purchaseFor.supplier_id,
@@ -144,10 +148,12 @@ export default function RawMaterials() {
       unit_cost: pCost,
       total_cost: pQty * pCost,
       tax_amount: taxEnabled ? (pTax || 0) : 0,
-    } as never); // tax_amount postdates the generated types
+      landed_costs: landedLines,
+      landed_total: landedTotal(landedLines),
+    } as never); // tax_amount/landed_costs postdate the generated types
     if (error) return toast.error(error.message);
     toast.success(`Recorded purchase of ${pQty} ${purchaseFor.unit}`);
-    setPurchaseOpen(false); setPQty(0); setPCost(0); setPTax(0); load();
+    setPurchaseOpen(false); setPQty(0); setPCost(0); setPTax(0); setPLanded(defaultLandedRows()); load();
   };
 
   // Human-readable headers for the template/export. Import is case/spacing-insensitive and accepts
@@ -337,7 +343,7 @@ export default function RawMaterials() {
                   <div className="flex items-center justify-between gap-2">
                     <Badge variant="outline" className={s.className}>{s.label}</Badge>
                     <div className="flex gap-1 shrink-0">
-                      <Button variant="ghost" size="sm" onClick={() => { setPurchaseFor(m); setPCost(Number(m.cost_per_unit) || 0); setPTax(0); setPurchaseOpen(true); }}><PackagePlus className="size-4" /> Purchase</Button>
+                      <Button variant="ghost" size="sm" onClick={() => { setPurchaseFor(m); setPCost(Number(m.cost_per_unit) || 0); setPTax(0); setPLanded(defaultLandedRows()); setPurchaseOpen(true); }}><PackagePlus className="size-4" /> Purchase</Button>
                       <Button variant="ghost" size="sm" onClick={() => setAdjustTarget(m)}><SlidersHorizontal className="size-4" /> Adjust</Button>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -383,7 +389,7 @@ export default function RawMaterials() {
                       <td className="px-4 py-3 text-right font-display font-semibold text-brand-dark">{fmt(m.cost_per_unit)}</td>
                       <td className="px-4 py-3"><Badge variant="outline" className={s.className}>{s.label}</Badge></td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
-                        <Button variant="ghost" size="sm" onClick={() => { setPurchaseFor(m); setPCost(Number(m.cost_per_unit) || 0); setPTax(0); setPurchaseOpen(true); }}><PackagePlus className="size-4" /> Purchase</Button>
+                        <Button variant="ghost" size="sm" onClick={() => { setPurchaseFor(m); setPCost(Number(m.cost_per_unit) || 0); setPTax(0); setPLanded(defaultLandedRows()); setPurchaseOpen(true); }}><PackagePlus className="size-4" /> Purchase</Button>
                         <Button variant="ghost" size="sm" onClick={() => setAdjustTarget(m)}><SlidersHorizontal className="size-4" /> Adjust</Button>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -433,6 +439,7 @@ export default function RawMaterials() {
                       <div className="text-right shrink-0">
                         <div className="font-display font-semibold text-brand-dark">{fmt(p.total_cost)}</div>
                         {Number(p.tax_amount) > 0 && <div className="text-xs text-muted-foreground">incl. VAT {fmt(Number(p.tax_amount))}</div>}
+                        {Number(p.landed_total) > 0 && <div className="text-xs text-muted-foreground">landed {fmt(landedUnitCost(p.unit_cost, Number(p.landed_total), p.quantity))}/{mat?.unit || "unit"}</div>}
                         <div className="text-xs text-muted-foreground">{Number(p.quantity)} {mat?.unit} · {fmt(p.unit_cost)}</div>
                       </div>
                     </div>
@@ -468,7 +475,7 @@ export default function RawMaterials() {
                           <td className="px-4 py-3 text-muted-foreground">{supp?.name || "—"}</td>
                           <td className="px-4 py-3 text-right font-medium">{Number(p.quantity)} <span className="text-xs text-muted-foreground">{mat?.unit}</span></td>
                           <td className="px-4 py-3 text-right text-muted-foreground">{fmt(p.unit_cost)}</td>
-                          <td className="px-4 py-3 text-right font-display font-semibold text-brand-dark">{fmt(p.total_cost)}{Number(p.tax_amount) > 0 && <span className="block text-xs font-normal text-muted-foreground">incl. VAT {fmt(Number(p.tax_amount))}</span>}</td>
+                          <td className="px-4 py-3 text-right font-display font-semibold text-brand-dark">{fmt(p.total_cost)}{Number(p.tax_amount) > 0 && <span className="block text-xs font-normal text-muted-foreground">incl. VAT {fmt(Number(p.tax_amount))}</span>}{Number(p.landed_total) > 0 && <span className="block text-xs font-normal text-muted-foreground">landed {fmt(landedUnitCost(p.unit_cost, Number(p.landed_total), p.quantity))}/{mat?.unit || "unit"}</span>}</td>
                         </tr>
                       );
                     })}
@@ -541,7 +548,25 @@ export default function RawMaterials() {
                 <Input type="number" min="0" step="0.01" placeholder="0" value={pTax || ""} onChange={e => setPTax(Number(e.target.value))} />
               </div>
             )}
-            <div className="text-sm text-muted-foreground">Total: <span className="font-semibold text-brand-dark">{fmt((pQty || 0) * (pCost || 0))}</span></div>
+            <div className="space-y-2 rounded-lg border border-border/60 p-3">
+              <Label>Landed costs <span className="font-normal text-muted-foreground">(freight, duty, clearing… added to material cost)</span></Label>
+              <LandedCostEditor value={pLanded} onChange={setPLanded} fmt={fmt} />
+            </div>
+            {(() => {
+              const goods = (pQty || 0) * (pCost || 0);
+              const landedSum = landedTotal(fromLandedRows(pLanded));
+              return (
+                <div className="space-y-0.5 text-sm">
+                  <div className="text-muted-foreground">Total: <span className="font-semibold text-brand-dark">{fmt(goods)}</span></div>
+                  {landedSum > 0 && (
+                    <>
+                      <div className="text-muted-foreground">+ landed {fmt(landedSum)} = <span className="font-semibold text-brand-dark">{fmt(goods + landedSum)}</span> landed cost</div>
+                      <div className="text-muted-foreground">Cost/unit: {fmt(pCost || 0)} → <span className="font-semibold text-brand-dark">{fmt(landedUnitCost(pCost, landedSum, pQty))}</span></div>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
             <DialogFooter>
               <Button variant="ghost" onClick={() => setPurchaseOpen(false)}>Cancel</Button>
               <Button variant="brand" onClick={recordPurchase} disabled={pQty <= 0}>Add to stock</Button>

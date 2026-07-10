@@ -11,6 +11,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import SearchableSelect from "@/components/SearchableSelect";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import { LandedCostEditor, toLandedRows, fromLandedRows, defaultLandedRows, type LandedRow } from "@/components/LandedCostEditor";
+import { landedTotal, landedUnitCostsForPo, type LandedCostLine } from "@/lib/landedCost";
 import { Plus, Search, ClipboardList, Trash2, Download, Upload, Eye, ArrowUp, ArrowDown, ArrowUpDown, MoreHorizontal } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
@@ -27,6 +29,7 @@ import { useDateFormat } from "@/hooks/useDateFormat";
 type PO = {
   id: string; po_number: string; supplier_id: string | null; status: string;
   expected_date: string | null; total_amount: number; notes: string | null; created_at: string; tax_amount?: number;
+  landed_costs?: LandedCostLine[];
 };
 type Supplier = { id: string; name: string; phone: string | null; email: string | null; address: string | null };
 type RawMat = { id: string; name: string; unit: string; cost_per_unit: number };
@@ -60,7 +63,13 @@ export default function PurchaseOrders() {
   const [form, setForm] = useState({ supplier_id: "", expected_date: "", notes: "" });
   const [lines, setLines] = useState<Item[]>([{ product_id: null, raw_material_id: null, description: "", quantity: 1, unit_cost: 0, line_total: 0, source: "product" }]);
   const [poTax, setPoTax] = useState<number>(0); // input VAT on this order (from the supplier invoice)
+  const [landedRows, setLandedRows] = useState<LandedRow[]>(defaultLandedRows()); // freight/duty/other
   const taxEnabled = !!business?.tax_enabled;
+  // Receive flow: edit landed costs before the PO is received and stock is valued.
+  const [receiving, setReceiving] = useState<PO | null>(null);
+  const [receiveRows, setReceiveRows] = useState<LandedRow[]>([]);
+  const [receiveItems, setReceiveItems] = useState<POItemRow[]>([]);
+  const [receiveBusy, setReceiveBusy] = useState(false);
   const [pending, setPending] = useState<{ title: string; description: string; confirmLabel?: string; variant?: "destructive" | "default"; onConfirm: () => void } | null>(null);
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -70,13 +79,13 @@ export default function PurchaseOrders() {
   const load = async () => {
     const [{ data: pos }, { data: sup }, { data: mat }, { data: prod }] = await Promise.all([
       supabase.from("purchase_orders")
-        .select("id,po_number,supplier_id,status,expected_date,total_amount,notes,created_at,tax_amount")
+        .select("id,po_number,supplier_id,status,expected_date,total_amount,notes,created_at,tax_amount,landed_costs")
         .order("created_at", { ascending: false }),
       supabase.from("suppliers").select("id, name, phone, email, address"),
       supabase.from("raw_materials").select("id, name, unit, cost_per_unit"),
       supabase.from("products").select("id, name, unit, cost_price").order("name"),
     ]);
-    setItems((pos as unknown as PO[]) || []); // tax_amount postdates the generated types
+    setItems((pos as unknown as PO[]) || []); // tax_amount/landed_costs postdate the generated types
     setSuppliers((sup as Supplier[]) || []);
     setMaterials((mat as RawMat[]) || []);
     setProducts((prod as Product[]) || []);
@@ -158,6 +167,17 @@ export default function PurchaseOrders() {
   const removeLine = (idx: number) => setLines(prev => prev.length === 1 ? prev : prev.filter((_, i) => i !== idx));
 
   const subtotal = lines.reduce((s, l) => s + (l.line_total || 0), 0);
+  // Live landed-cost allocation for the create dialog preview (mirrors the receive-trigger math).
+  const landedClean = fromLandedRows(landedRows);
+  const landedSum = landedTotal(landedClean);
+  const landedPreview = landedUnitCostsForPo(lines.map(l => ({ unitCost: Number(l.unit_cost), qty: Number(l.quantity) })), landedClean);
+  // View dialog landed-cost breakdown (from the saved PO + its items).
+  const viewLanded = (viewing?.landed_costs as LandedCostLine[] | undefined) || [];
+  const viewLandedSum = landedTotal(viewLanded);
+  const viewLandedPreview = landedUnitCostsForPo(viewItems.map(x => ({ unitCost: Number(x.unit_cost), qty: Number(x.quantity) })), viewLanded);
+  // Receive dialog preview.
+  const receiveLandedSum = landedTotal(fromLandedRows(receiveRows));
+  const receivePreview = landedUnitCostsForPo(receiveItems.map(x => ({ unitCost: Number(x.unit_cost), qty: Number(x.quantity) })), fromLandedRows(receiveRows));
 
   const create = async () => {
     if (!business) return;
@@ -178,7 +198,8 @@ export default function PurchaseOrders() {
       notes: form.notes || null,
       total_amount: subtotal, status: "draft",
       tax_amount: taxEnabled ? (poTax || 0) : 0,
-    } as never).select().single(); // tax_amount postdates the generated types
+      landed_costs: fromLandedRows(landedRows),
+    } as never).select().single(); // tax_amount/landed_costs postdate the generated types
     if (error) { setBusy(false); return toast.error(error.message); }
     const payload = lines.map(l => ({
       purchase_order_id: po!.id, raw_material_id: l.raw_material_id, product_id: l.product_id,
@@ -192,6 +213,7 @@ export default function PurchaseOrders() {
     setForm({ supplier_id: "", expected_date: "", notes: "" });
     setLines([{ product_id: null, raw_material_id: null, description: "", quantity: 1, unit_cost: 0, line_total: 0, source: "product" }]);
     setPoTax(0);
+    setLandedRows(defaultLandedRows());
     load();
   };
 
@@ -202,20 +224,33 @@ export default function PurchaseOrders() {
     load();
   };
 
-  // Receiving adds stock and is final, so confirm before doing it.
-  const requestStatusChange = (i: PO, status: string) => {
+  // Receiving adds stock and values it (landed cost), and is final — open the receive dialog so the
+  // user can drop in the actual freight/duty/clearing bill before stock is costed.
+  const requestStatusChange = async (i: PO, status: string) => {
     if (status === i.status) return;
     if (status === "received") {
-      setPending({
-        title: `Mark ${i.po_number} as received?`,
-        description: "This adds the ordered items to stock (products and raw materials). Once received, the status can't be changed.",
-        confirmLabel: "Mark as received",
-        variant: "default",
-        onConfirm: () => changeStatus(i, status),
-      });
+      setReceiving(i);
+      setReceiveRows(toLandedRows(i.landed_costs));
+      const { data } = await supabase.from("purchase_order_items").select("*").eq("purchase_order_id", i.id);
+      setReceiveItems((data as POItemRow[]) || []);
       return;
     }
     changeStatus(i, status);
+  };
+
+  const confirmReceive = async () => {
+    if (!receiving) return;
+    setReceiveBusy(true);
+    // One update: persist the final landed costs AND flip to received, so the trigger costs stock
+    // using the amounts just entered.
+    const { error } = await supabase.from("purchase_orders")
+      .update({ landed_costs: fromLandedRows(receiveRows), status: "received" } as never)
+      .eq("id", receiving.id);
+    setReceiveBusy(false);
+    if (error) return toast.error(error.message);
+    toast.success("PO received — stock added and valued at landed cost");
+    setReceiving(null);
+    load();
   };
 
   const remove = (i: PO) => {
@@ -249,6 +284,7 @@ export default function PurchaseOrders() {
         description: d.description, quantity: Number(d.quantity), unit_price: Number(d.unit_cost), line_total: Number(d.line_total),
       })),
       subtotal: Number(i.total_amount), tax: Number(i.tax_amount) || 0, total: Number(i.total_amount),
+      landedCosts: (i.landed_costs || []).map(l => ({ label: l.label, amount: Number(l.amount) })),
       notes: i.notes,
     }, `${i.po_number}.pdf`);
   };
@@ -551,13 +587,33 @@ export default function PurchaseOrders() {
               <Button variant="outline" size="sm" onClick={addLine}><Plus className="size-4 mr-1" /> Add line</Button>
             </div>
             <div><Label>Notes</Label><Textarea rows={2} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></div>
+
+            <div className="space-y-2 rounded-lg border border-border/60 p-3">
+              <Label>Landed costs <span className="font-normal text-muted-foreground">(freight, duty, clearing… added to item cost, allocated across lines by value)</span></Label>
+              <LandedCostEditor value={landedRows} onChange={setLandedRows} fmt={fmt} />
+              {landedSum > 0 && lines.some(l => Number(l.quantity) > 0 && Number(l.unit_cost) > 0) && (
+                <div className="space-y-1 pt-2 border-t border-border/40 text-xs">
+                  <div className="font-medium text-muted-foreground">Effective cost per unit</div>
+                  {lines.map((l, idx) => (Number(l.quantity) > 0 && Number(l.unit_cost) > 0) ? (
+                    <div key={idx} className="flex justify-between gap-2">
+                      <span className="truncate">{l.description || `Line ${idx + 1}`}</span>
+                      <span className="shrink-0">{fmt(Number(l.unit_cost))} → <span className="font-medium text-brand-dark">{fmt(landedPreview[idx].landedUnit)}</span></span>
+                    </div>
+                  ) : null)}
+                </div>
+              )}
+            </div>
+
             {taxEnabled && (
               <div className="flex items-center justify-end gap-2">
                 <Label className="font-normal text-muted-foreground">of which VAT (input):</Label>
                 <Input type="number" min="0" step="0.01" placeholder="0" className="w-32" value={poTax || ""} onChange={e => setPoTax(Number(e.target.value))} />
               </div>
             )}
-            <div className="text-right text-lg font-semibold">Total: {fmt(subtotal)}</div>
+            <div className="text-right">
+              <div className="text-lg font-semibold">Total: {fmt(subtotal)}</div>
+              {landedSum > 0 && <div className="text-sm text-muted-foreground">+ landed {fmt(landedSum)} = <span className="font-semibold text-brand-dark">{fmt(subtotal + landedSum)}</span> landed cost</div>}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
@@ -599,6 +655,26 @@ export default function PurchaseOrders() {
                 ) : (
                   <div className="text-right font-semibold">Total: {fmt(viewing.total_amount)}</div>
                 )}
+                {viewLandedSum > 0 && (
+                  <div className="space-y-1 rounded-lg border border-border/60 p-3 text-sm">
+                    <div className="font-medium text-brand-dark">Landed costs</div>
+                    {viewLanded.map((l, i) => (
+                      <div key={i} className="flex justify-between text-muted-foreground"><span>{l.label}</span><span>{fmt(Number(l.amount))}</span></div>
+                    ))}
+                    <div className="flex justify-between border-t border-border/40 pt-1 font-medium">
+                      <span>Landed cost total</span><span>{fmt(Number(viewing.total_amount) + viewLandedSum)}</span>
+                    </div>
+                    <div className="pt-1 text-xs">
+                      <div className="font-medium text-muted-foreground">Effective cost per unit</div>
+                      {viewItems.map((it, idx) => (Number(it.quantity) > 0 && Number(it.unit_cost) > 0) ? (
+                        <div key={idx} className="flex justify-between gap-2">
+                          <span className="truncate">{it.description}</span>
+                          <span className="shrink-0">{fmt(Number(it.unit_cost))} → <span className="font-medium text-brand-dark">{fmt(viewLandedPreview[idx].landedUnit)}</span></span>
+                        </div>
+                      ) : null)}
+                    </div>
+                  </div>
+                )}
                 {viewing.notes && <div className="text-muted-foreground">{viewing.notes}</div>}
               </div>
               <DialogFooter>
@@ -607,6 +683,36 @@ export default function PurchaseOrders() {
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Receive dialog — add the real landed costs before stock is added & valued */}
+      <Dialog open={!!receiving} onOpenChange={(o) => { if (!o && !receiveBusy) setReceiving(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle className="font-display">Receive {receiving?.po_number}</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Add the actual freight, duty and clearing costs from the supplier/agent bills. Stock is added and
+            <span className="font-medium text-foreground"> valued at cost including these</span> (allocated across items by value). This can{"'"}t be undone.
+          </p>
+          <div className="space-y-2">
+            <Label>Landed costs</Label>
+            <LandedCostEditor value={receiveRows} onChange={setReceiveRows} fmt={fmt} />
+          </div>
+          {receiveLandedSum > 0 && receiveItems.length > 0 && (
+            <div className="space-y-1 border-t border-border/40 pt-2 text-xs">
+              <div className="font-medium text-muted-foreground">Effective cost per unit</div>
+              {receiveItems.map((it, idx) => (Number(it.quantity) > 0 && Number(it.unit_cost) > 0) ? (
+                <div key={idx} className="flex justify-between gap-2">
+                  <span className="truncate">{it.description}</span>
+                  <span className="shrink-0">{fmt(Number(it.unit_cost))} → <span className="font-medium text-brand-dark">{fmt(receivePreview[idx].landedUnit)}</span></span>
+                </div>
+              ) : null)}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReceiving(null)} disabled={receiveBusy}>Cancel</Button>
+            <Button onClick={confirmReceive} disabled={receiveBusy}>{receiveBusy ? "Receiving…" : "Receive & value stock"}</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
