@@ -204,6 +204,7 @@ export async function recordProductionRun(args: {
   outputs: { product_id: string; quantity: number; cost_price?: number }[];
   materials: { raw_material_id: string; quantity_used: number; quantity_wasted: number }[];
   notes: string;
+  labourOverhead?: number;
 }): Promise<void> {
   const { error } = await sb.rpc("record_production_run", {
     _business_id: args.businessId,
@@ -211,6 +212,7 @@ export async function recordProductionRun(args: {
     _outputs: args.outputs,
     _materials: args.materials,
     _notes: args.notes || null,
+    _labour_overhead: args.labourOverhead || 0,
   });
   if (error) throw new Error(error.message);
 }

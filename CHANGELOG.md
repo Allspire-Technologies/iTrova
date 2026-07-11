@@ -3,7 +3,23 @@
 All notable, user-facing changes to iTrova are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); entries are grouped by ship date, newest first.
 
-## 2026-07-11 — Accounting v2: statements that tie to your books
+## 2026-07-12 — Production auto‑costs your products
+
+Stop guessing what a batch cost — iTrova now works it out for you.
+
+### Added
+- **Automatic product cost from production.** A run's cost = the raw materials it uses (plus waste) at
+  their cost, and it flows onto the products you made as their new cost price — blended using your
+  inventory costing method (moving‑average or last‑cost).
+- **Optional labour / overhead** field on a run — added to the batch cost and capitalised into your
+  inventory in the ledger.
+- **Multiple products from one run** split the cost fairly by **relative selling value**.
+- The **cost/unit shows live** as you fill in the run; type a figure to **override** it.
+
+### Notes
+- Production now also posts to the general ledger (labour/overhead into Inventory), tightening the
+  Accounting figures.
+- **Migration to apply:** `20260720100000_production_auto_cost.sql`.
 
 Your financial statements now come **straight from the general ledger**, so they agree with each other
 and with the Trial Balance.
