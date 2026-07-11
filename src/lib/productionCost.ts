@@ -10,11 +10,11 @@ function round2(n: number): number {
 export interface CostMaterial { quantity_used: number; quantity_wasted?: number | null; cost_per_unit?: number | null }
 export interface CostOutput { quantity: number; selling_price?: number | null; cost_price_override?: number | null }
 
-/** Total cost of a run: Σ (used + wasted) × cost_per_unit, plus labour/overhead. */
-export function runCost(materials: CostMaterial[], labourOverhead = 0): number {
+/** Total cost of a run: Σ (used + wasted) × cost_per_unit, plus labour/overhead and shipping/transport. */
+export function runCost(materials: CostMaterial[], labourOverhead = 0, shipping = 0): number {
   const mat = (materials ?? []).reduce((a, m) =>
     a + ((Number(m.quantity_used) || 0) + (Number(m.quantity_wasted) || 0)) * (Number(m.cost_per_unit) || 0), 0);
-  return round2(mat + (Number(labourOverhead) || 0));
+  return round2(mat + (Number(labourOverhead) || 0) + (Number(shipping) || 0));
 }
 
 /**
@@ -42,8 +42,8 @@ export function allocateByValue(outputs: { quantity: number; selling_price?: num
 }
 
 /** Per-output cost PER UNIT: a manual override wins, else the allocated cost ÷ quantity. */
-export function outputUnitCosts(outputs: CostOutput[], materials: CostMaterial[], labourOverhead = 0): number[] {
-  const allocated = allocateByValue(outputs ?? [], runCost(materials, labourOverhead));
+export function outputUnitCosts(outputs: CostOutput[], materials: CostMaterial[], labourOverhead = 0, shipping = 0): number[] {
+  const allocated = allocateByValue(outputs ?? [], runCost(materials, labourOverhead, shipping));
   return (outputs ?? []).map((o, i) => {
     if (o.cost_price_override != null && o.cost_price_override !== undefined && String(o.cost_price_override) !== "")
       return round2(o.cost_price_override);

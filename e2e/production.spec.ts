@@ -116,10 +116,11 @@ test.describe("Production", () => {
       _materials: [{ raw_material_id: "m1", quantity_used: 8, quantity_wasted: 2 }],
       _notes: null,
       _labour_overhead: 0,
+      _shipping: 0,
     });
   });
 
-  test("labour/overhead is sent so the run can auto-cost the output", async ({ page }) => {
+  test("labour/overhead and shipping are sent so the run can auto-cost the output", async ({ page }) => {
     await authenticate(page, { role: "owner" });
     await stubProduction(page, { reqs: [APPROVED_REQ] });
     let runPayload: any = null;
@@ -133,9 +134,11 @@ test.describe("Production", () => {
     await page.getByRole("option", { name: "Garri 50kg" }).click();
     await page.getByLabel("Product quantity 1").fill("4"); // no manual cost → auto-costed server-side
     await page.getByLabel("Labour and overhead").fill("5000");
+    await page.getByLabel("Shipping and transport").fill("2000");
     await page.getByRole("button", { name: "Record production", exact: true }).click();
     await expect(page.getByText("Production recorded — product stock updated")).toBeVisible();
     expect(runPayload._labour_overhead).toBe(5000);
+    expect(runPayload._shipping).toBe(2000);
     expect(runPayload._outputs).toEqual([{ product_id: "p1", quantity: 4 }]); // no cost_price → RPC computes it
   });
 

@@ -61,6 +61,7 @@ export default function Production() {
   const [runMaterials, setRunMaterials] = useState<QtyLine[]>([]);
   const [runNotes, setRunNotes] = useState("");
   const [labourOverhead, setLabourOverhead] = useState("");
+  const [shipping, setShipping] = useState("");
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -97,8 +98,8 @@ export default function Production() {
       const p = products.find(x => x.id === l.key_id);
       return { quantity: Number(l.quantity) || 0, selling_price: p?.selling_price ?? 0, cost_price_override: (l.cost != null && l.cost !== "") ? Number(l.cost) : null };
     });
-    return outputUnitCosts(outs, mats, Number(labourOverhead) || 0);
-  }, [runMaterials, runOutputs, labourOverhead, materials, products]);
+    return outputUnitCosts(outs, mats, Number(labourOverhead) || 0, Number(shipping) || 0);
+  }, [runMaterials, runOutputs, labourOverhead, shipping, materials, products]);
 
   // The trail shown on a request: what was actually issued (when reduced at approval) and — once
   // production ran against it — which raw materials the run consumed.
@@ -184,6 +185,7 @@ export default function Production() {
     setRunOutputs([{ key_id: "", quantity: "" }]);
     setRunNotes("");
     setLabourOverhead("");
+    setShipping("");
     setRunMaterials(materialsFromReq(id));
     setRunOpen(true);
   };
@@ -217,6 +219,7 @@ export default function Production() {
         materials: mats,
         notes: runNotes,
         labourOverhead: Number(labourOverhead) || 0,
+        shipping: Number(shipping) || 0,
       });
       toast.success("Production recorded — product stock updated");
       setRunOpen(false);
@@ -366,7 +369,7 @@ export default function Production() {
       <Button variant="outline" size="sm" onClick={() => setRunOutputs(prev => [...prev, { key_id: "", quantity: "" }])}>
         <Plus className="size-4" /> Add line
       </Button>
-      <p className="px-1 text-xs text-muted-foreground">Cost/unit is auto-calculated from the materials used (+ waste) and any labour/overhead, split across products by selling value. Type a figure to override.</p>
+      <p className="px-1 text-xs text-muted-foreground">Cost/unit is auto-calculated from the materials used (+ waste) plus any labour/overhead and shipping, split across products by selling value. Type a figure to override.</p>
     </div>
   );
 
@@ -583,9 +586,15 @@ export default function Production() {
               <Label>Materials used &amp; wasted <span className="font-normal text-muted-foreground">(issued amounts prefilled — adjust to what was actually used, and record any waste; leftovers restock automatically)</span></Label>
               {runMaterialsEditor()}
             </div>
-            <div className="space-y-2 max-w-[12rem]">
-              <Label>Labour / overhead <span className="font-normal text-muted-foreground">(optional)</span></Label>
-              <Input type="number" min="0" step="any" placeholder="0" value={labourOverhead} onChange={(e) => setLabourOverhead(e.target.value)} aria-label="Labour and overhead" />
+            <div className="grid gap-3 sm:grid-cols-2 max-w-md">
+              <div className="space-y-2">
+                <Label>Labour / overhead <span className="font-normal text-muted-foreground">(optional)</span></Label>
+                <Input type="number" min="0" step="any" placeholder="0" value={labourOverhead} onChange={(e) => setLabourOverhead(e.target.value)} aria-label="Labour and overhead" />
+              </div>
+              <div className="space-y-2">
+                <Label>Shipping / transport <span className="font-normal text-muted-foreground">(optional)</span></Label>
+                <Input type="number" min="0" step="any" placeholder="0" value={shipping} onChange={(e) => setShipping(e.target.value)} aria-label="Shipping and transport" />
+              </div>
             </div>
             <div className="space-y-2">
               <Label>Notes <span className="font-normal text-muted-foreground">(optional)</span></Label>
