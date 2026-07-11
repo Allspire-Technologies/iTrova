@@ -47,6 +47,11 @@ export interface JournalEntry {
 function round2(n: number): number {
   return Math.round(((Number(n) || 0) + Number.EPSILON) * 100) / 100;
 }
+/** A margin as a percentage of revenue (2dp), or null when revenue is zero. */
+function margin(part: number, whole: number): number | null {
+  const w = Number(whole) || 0;
+  return w === 0 ? null : round2(((Number(part) || 0) / w) * 100);
+}
 
 // ---------------------------------------------------------------- pure helpers (unit-tested)
 /** Assets and expenses increase on the debit side; liabilities, equity and income on the credit side. */
@@ -89,6 +94,92 @@ export function buildTrialBalance(
     else { rows.push({ account, debit: 0, credit: -n }); totalCredit += -n; }
   }
   return { rows, totalDebit: round2(totalDebit), totalCredit: round2(totalCredit), balanced: round2(totalDebit) === round2(totalCredit) };
+}
+
+// ---- Statements derived from the ledger (tie by construction) -------------------------------
+export interface StatementLine { account_id: string; debit: number; credit: number; description?: string | null; source?: string }
+const COGS_CODE = "5000";
+
+export interface LedgerPnl {
+  revenue: number; cogs: number; grossProfit: number; grossMargin: number | null;
+  expenses: { category: string; amount: number }[]; totalExpenses: number;
+  netProfit: number; netMargin: number | null;
+}
+/** P&L from income/expense account activity in the period. Operating expenses are broken down by the
+ *  journal line's description (the expense category / source). */
+export function ledgerPnl(accounts: Account[], lines: StatementLine[]): LedgerPnl {
+  const by = new Map(accounts.map((a) => [a.id, a]));
+  let revenue = 0, cogs = 0;
+  const opex = new Map<string, number>();
+  for (const l of lines) {
+    const a = by.get(l.account_id); if (!a) continue;
+    const d = Number(l.debit) || 0, c = Number(l.credit) || 0;
+    if (a.type === "income") revenue += c - d;
+    else if (a.code === COGS_CODE) cogs += d - c;
+    else if (a.type === "expense") {
+      const cat = (l.description || a.name || "Other").trim() || "Other";
+      opex.set(cat, (opex.get(cat) ?? 0) + (d - c));
+    }
+  }
+  revenue = round2(revenue); cogs = round2(cogs);
+  const grossProfit = round2(revenue - cogs);
+  const expenses = [...opex.entries()].map(([category, amount]) => ({ category, amount: round2(amount) }))
+    .filter((e) => e.amount !== 0).sort((a, b) => b.amount - a.amount);
+  const totalExpenses = round2(expenses.reduce((a, e) => a + e.amount, 0));
+  const netProfit = round2(grossProfit - totalExpenses);
+  return { revenue, cogs, grossProfit, grossMargin: margin(grossProfit, revenue), expenses, totalExpenses, netProfit, netMargin: margin(netProfit, revenue) };
+}
+
+export interface BsRow { code: string; name: string; amount: number }
+export interface LedgerBalanceSheet {
+  assets: BsRow[]; totalAssets: number;
+  liabilities: BsRow[]; totalLiabilities: number;
+  equity: BsRow[]; totalEquity: number; currentEarnings: number;
+  balanced: boolean;
+}
+/** Balance sheet as at a date from account balances. Income − expense (un-closed) folds into equity as
+ *  "Current‑period earnings", so Assets = Liabilities + Equity by construction. */
+export function ledgerBalanceSheet(accounts: Account[], lines: StatementLine[]): LedgerBalanceSheet {
+  const net = new Map<string, number>(); // debit − credit
+  for (const l of lines) net.set(l.account_id, (net.get(l.account_id) ?? 0) + (Number(l.debit) || 0) - (Number(l.credit) || 0));
+  const assets: BsRow[] = [], liabilities: BsRow[] = [], equity: BsRow[] = [];
+  let earnings = 0;
+  for (const a of [...accounts].sort((x, y) => x.code.localeCompare(y.code))) {
+    const n = round2(net.get(a.id) ?? 0);
+    if (a.type === "asset") { if (n !== 0) assets.push({ code: a.code, name: a.name, amount: n }); }
+    else if (a.type === "liability") { if (n !== 0) liabilities.push({ code: a.code, name: a.name, amount: -n }); }
+    else if (a.type === "equity") { if (n !== 0) equity.push({ code: a.code, name: a.name, amount: -n }); }
+    else if (a.type === "income") earnings += -n;   // income increases earnings
+    else if (a.type === "expense") earnings += -n;   // expense (positive debit) reduces earnings
+  }
+  earnings = round2(earnings);
+  const totalAssets = round2(assets.reduce((s, r) => s + r.amount, 0));
+  const totalLiabilities = round2(liabilities.reduce((s, r) => s + r.amount, 0));
+  const equityAccounts = round2(equity.reduce((s, r) => s + r.amount, 0));
+  const totalEquity = round2(equityAccounts + earnings);
+  return { assets, totalAssets, liabilities, totalLiabilities, equity, totalEquity, currentEarnings: earnings, balanced: round2(totalAssets - (totalLiabilities + totalEquity)) === 0 };
+}
+
+const CASH_CODES = new Set(["1000", "1010"]);
+const CASHFLOW_LABEL: Record<string, string> = { sale: "Sales receipts", payment: "Invoice payments", expense: "Expenses paid", purchase: "Stock purchases", opening: "Opening balance", manual: "Other", invoice: "Other", payroll: "Payroll" };
+export interface CashRow { label: string; amount: number }
+export interface LedgerCashFlow { inflows: CashRow[]; totalIn: number; outflows: CashRow[]; totalOut: number; net: number }
+/** Cash flow from Cash/Bank account movements in the period, grouped by the entry's source. */
+export function ledgerCashFlow(accounts: Account[], lines: StatementLine[]): LedgerCashFlow {
+  const cashIds = new Set(accounts.filter((a) => CASH_CODES.has(a.code)).map((a) => a.id));
+  const inMap = new Map<string, number>(), outMap = new Map<string, number>();
+  for (const l of lines) {
+    if (!cashIds.has(l.account_id)) continue;
+    const label = CASHFLOW_LABEL[l.source ?? "manual"] ?? "Other";
+    const d = Number(l.debit) || 0, c = Number(l.credit) || 0;
+    if (d > 0) inMap.set(label, (inMap.get(label) ?? 0) + d);
+    if (c > 0) outMap.set(label, (outMap.get(label) ?? 0) + c);
+  }
+  const toRows = (m: Map<string, number>) => [...m.entries()].map(([label, amount]) => ({ label, amount: round2(amount) })).filter((r) => r.amount !== 0).sort((a, b) => b.amount - a.amount);
+  const inflows = toRows(inMap), outflows = toRows(outMap);
+  const totalIn = round2(inflows.reduce((s, r) => s + r.amount, 0));
+  const totalOut = round2(outflows.reduce((s, r) => s + r.amount, 0));
+  return { inflows, totalIn, outflows, totalOut, net: round2(totalIn - totalOut) };
 }
 
 export function friendlyLedgerError(message: string | undefined, fallback: string): string {
@@ -140,6 +231,24 @@ export async function fetchLines(fromIso: string, toIso: string): Promise<{ acco
     .gte("journal_entries.entry_date", fromIso).lte("journal_entries.entry_date", toIso);
   if (error) throw new Error(error.message);
   return (data ?? []) as { account_id: string; debit: number; credit: number }[];
+}
+
+/** Journal lines whose entry falls in [from, to] — for the ledger P&L and Balance Sheet. */
+export async function fetchLinesInPeriod(fromIso: string, toIso: string): Promise<StatementLine[]> {
+  const { data, error } = await sb.from("journal_lines")
+    .select("account_id,debit,credit,description,journal_entries!inner(entry_date)")
+    .gte("journal_entries.entry_date", fromIso).lte("journal_entries.entry_date", toIso);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as StatementLine[];
+}
+
+/** Journal lines in a period WITH their entry source — for the ledger Cash Flow. */
+export async function fetchCashFlowLines(fromIso: string, toIso: string): Promise<StatementLine[]> {
+  const { data, error } = await sb.from("journal_lines")
+    .select("account_id,debit,credit,journal_entries!inner(entry_date,source)")
+    .gte("journal_entries.entry_date", fromIso).lte("journal_entries.entry_date", toIso);
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((l: Record<string, unknown>) => ({ ...l, source: (l.journal_entries as { source?: string })?.source })) as StatementLine[];
 }
 
 export async function listEntries(fromIso: string, toIso: string): Promise<JournalEntry[]> {

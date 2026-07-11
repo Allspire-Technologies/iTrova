@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrency } from "@/hooks/useCurrency";
-import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -13,15 +12,11 @@ import TrialBalanceTab from "@/components/accounting/TrialBalanceTab";
 import { TablePageSkeleton } from "@/components/Skeletons";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { FileDown, Download, Info, TriangleAlert } from "lucide-react";
-import { Link } from "react-router-dom";
+import { FileDown, Download, Info } from "lucide-react";
 import { downloadCsv } from "@/lib/csv";
 import { loadPdf } from "@/lib/pdf";
-import { listExpenses } from "@/lib/expenditure";
-import {
-  buildPnl, revenueNetOfVat, computeCogs, itemsMissingCost, expenseLinesNetOfVat, pctChange,
-  type PnlStatement, type CostedSaleItem, type InvoiceLike,
-} from "@/lib/profitLoss";
+import { pctChange } from "@/lib/profitLoss";
+import { ensureChart, listAccounts, fetchLinesInPeriod, ledgerPnl, friendlyLedgerError, type LedgerPnl } from "@/lib/ledger";
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
@@ -50,9 +45,8 @@ export default function Accounting() {
   const [from, setFrom] = useState(daysAgo(30));
   const [to, setTo] = useState(todayStr());
   const [loading, setLoading] = useState(true);
-  const [cur, setCur] = useState<PnlStatement | Empty>(null);
-  const [prev, setPrev] = useState<PnlStatement | Empty>(null);
-  const [missingUnits, setMissingUnits] = useState(0);
+  const [cur, setCur] = useState<LedgerPnl | Empty>(null);
+  const [prev, setPrev] = useState<LedgerPnl | Empty>(null);
 
   // Previous period = the same number of days immediately before `from` (for the comparison column).
   const { prevFrom, prevTo } = useMemo(() => {
@@ -68,35 +62,17 @@ export default function Accounting() {
   const load = useCallback(async () => {
     if (!business) return;
     setLoading(true);
-    const bid = business.id;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const sb = supabase as any;
-    const iso = (d: string, end = false) => `${d}T${end ? "23:59:59.999" : "00:00:00"}`;
-    const invQ = (f: string, t: string) => supabase.from("invoices")
-      .select("total,tax,status,issue_date").eq("business_id", bid)
-      .in("status", ["issued", "partial", "paid"]).gte("issue_date", f).lte("issue_date", t);
-    const siQ = (f: string, t: string) => sb.from("sale_items")
-      .select("product_id,quantity,unit_cost,sales!inner(id)")
-      .eq("sales.business_id", bid).eq("sales.voided", false)
-      .gte("sales.created_at", iso(f)).lte("sales.created_at", iso(t, true));
     try {
-      const [invCur, invPrev, siCur, siPrev, prodRes, expCur, expPrev] = await Promise.all([
-        invQ(from, to), invQ(prevFrom, prevTo), siQ(from, to), siQ(prevFrom, prevTo),
-        supabase.from("products").select("id,cost_price").eq("business_id", bid),
-        listExpenses(from, to), listExpenses(prevFrom, prevTo),
+      await ensureChart();
+      const [accs, curLines, prevLines] = await Promise.all([
+        listAccounts(),
+        fetchLinesInPeriod(from, to),
+        fetchLinesInPeriod(prevFrom, prevTo),
       ]);
-      const products = (prodRes.data ?? []) as { id: string; cost_price?: number | null }[];
-      const curItems = (siCur.data ?? []) as unknown as CostedSaleItem[];
-      const build = (inv: unknown, items: unknown, exp: { category: string; amount: number; tax_amount: number }[]) => buildPnl({
-        revenue: revenueNetOfVat((inv ?? []) as InvoiceLike[]),
-        cogs: computeCogs((items ?? []) as CostedSaleItem[], products),
-        expenses: expenseLinesNetOfVat(exp),
-      });
-      setCur(build(invCur.data, siCur.data, expCur));
-      setPrev(build(invPrev.data, siPrev.data, expPrev));
-      setMissingUnits(itemsMissingCost(curItems, products));
+      setCur(ledgerPnl(accs, curLines));
+      setPrev(ledgerPnl(accs, prevLines));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Couldn't build the statement");
+      toast.error(friendlyLedgerError(e instanceof Error ? e.message : undefined, "Couldn't build the statement"));
     } finally {
       setLoading(false);
     }
@@ -221,19 +197,6 @@ export default function Accounting() {
       {tab === "trialbalance" && <TrialBalanceTab from={from} to={to} canManage={canManage} canExport={canExport} />}
 
       {tab === "pnl" && (loading ? <TablePageSkeleton /> : <>
-      {/* Accuracy hint when sold items have no recorded cost */}
-      {missingUnits > 0 && (
-        <div className="flex items-start gap-3 rounded-xl border border-warning/30 bg-warning/5 p-4">
-          <TriangleAlert className="size-5 shrink-0 text-warning" />
-          <div className="text-sm">
-            <p className="font-medium text-brand-dark">Cost of goods sold may be understated</p>
-            <p className="text-muted-foreground mt-0.5">
-              {missingUnits} sold unit{missingUnits === 1 ? "" : "s"} in this period have no cost price, so profit looks higher than it is.
-              Add cost prices in <Link to="/inventory" className="text-brand hover:underline">Inventory</Link> for accurate COGS on future sales.
-            </p>
-          </div>
-        </div>
-      )}
 
       {/* The statement */}
       <Card className="shadow-card border-border/60 overflow-hidden">
@@ -280,10 +243,9 @@ export default function Accounting() {
           <Info className="size-4 text-brand" /> How this Profit &amp; Loss is calculated
         </summary>
         <div className="px-4 pb-4 pt-1 text-sm text-muted-foreground space-y-2 border-t border-border/50">
-          <p><span className="font-medium text-foreground">Accrual basis.</span> Revenue is counted when you invoice a sale (issued, part-paid or paid) — not only when cash arrives. Draft and void invoices are excluded.</p>
-          <p><span className="font-medium text-foreground">Net of VAT.</span> VAT is money you hold for the tax office, not income or expense — so revenue and expenses are shown after removing VAT. (No effect if you don't charge VAT.)</p>
-          <p><span className="font-medium text-foreground">Cost of goods sold.</span> The cost of items sold, captured at the moment of each sale. Sales made before this feature shipped use the product's current cost as an estimate. Manually created invoices don't carry item costs, so their cost of sales isn't included.</p>
-          <p><span className="font-medium text-foreground">Operating expenses.</span> Your Expenditure records grouped by category (Salaries flow in from Payroll), net of input VAT. Stock and raw-material purchases are <em>not</em> expensed here — they become cost of goods sold when the items are sold.</p>
+          <p><span className="font-medium text-foreground">Straight from your ledger.</span> This reads the Sales, Cost of Goods Sold and Operating Expense accounts for the period, so it ties to your Trial Balance.</p>
+          <p><span className="font-medium text-foreground">Net of VAT.</span> VAT is money you hold for the tax office, not income or expense — so revenue and expenses exclude it. (No effect if you don't charge VAT.)</p>
+          <p><span className="font-medium text-foreground">Cost of goods sold</span> is the cost of items sold, captured at the moment of each sale (Cr Inventory / Dr COGS). <span className="font-medium text-foreground">Operating expenses</span> come from your Expenditure records (Salaries included, from Payroll), grouped by category. Stock purchases aren't expensed here — they become cost of goods sold when the items sell.</p>
           <p><span className="font-medium text-foreground">Net profit = Gross profit − Operating expenses.</span> It's only as accurate as your product cost prices, so keep those up to date in Inventory.</p>
         </div>
       </details>

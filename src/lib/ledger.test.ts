@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 // ledger.ts imports the supabase client at load; stub it so the pure helpers need no env.
 vi.mock("@/integrations/supabase/client", () => ({ supabase: { from: vi.fn(), rpc: vi.fn() } }));
-import { normalBalanceFor, validateEntryLines, buildTrialBalance, friendlyLedgerError, type Account, type AccountType } from "./ledger";
+import { normalBalanceFor, validateEntryLines, buildTrialBalance, friendlyLedgerError, ledgerPnl, ledgerBalanceSheet, ledgerCashFlow, type Account, type AccountType } from "./ledger";
 
 const acc = (id: string, code: string, type: AccountType): Account => ({
   id, business_id: "biz-1", code, name: code, type, is_system: true, active: true, created_at: "2026-07-01T00:00:00Z",
@@ -68,6 +68,60 @@ describe("buildTrialBalance", () => {
       { account_id: "obe", debit: 0, credit: 50000 },
     ]);
     expect(tb.balanced).toBe(true);
+  });
+});
+
+// A worked example used across the statement tests: a business with opening cash 200k + inventory 150k
+// (Cr Opening Balance Equity 350k), one sale of 107,500 (net 100k, VAT 7.5k, COGS 60k), and rent 30k paid.
+const stmtAccounts = [
+  acc("cash", "1000", "asset"), acc("inv", "1200", "asset"),
+  acc("vat", "2100", "liability"), acc("obe", "3900", "equity"),
+  acc("sales", "4000", "income"), acc("cogs", "5000", "expense"), acc("opex", "6000", "expense"),
+];
+const stmtLines = [
+  // opening
+  { account_id: "cash", debit: 200000, credit: 0 }, { account_id: "inv", debit: 150000, credit: 0 }, { account_id: "obe", debit: 0, credit: 350000, source: "opening" },
+  // sale 107,500
+  { account_id: "cash", debit: 107500, credit: 0, source: "sale" }, { account_id: "sales", debit: 0, credit: 100000, source: "sale" },
+  { account_id: "vat", debit: 0, credit: 7500, source: "sale" }, { account_id: "cogs", debit: 60000, credit: 0, source: "sale" }, { account_id: "inv", debit: 0, credit: 60000, source: "sale" },
+  // rent 30,000 paid
+  { account_id: "opex", debit: 30000, credit: 0, description: "Rent", source: "expense" }, { account_id: "cash", debit: 0, credit: 30000, source: "expense" },
+];
+
+describe("ledgerPnl", () => {
+  it("derives revenue, COGS, gross/net profit and an expense breakdown", () => {
+    const p = ledgerPnl(stmtAccounts, stmtLines);
+    expect(p.revenue).toBe(100000);
+    expect(p.cogs).toBe(60000);
+    expect(p.grossProfit).toBe(40000);
+    expect(p.expenses).toEqual([{ category: "Rent", amount: 30000 }]);
+    expect(p.netProfit).toBe(10000);
+    expect(p.netMargin).toBe(10);
+  });
+});
+
+describe("ledgerBalanceSheet", () => {
+  it("ties by construction (assets = liabilities + equity incl. current earnings)", () => {
+    const bs = ledgerBalanceSheet(stmtAccounts, stmtLines);
+    // Cash 277,500 + Inventory 90,000 = 367,500 assets
+    expect(bs.totalAssets).toBe(367500);
+    // VAT payable 7,500
+    expect(bs.totalLiabilities).toBe(7500);
+    // OBE 350,000 + current earnings 10,000 = 360,000
+    expect(bs.currentEarnings).toBe(10000);
+    expect(bs.totalEquity).toBe(360000);
+    expect(bs.balanced).toBe(true);
+    expect(bs.totalAssets).toBe(bs.totalLiabilities + bs.totalEquity);
+  });
+});
+
+describe("ledgerCashFlow", () => {
+  it("groups cash-account movements by source and nets them", () => {
+    const cf = ledgerCashFlow(stmtAccounts, stmtLines);
+    expect(cf.inflows).toEqual(expect.arrayContaining([{ label: "Sales receipts", amount: 107500 }]));
+    expect(cf.outflows).toEqual(expect.arrayContaining([{ label: "Expenses paid", amount: 30000 }]));
+    // opening cash inflow 200,000 + sale 107,500 − expense 30,000 = 277,500
+    expect(cf.net).toBe(277500);
   });
 });
 
