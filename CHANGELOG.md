@@ -3,6 +3,30 @@
 All notable, user-facing changes to iTrova are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); entries are grouped by ship date, newest first.
 
+## 2026-07-11 — Accounting v2: statements that tie to your books
+
+Your financial statements now come **straight from the general ledger**, so they agree with each other
+and with the Trial Balance.
+
+### Changed
+- **Profit & Loss, Balance Sheet and Cash Flow are now ledger‑derived.** They read your account
+  balances instead of re‑adding source records, so the numbers reconcile.
+- **Balance Sheet always balances** — Assets = Liabilities + Equity by construction (current‑period
+  profit sits in Equity). The old "doesn't fully tie" note is gone.
+- **Cash Flow** reads the actual movements on your Cash & Bank accounts, grouped by cause (sales
+  receipts, invoice payments, expenses paid, stock purchases).
+
+### Added
+- **Raw‑material purchases auto‑post** — deliveries book to Inventory (with input VAT) against Cash.
+- **Opening inventory** is captured in your opening journal (from current stock at cost), so the ledger
+  starts from your real position.
+
+### Notes
+- As accurate as what's posted: sales, expenses, invoices, payments and raw‑material purchases post
+  automatically. **Still to come:** product purchase‑orders and production runs — until then their stock
+  is carried at your opening figure.
+- **Migration to apply:** `20260719100000_ledger_autopost_purchases.sql`.
+
 ## 2026-07-11 — Accounting v2: more of your activity posts itself
 
 The ledger now builds itself from more of your day‑to‑day, not just sales.
