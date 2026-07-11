@@ -29,6 +29,7 @@ const GeneralStore = lazy(() => import("./pages/GeneralStore"));
 const Production = lazy(() => import("./pages/Production"));
 const Expenditure = lazy(() => import("./pages/Expenditure"));
 const Accounting = lazy(() => import("./pages/Accounting"));
+const Assets = lazy(() => import("./pages/Assets"));
 const ExportInvoiceList = lazy(() => import("./pages/ExportInvoiceList"));
 const ExportInvoiceView = lazy(() => import("./pages/ExportInvoiceView"));
 const ExportInvoice = lazy(() => import("./pages/ExportInvoice"));
@@ -86,6 +87,7 @@ const App = () => (
             <Route path="/purchase-orders" element={<OfflineGate><PermissionGate module="purchase_orders"><ModuleGate module="purchase_orders"><PurchaseOrders /></ModuleGate></PermissionGate></OfflineGate>} />
             <Route path="/reports" element={<OfflineGate><PermissionGate module="reports"><ModuleGate module="reports"><Reports /></ModuleGate></PermissionGate></OfflineGate>} />
             <Route path="/accounting" element={<OfflineGate><PermissionGate module="accounting"><ModuleGate module="accounting"><Accounting /></ModuleGate></PermissionGate></OfflineGate>} />
+            <Route path="/assets" element={<OfflineGate><PermissionGate module="assets"><ModuleGate module="assets"><Assets /></ModuleGate></PermissionGate></OfflineGate>} />
             <Route path="/team" element={<OfflineGate><PermissionGate module="team"><ModuleGate module="team"><Team /></ModuleGate></PermissionGate></OfflineGate>} />
             <Route path="/settings" element={<OfflineGate><Settings /></OfflineGate>} />
             <Route path="/legal/:slug" element={<LegalDoc />} />
