@@ -38,7 +38,7 @@ export interface JournalEntry {
   id: string;
   entry_date: string;
   memo: string | null;
-  source: "manual" | "opening" | "sale" | "expense" | "payment" | "payroll" | "purchase";
+  source: "manual" | "opening" | "sale" | "invoice" | "expense" | "payment" | "payroll" | "purchase";
   source_id: string | null;
   created_at: string;
   lines: JournalLine[];

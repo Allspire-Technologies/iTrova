@@ -25,7 +25,7 @@ const num = (s: string) => Number(s) || 0;
 const uid = () => Math.random().toString(36).slice(2);
 type EditLine = { key: string; account_id: string; debit: string; credit: string };
 const SOURCE_LABEL: Record<JournalEntry["source"], string> = {
-  manual: "Manual", opening: "Opening", sale: "Sale", expense: "Expense", payment: "Payment", payroll: "Payroll", purchase: "Purchase",
+  manual: "Manual", opening: "Opening", sale: "Sale", invoice: "Invoice", expense: "Expense", payment: "Payment", payroll: "Payroll", purchase: "Purchase",
 };
 
 export default function JournalTab({ from, to, canManage }: { from: string; to: string; canManage: boolean }) {
