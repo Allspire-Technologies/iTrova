@@ -148,6 +148,43 @@ test.describe("Guide desktop", () => {
     await snap(page, "16-export-invoices");
   });
 
+  test("expenditure", async ({ page }) => {
+    await go(page, "/expenditure");
+    await expect(page.getByRole("heading", { name: "Expenditure" })).toBeVisible({ timeout: 20000 });
+    await expect(page.locator("table").getByText("Rent").first()).toBeVisible({ timeout: 20000 });
+    await settle(page);
+    await snap(page, "17-expenditure");
+    await go(page, "/expenditure?tab=payroll");
+    await expect(page.getByRole("button", { name: /Pay runs/ })).toBeVisible({ timeout: 20000 });
+    await expect(page.locator("table").getByText("June 2026").first()).toBeVisible({ timeout: 20000 });
+    await settle(page);
+    await snap(page, "17-expenditure-payroll");
+  });
+
+  test("accounting", async ({ page }) => {
+    await go(page, "/accounting");
+    await expect(page.getByRole("heading", { name: "Accounting" })).toBeVisible({ timeout: 20000 });
+    await expect(page.locator("table").getByText("Gross profit")).toBeVisible({ timeout: 20000 });
+    await settle(page);
+    await snap(page, "18-accounting-pnl");
+    await page.getByRole("button", { name: "Balance Sheet" }).click();
+    await expect(page.locator("table").getByText("Total assets")).toBeVisible({ timeout: 20000 });
+    await settle(page);
+    await snap(page, "18-accounting-balance-sheet");
+    await page.getByRole("button", { name: "Journal", exact: true }).click();
+    await expect(page.getByText("POS sales")).toBeVisible({ timeout: 20000 });
+    await settle(page);
+    await snap(page, "18-accounting-journal");
+  });
+
+  test("assets", async ({ page }) => {
+    await go(page, "/assets");
+    await expect(page.getByRole("heading", { name: "Assets", exact: true })).toBeVisible({ timeout: 20000 });
+    await expect(page.locator("table").getByText("Delivery Van")).toBeVisible({ timeout: 20000 });
+    await settle(page);
+    await snap(page, "19-assets");
+  });
+
   test("purchase orders", async ({ page }) => {
     await go(page,"/purchase-orders");
     await expect(page.locator("table").getByText(/PO-260629-2/)).toBeVisible({ timeout: 20000 });
