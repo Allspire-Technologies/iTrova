@@ -3,7 +3,15 @@
 All notable, user-facing changes to iTrova are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); entries are grouped by ship date, newest first.
 
-## 2026-07-12 — Assets: track and depreciate your equipment
+## 2026-07-12 — Production: add shipping/transport to a batch's cost
+
+### Added
+- **Shipping / transport** field on a production run — separate from labour/overhead. It's added to the
+  batch cost, split across the products you made (by selling value) into their cost price, and
+  capitalised into your inventory in the ledger. The live cost/unit updates as you type.
+
+### Notes
+- **Migration to apply:** `20260722100000_production_shipping.sql`.
 
 A new **Assets** module for your fixed assets — with automatic depreciation that flows into your books.
 

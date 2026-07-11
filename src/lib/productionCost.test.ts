@@ -51,4 +51,14 @@ describe("outputUnitCosts", () => {
     // run cost 6000 + 2000 overhead = 8000; single output 20 → 400
     expect(outputUnitCosts([{ quantity: 20, selling_price: 1000 }], materials, 2000)).toEqual([400]);
   });
+  it("adds shipping/transport on top of labour/overhead", () => {
+    // 6000 materials + 2000 labour + 2000 shipping = 10000; single output 20 → 500
+    expect(outputUnitCosts([{ quantity: 20, selling_price: 1000 }], materials, 2000, 2000)).toEqual([500]);
+  });
+});
+
+describe("runCost with shipping", () => {
+  it("sums materials + labour/overhead + shipping", () => {
+    expect(runCost([{ quantity_used: 4, cost_per_unit: 250 }], 500, 250)).toBe(1750); // 1000 + 500 + 250
+  });
 });
