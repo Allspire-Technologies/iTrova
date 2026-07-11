@@ -205,7 +205,7 @@ export default function BalanceSheetTab({ canExport, isOwner }: { canExport: boo
         <div className="px-4 pb-4 pt-1 text-sm text-muted-foreground space-y-2 border-t border-border/50">
           <p><span className="font-medium text-foreground">Straight from your ledger.</span> Every account's balance as at the date — so Assets always equal Liabilities + Equity.</p>
           <p><span className="font-medium text-foreground">Current-period earnings</span> is profit not yet closed to retained earnings; it sits in Equity, which is why the sheet balances.</p>
-          <p>It's as accurate as what's posted. Sales, expenses, invoices, payments and raw-material purchases post automatically; product purchase-orders and production runs aren't posted yet, so their stock is carried at your opening figure until those phases land. Keep your opening balances and product costs accurate for the best picture.</p>
+          <p>It's as accurate as what's posted. Sales, expenses, invoices, payments, purchase-orders (stock &amp; raw materials) and production runs all post automatically, so your Inventory reflects what you've actually bought and made. Keep your opening balances and product costs accurate for the best picture.</p>
         </div>
       </details>
     </div>

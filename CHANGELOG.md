@@ -3,6 +3,25 @@
 All notable, user-facing changes to iTrova are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); entries are grouped by ship date, newest first.
 
+## 2026-07-12 — Accounting: purchase-orders now post to your books
+
+The last inventory‑posting gap is closed — your Balance Sheet now reflects stock you buy on a purchase
+order, not just your opening figure.
+
+### Changed
+- **Purchase orders auto‑post to the ledger when received.** Buying **products** for resale (and any
+  **raw materials** on the same PO) now books to **Inventory** — net of VAT, with landed costs
+  capitalised — against Cash, so the general ledger matches the stock you actually received.
+- **PO input VAT is captured** — the "of which VAT" on a received PO now posts to VAT Payable (raw
+  material lines were previously dropped from the ledger).
+- The Balance Sheet's "How this is calculated" note is updated: sales, expenses, invoices, payments,
+  **purchase‑orders and production runs all post automatically** now.
+
+### Notes
+- Posting is completely safe — a ledger issue can never block receiving a PO, and nothing posts until
+  you've set up your chart of accounts (open Accounting once).
+- **Migration to apply:** `20260723100000_ledger_autopost_po_products.sql`.
+
 ## 2026-07-12 — Mobile polish for dense forms & lists
 
 ### Changed
