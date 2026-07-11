@@ -3,6 +3,30 @@
 All notable, user-facing changes to iTrova are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); entries are grouped by ship date, newest first.
 
+## 2026-07-11 — Accounting v2: General Ledger (foundation)
+
+Real double‑entry bookkeeping under the hood, so your books can actually tie out.
+
+### Added
+- **Chart of Accounts** — a seeded, editable set of accounts (Cash, Bank, Accounts Receivable,
+  Inventory, Accounts Payable, VAT Payable, Owner's Capital, Retained Earnings, Sales, Cost of Goods
+  Sold, Operating Expenses). Rename or add your own.
+- **General Journal** — every entry is balanced double‑entry (debits = credits, enforced). Post manual
+  entries and adjustments; they sit alongside auto‑posted activity.
+- **Automatic posting of POS sales** — each sale now posts a proper journal (Dr Cash / Cr Sales / Cr
+  VAT, plus Dr Cost of Goods Sold / Cr Inventory), so the ledger builds itself as you trade.
+- **Trial Balance** — every account's balance with totals that always tie, exportable to PDF/CSV.
+- **Opening balances** you set become the opening journal entry, so the ledger starts from your real
+  position.
+
+### Notes
+- Accounting is a **paid module**; posting journals / editing accounts needs the new *Accounting →
+  Manage* permission (owners + managers by default).
+- This is the **foundation** — auto‑posting for expenses, payments, payroll and purchases, and switching
+  the P&L / Balance Sheet / Cash Flow to derive from the ledger, follow next. Sales post today.
+- **Migrations to apply (in order):** `20260717100000_ledger.sql`, then
+  `20260717110000_ledger_autopost_sales.sql`.
+
 ## 2026-07-10 — Accounting: Balance Sheet & Cash Flow
 
 Two more financial statements join Profit & Loss in the Accounting module.
