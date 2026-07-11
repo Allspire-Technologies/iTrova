@@ -445,14 +445,14 @@ export default function PurchaseOrders() {
         <SearchableSelect
           value={statusFilter}
           onValueChange={v => { setStatusFilter(v); setPage(1); }}
-          className="w-40"
+          className="w-full sm:w-40"
           options={[
             { value: "all", label: "All statuses" },
             ...STATUSES.map(s => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) })),
           ]}
         />
-        <DatePicker value={dateFrom} onChange={v => { setDateFrom(v); setPage(1); }} className="w-36" clearable placeholder="Created from" aria-label="Created from" />
-        <DatePicker value={dateTo} onChange={v => { setDateTo(v); setPage(1); }} className="w-36" clearable placeholder="Created to" aria-label="Created to" />
+        <DatePicker value={dateFrom} onChange={v => { setDateFrom(v); setPage(1); }} className="w-full sm:w-36" clearable placeholder="Created from" aria-label="Created from" />
+        <DatePicker value={dateTo} onChange={v => { setDateTo(v); setPage(1); }} className="w-full sm:w-36" clearable placeholder="Created to" aria-label="Created to" />
       </Card>
 
       <Card className="overflow-hidden">
@@ -466,20 +466,20 @@ export default function PurchaseOrders() {
             {/* Mobile: card list (the desktop table is too wide for phones) */}
             <div className="sm:hidden divide-y">
               {paged.map(i => (
-                <div key={i.id} className="p-4 space-y-3">
+                <div key={i.id} className="p-4 space-y-2">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="font-mono text-sm font-medium">{i.po_number}</div>
-                      <div className="text-sm text-brand-dark mt-0.5 truncate">{suppliers.find(s => s.id === i.supplier_id)?.name || "—"}</div>
-                      <div className="text-xs text-muted-foreground mt-0.5 truncate">
-                        {fmtDate(i.created_at)}{i.expected_date ? ` · expected ${i.expected_date}` : ""}
-                      </div>
+                      <div className="font-mono text-sm font-semibold text-brand-dark">{i.po_number}</div>
+                      <div className="text-sm text-muted-foreground truncate">{suppliers.find(s => s.id === i.supplier_id)?.name || "No supplier"}</div>
                     </div>
-                    <div className="font-semibold shrink-0">{fmt(i.total_amount)}</div>
+                    <div className="font-display font-bold text-brand-dark shrink-0">{fmt(i.total_amount)}</div>
                   </div>
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="text-xs text-muted-foreground">
+                    {fmtDate(i.created_at)}{i.expected_date ? ` · expected ${fmtDate(i.expected_date)}` : ""}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-2 border-t border-border/50 pt-2">
                     <StatusControl i={i} />
-                    <RowActions i={i} />
+                    <div className="ml-auto"><RowActions i={i} /></div>
                   </div>
                 </div>
               ))}
@@ -511,7 +511,7 @@ export default function PurchaseOrders() {
                       <td className="px-4 py-3 font-mono">{i.po_number}</td>
                       <td className="px-4 py-3 text-muted-foreground">{fmtDate(i.created_at)}</td>
                       <td className="px-4 py-3">{suppliers.find(s => s.id === i.supplier_id)?.name || "—"}</td>
-                      <td className="px-4 py-3">{i.expected_date || "—"}</td>
+                      <td className="px-4 py-3">{i.expected_date ? fmtDate(i.expected_date) : "—"}</td>
                       <td className="px-4 py-3 text-right font-medium">{fmt(i.total_amount)}</td>
                       <td className="px-4 py-3">
                         <StatusControl i={i} />
@@ -535,7 +535,7 @@ export default function PurchaseOrders() {
         <DialogContent variant="wide" className="max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>New purchase order</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label>Supplier</Label>
                 <SearchableSelect
@@ -561,7 +561,7 @@ export default function PurchaseOrders() {
                       onValueChange={(v) => v && setLineSource(idx, v as LineSource)}
                       size="sm"
                       variant="outline"
-                      className="justify-start"
+                      className="justify-start flex-wrap"
                     >
                       <ToggleGroupItem value="product" className="text-xs px-2.5" aria-label="Inventory">Inventory</ToggleGroupItem>
                       <ToggleGroupItem value="material" className="text-xs px-2.5" aria-label="Raw material">Raw material</ToggleGroupItem>
@@ -585,8 +585,10 @@ export default function PurchaseOrders() {
                         <Input className="sm:col-span-3" placeholder="Description" value={l.description} onChange={e => updateLine(idx, { description: e.target.value })} />
                       </>
                     )}
-                    <Input className="sm:col-span-2" type="number" min={0} placeholder="Qty" value={l.quantity} onChange={e => updateLine(idx, { quantity: Number(e.target.value) })} />
-                    <Input className="sm:col-span-2" type="number" min={0} placeholder="Cost" value={l.unit_cost || ""} onChange={e => updateLine(idx, { unit_cost: Number(e.target.value) })} />
+                    <div className="grid grid-cols-2 gap-2 sm:contents">
+                      <Input className="sm:col-span-2" type="number" min={0} placeholder="Qty" value={l.quantity} onChange={e => updateLine(idx, { quantity: Number(e.target.value) })} />
+                      <Input className="sm:col-span-2" type="number" min={0} placeholder="Cost" value={l.unit_cost || ""} onChange={e => updateLine(idx, { unit_cost: Number(e.target.value) })} />
+                    </div>
                   </div>
                 </div>
               ))}

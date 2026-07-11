@@ -270,14 +270,14 @@ export default function Production() {
   // spoiled/lost during the run. Waste is consumed from stock alongside what's used.
   const runMaterialsEditor = () => (
     <div className="space-y-2">
-      <div className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
+      <div className="hidden sm:flex items-center gap-2 px-1 text-xs text-muted-foreground">
         <span className="flex-1">Material</span>
         <span className="w-20 text-center">Used</span>
         <span className="w-20 text-center">Waste</span>
         <span className="w-10" /><span className="size-9 shrink-0" />
       </div>
       {runMaterials.map((l, idx) => (
-        <div key={idx} className="flex items-center gap-2">
+        <div key={idx} className="rounded-lg border border-border/60 p-2 space-y-2 sm:border-0 sm:p-0 sm:space-y-0 sm:flex sm:items-center sm:gap-2">
           <div className="flex-1 min-w-0">
             <SearchableSelect
               value={l.key_id}
@@ -286,34 +286,36 @@ export default function Production() {
               options={materials.map(m => ({ value: m.id, label: m.name }))}
             />
           </div>
-          <Input
-            type="number" min="0" step="any" placeholder="Used" className="w-20"
-            aria-label={`Material used quantity ${idx + 1}`}
-            value={l.quantity}
-            onChange={(e) => setRunMaterials(prev => prev.map((x, i) => i === idx ? { ...x, quantity: e.target.value } : x))}
-          />
-          <Input
-            type="number" min="0" step="any" placeholder="Waste" className="w-20"
-            aria-label={`Material wasted quantity ${idx + 1}`}
-            value={l.waste ?? ""}
-            onChange={(e) => {
-              const w = e.target.value;
-              setRunMaterials(prev => prev.map((x, i) => {
-                if (i !== idx) return x;
-                // For a requisition-issued line, waste comes out of what was issued (already deducted
-                // at approval), so reduce Used to keep used + waste ≤ issued — no double deduction.
-                if (x.issued == null || x.issued === "") return { ...x, waste: w };
-                const used = Math.max(0, (Number(x.issued) || 0) - (Number(w) || 0));
-                return { ...x, waste: w, quantity: String(used) };
-              }));
-            }}
-          />
-          <span className="w-10 shrink-0 text-xs text-muted-foreground">{l.key_id ? matUnit(l.key_id) : ""}</span>
-          <Button variant="ghost" size="icon" className="shrink-0 text-muted-foreground hover:text-destructive"
-            aria-label={`Remove material line ${idx + 1}`}
-            onClick={() => setRunMaterials(prev => prev.filter((_, i) => i !== idx))}>
-            <Trash2 className="size-4" />
-          </Button>
+          <div className="flex items-center gap-2 sm:contents">
+            <Input
+              type="number" min="0" step="any" placeholder="Used" className="flex-1 sm:w-20"
+              aria-label={`Material used quantity ${idx + 1}`}
+              value={l.quantity}
+              onChange={(e) => setRunMaterials(prev => prev.map((x, i) => i === idx ? { ...x, quantity: e.target.value } : x))}
+            />
+            <Input
+              type="number" min="0" step="any" placeholder="Waste" className="flex-1 sm:w-20"
+              aria-label={`Material wasted quantity ${idx + 1}`}
+              value={l.waste ?? ""}
+              onChange={(e) => {
+                const w = e.target.value;
+                setRunMaterials(prev => prev.map((x, i) => {
+                  if (i !== idx) return x;
+                  // For a requisition-issued line, waste comes out of what was issued (already deducted
+                  // at approval), so reduce Used to keep used + waste ≤ issued — no double deduction.
+                  if (x.issued == null || x.issued === "") return { ...x, waste: w };
+                  const used = Math.max(0, (Number(x.issued) || 0) - (Number(w) || 0));
+                  return { ...x, waste: w, quantity: String(used) };
+                }));
+              }}
+            />
+            <span className="w-10 shrink-0 text-xs text-muted-foreground">{l.key_id ? matUnit(l.key_id) : ""}</span>
+            <Button variant="ghost" size="icon" className="shrink-0 text-muted-foreground hover:text-destructive"
+              aria-label={`Remove material line ${idx + 1}`}
+              onClick={() => setRunMaterials(prev => prev.filter((_, i) => i !== idx))}>
+              <Trash2 className="size-4" />
+            </Button>
+          </div>
         </div>
       ))}
       <Button variant="outline" size="sm" onClick={() => setRunMaterials(prev => [...prev, { key_id: "", quantity: "", waste: "" }])}>
@@ -326,7 +328,7 @@ export default function Production() {
   // keeps the product's current cost; entering one updates it (production cost drifts batch to batch).
   const runOutputsEditor = () => (
     <div className="space-y-2">
-      <div className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
+      <div className="hidden sm:flex items-center gap-2 px-1 text-xs text-muted-foreground">
         <span className="flex-1">Product</span>
         <span className="w-20 text-center">Qty</span>
         <span className="w-24 text-center">Cost/unit</span>
@@ -335,7 +337,7 @@ export default function Production() {
       {runOutputs.map((l, idx) => {
         const prod = products.find(p => p.id === l.key_id);
         return (
-          <div key={idx} className="flex items-center gap-2">
+          <div key={idx} className="rounded-lg border border-border/60 p-2 space-y-2 sm:border-0 sm:p-0 sm:space-y-0 sm:flex sm:items-center sm:gap-2">
             <div className="flex-1 min-w-0">
               <SearchableSelect
                 value={l.key_id}
@@ -344,25 +346,27 @@ export default function Production() {
                 options={products.map(p => ({ value: p.id, label: p.name }))}
               />
             </div>
-            <Input
-              type="number" min="0" step="any" placeholder="Qty" className="w-20"
-              aria-label={`Product quantity ${idx + 1}`}
-              value={l.quantity}
-              onChange={(e) => setRunOutputs(prev => prev.map((x, i) => i === idx ? { ...x, quantity: e.target.value } : x))}
-            />
-            <Input
-              type="number" min="0" step="any" className="w-24"
-              placeholder={runUnitCosts[idx] ? String(runUnitCosts[idx]) : (prod && prod.cost_price != null ? String(prod.cost_price) : "Cost")}
-              aria-label={`Product cost price ${idx + 1}`}
-              value={l.cost ?? ""}
-              onChange={(e) => setRunOutputs(prev => prev.map((x, i) => i === idx ? { ...x, cost: e.target.value } : x))}
-            />
-            <span className="w-10 shrink-0 text-xs text-muted-foreground">{prod?.unit || ""}</span>
-            <Button variant="ghost" size="icon" className="shrink-0 text-muted-foreground hover:text-destructive"
-              aria-label={`Remove product line ${idx + 1}`}
-              onClick={() => setRunOutputs(prev => prev.filter((_, i) => i !== idx))}>
-              <Trash2 className="size-4" />
-            </Button>
+            <div className="flex items-center gap-2 sm:contents">
+              <Input
+                type="number" min="0" step="any" placeholder="Qty" className="flex-1 sm:w-20"
+                aria-label={`Product quantity ${idx + 1}`}
+                value={l.quantity}
+                onChange={(e) => setRunOutputs(prev => prev.map((x, i) => i === idx ? { ...x, quantity: e.target.value } : x))}
+              />
+              <Input
+                type="number" min="0" step="any" className="flex-1 sm:w-24"
+                placeholder={runUnitCosts[idx] ? String(runUnitCosts[idx]) : (prod && prod.cost_price != null ? String(prod.cost_price) : "Cost")}
+                aria-label={`Product cost price ${idx + 1}`}
+                value={l.cost ?? ""}
+                onChange={(e) => setRunOutputs(prev => prev.map((x, i) => i === idx ? { ...x, cost: e.target.value } : x))}
+              />
+              <span className="w-10 shrink-0 text-xs text-muted-foreground">{prod?.unit || ""}</span>
+              <Button variant="ghost" size="icon" className="shrink-0 text-muted-foreground hover:text-destructive"
+                aria-label={`Remove product line ${idx + 1}`}
+                onClick={() => setRunOutputs(prev => prev.filter((_, i) => i !== idx))}>
+                <Trash2 className="size-4" />
+              </Button>
+            </div>
           </div>
         );
       })}
