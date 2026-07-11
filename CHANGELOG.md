@@ -3,7 +3,25 @@
 All notable, user-facing changes to iTrova are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); entries are grouped by ship date, newest first.
 
-## 2026-07-12 — Production auto‑costs your products
+## 2026-07-12 — Assets: track and depreciate your equipment
+
+A new **Assets** module for your fixed assets — with automatic depreciation that flows into your books.
+
+### Added
+- **Asset register** — record each item's **name, cost, year purchased** and a **depreciation rate**
+  (default **20%/year**). iTrova shows the **current value** (straight‑line: it loses 20% of its
+  original cost each year, reaching zero after 5).
+- **Run depreciation** — one click posts the depreciation to date into Accounting
+  (Dr Depreciation Expense / Cr Accumulated Depreciation). It's safe to run repeatedly — it never
+  double‑posts.
+- **Flows into your statements** — because Accounting reads the ledger, your **Balance Sheet** shows
+  fixed assets at **net book value** and your **Profit & Loss** shows the depreciation, automatically.
+
+### Notes
+- Assets is a **paid module** (enable per plan). Adding an asset also records its purchase against Cash
+  in the ledger. Depreciation posting needs your Accounting chart set up (open Accounting once).
+- **Migrations to apply (in order):** `20260721100000_fixed_assets.sql`, then
+  `20260721110000_assets_module.sql`.
 
 Stop guessing what a batch cost — iTrova now works it out for you.
 
