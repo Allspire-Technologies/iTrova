@@ -170,6 +170,96 @@ const INVITATIONS = [
   { id: "inv1", business_id: BIZ, email: "samuel@bloomprovisions.example", role: "cashier", token: "demo-token", invited_by: FAKE_USER.id, expires_at: "2026-07-13T00:00:00Z", accepted_at: null, accepted_by: null, created_at: iso("28") },
 ];
 
+// ---- Expenditure module: expenses + payroll ------------------------------------------------
+const EXPENSES = [
+  { id: "ex1", business_id: BIZ, expense_date: "2026-06-30", category: "Salaries", amount: 210000, payment_method: "transfer", payee: "June payroll", supplier_id: null, description: "Posted from payroll", status: "paid", due_date: null, paid_date: "2026-06-30", receipt_ref: null, tax_amount: 0, created_by: FAKE_USER.id, created_at: iso("30") },
+  { id: "ex2", business_id: BIZ, expense_date: "2026-06-05", category: "Rent", amount: 90000, payment_method: "transfer", payee: "Shop landlord", supplier_id: null, description: "Monthly shop rent", status: "paid", due_date: null, paid_date: "2026-06-05", receipt_ref: null, tax_amount: 0, created_by: FAKE_USER.id, created_at: iso("05") },
+  { id: "ex3", business_id: BIZ, expense_date: "2026-06-12", category: "Utilities", amount: 26500, payment_method: "cash", payee: "PHCN & water board", supplier_id: null, description: null, status: "paid", due_date: null, paid_date: "2026-06-12", receipt_ref: null, tax_amount: 0, created_by: STAFF_2, created_at: iso("12") },
+  { id: "ex4", business_id: BIZ, expense_date: "2026-06-18", category: "Transport", amount: 18000, payment_method: "cash", payee: "Dispatch rider", supplier_id: null, description: "Customer deliveries", status: "pending", due_date: "2026-07-05", paid_date: null, receipt_ref: null, tax_amount: 0, created_by: STAFF_2, created_at: iso("18") },
+  { id: "ex5", business_id: BIZ, expense_date: "2026-06-22", category: "Supplies", amount: 14500, payment_method: "transfer", payee: "Packaging Co", supplier_id: "sup3", description: "Nylon bags & cartons", status: "paid", due_date: null, paid_date: "2026-06-22", receipt_ref: null, tax_amount: 0, created_by: FAKE_USER.id, created_at: iso("22") },
+];
+
+const PAYROLL_EMPLOYEES = [
+  { id: "pe1", business_id: BIZ, name: "Emeka Nwosu", store_staff_id: "ss1", user_id: null, pay_type: "monthly", base_rate: 85000, bank_name: "GTBank", account_number: "0123456789", account_name: "Emeka Nwosu", notes: null, active: true, created_at: iso("06") },
+  { id: "pe2", business_id: BIZ, name: "Fatima Yusuf", store_staff_id: "ss2", user_id: null, pay_type: "monthly", base_rate: 70000, bank_name: "Access Bank", account_number: "0987654321", account_name: "Fatima Yusuf", notes: null, active: true, created_at: iso("07") },
+  { id: "pe3", business_id: BIZ, name: "David Eze", store_staff_id: null, user_id: STAFF_2, pay_type: "monthly", base_rate: 55000, bank_name: "Zenith Bank", account_number: "1122334455", account_name: "David Eze", notes: null, active: true, created_at: iso("08") },
+];
+
+const PAYROLL_RUNS = [
+  { id: "pr1", business_id: BIZ, period_label: "June 2026", period_start: "2026-06-01", period_end: "2026-06-30", pay_date: "2026-06-30", status: "posted", expense_id: "ex1", gross_total: 210000, deduction_total: 12500, net_total: 197500, notes: null, created_at: iso("30") },
+  { id: "pr2", business_id: BIZ, period_label: "May 2026", period_start: "2026-05-01", period_end: "2026-05-31", pay_date: "2026-05-31", status: "posted", expense_id: null, gross_total: 210000, deduction_total: 12500, net_total: 197500, notes: null, created_at: "2026-05-31T10:15:00Z" },
+];
+
+const PAYROLL_RUN_LINES = [
+  { id: "prl1", run_id: "pr1", employee_id: "pe1", employee_name: "Emeka Nwosu", gross_pay: 85000, deductions: [{ label: "PAYE", amount: 6500 }], deduction_total: 6500, net_pay: 78500, notes: null },
+  { id: "prl2", run_id: "pr1", employee_id: "pe2", employee_name: "Fatima Yusuf", gross_pay: 70000, deductions: [{ label: "PAYE", amount: 4000 }], deduction_total: 4000, net_pay: 66000, notes: null },
+  { id: "prl3", run_id: "pr1", employee_id: "pe3", employee_name: "David Eze", gross_pay: 55000, deductions: [{ label: "Pension", amount: 2000 }], deduction_total: 2000, net_pay: 53000, notes: null },
+];
+
+// ---- Assets module -------------------------------------------------------------------------
+const FIXED_ASSETS = [
+  { id: "fa1", business_id: BIZ, name: "Delivery Van", category: "Vehicle", cost: 4500000, year_purchased: 2024, depreciation_rate: 0.2, active: true, created_at: iso("01") },
+  { id: "fa2", business_id: BIZ, name: "Chest Freezer", category: "Equipment", cost: 850000, year_purchased: 2025, depreciation_rate: 0.2, active: true, created_at: iso("02") },
+  { id: "fa3", business_id: BIZ, name: "Shop Shelving", category: "Fixtures & fittings", cost: 320000, year_purchased: 2023, depreciation_rate: 0.2, active: true, created_at: iso("03") },
+  { id: "fa4", business_id: BIZ, name: "POS Laptop", category: "Equipment", cost: 480000, year_purchased: 2026, depreciation_rate: 0.25, active: true, created_at: iso("04") },
+];
+
+// ---- Accounting module: chart of accounts + a small balanced general ledger ----------------
+const ACCOUNTS = ([
+  ["ac-1000", "1000", "Cash", "asset"], ["ac-1010", "1010", "Bank", "asset"],
+  ["ac-1100", "1100", "Accounts Receivable", "asset"], ["ac-1200", "1200", "Inventory", "asset"],
+  ["ac-1500", "1500", "Fixed Assets", "asset"], ["ac-1590", "1590", "Accumulated Depreciation", "asset"],
+  ["ac-2000", "2000", "Accounts Payable", "liability"], ["ac-2100", "2100", "VAT Payable", "liability"],
+  ["ac-3000", "3000", "Owner's Capital", "equity"], ["ac-3100", "3100", "Retained Earnings", "equity"],
+  ["ac-3900", "3900", "Opening Balance Equity", "equity"], ["ac-4000", "4000", "Sales", "income"],
+  ["ac-5000", "5000", "Cost of Goods Sold", "expense"], ["ac-6000", "6000", "Operating Expenses", "expense"],
+  ["ac-6100", "6100", "Depreciation Expense", "expense"],
+] as const).map(([id, code, name, type], i) => ({ id, business_id: BIZ, code, name, type, is_system: true, active: true, created_at: iso("01", 8 + i) }));
+
+const ACCT_META: Record<string, { code: string; name: string; type: string }> =
+  Object.fromEntries(ACCOUNTS.map((a) => [a.id, { code: a.code, name: a.name, type: a.type }]));
+
+// Each entry balances (debits = credits). Line tuple = [account_id, debit, credit, description].
+const JOURNAL: { date: string; source: string; memo: string; lines: [string, number, number, string][] }[] = [
+  { date: "2026-06-01", source: "opening", memo: "Opening balances", lines: [
+    ["ac-1000", 150000, 0, "Opening cash"], ["ac-1010", 250000, 0, "Opening bank"],
+    ["ac-1200", 900000, 0, "Opening inventory"], ["ac-1500", 300000, 0, "Opening fixed assets"],
+    ["ac-3000", 0, 1600000, "Opening capital"]] },
+  { date: "2026-06-20", source: "sale", memo: "POS sales", lines: [
+    ["ac-1000", 1168000, 0, "Cash received"], ["ac-4000", 0, 1168000, "Sales"]] },
+  { date: "2026-06-20", source: "sale", memo: "Cost of goods sold", lines: [
+    ["ac-5000", 812000, 0, "Cost of goods sold"], ["ac-1200", 0, 812000, "Inventory sold"]] },
+  { date: "2026-06-24", source: "invoice", memo: "Invoice 260628-7 · Grace Catering", lines: [
+    ["ac-1100", 82000, 0, "Grace Catering"], ["ac-4000", 0, 82000, "Sales"]] },
+  { date: "2026-06-28", source: "payment", memo: "Payment · Grace Catering", lines: [
+    ["ac-1000", 40000, 0, "Part-payment received"], ["ac-1100", 0, 40000, "Grace Catering"]] },
+  { date: "2026-06-22", source: "purchase", memo: "Stock purchase", lines: [
+    ["ac-1200", 150000, 0, "Stock purchased"], ["ac-1000", 0, 150000, "Cash paid"]] },
+  { date: "2026-06-05", source: "expense", memo: "Rent", lines: [
+    ["ac-6000", 90000, 0, "Rent"], ["ac-1010", 0, 90000, "Bank"]] },
+  { date: "2026-06-12", source: "expense", memo: "Utilities", lines: [
+    ["ac-6000", 26500, 0, "Utilities"], ["ac-1000", 0, 26500, "Cash"]] },
+  { date: "2026-06-18", source: "expense", memo: "Transport", lines: [
+    ["ac-6000", 18000, 0, "Transport"], ["ac-1000", 0, 18000, "Cash"]] },
+  { date: "2026-06-30", source: "payroll", memo: "Salaries · June 2026", lines: [
+    ["ac-6000", 210000, 0, "Salaries"], ["ac-1000", 0, 210000, "Cash"]] },
+  { date: "2026-06-30", source: "manual", memo: "Depreciation to date", lines: [
+    ["ac-6100", 12000, 0, "Depreciation"], ["ac-1590", 0, 12000, "Accumulated depreciation"]] },
+];
+
+const JOURNAL_ENTRIES = JOURNAL.map((e, i) => ({
+  id: `je-${i + 1}`, business_id: BIZ, entry_date: e.date, memo: e.memo, source: e.source, source_id: null,
+  created_at: `${e.date}T${String(8 + i).padStart(2, "0")}:00:00Z`,
+  journal_lines: e.lines.map(([account_id, debit, credit, description], j) => ({
+    id: `je-${i + 1}-l${j}`, account_id, debit, credit, description, accounts: ACCT_META[account_id],
+  })),
+}));
+
+// Flat journal lines (P&L / Balance Sheet / Cash Flow / Trial Balance), each carrying its entry.
+const JOURNAL_LINES = JOURNAL.flatMap((e) => e.lines.map(([account_id, debit, credit, description]) => ({
+  account_id, debit, credit, description, journal_entries: { entry_date: e.date, source: e.source },
+})));
+
 function fulfill(route: Route, body: unknown, headers: Record<string, string> = {}) {
   return route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify(body) });
 }
@@ -219,11 +309,33 @@ export async function seedDemo(page: Page) {
     return arrayOrObject(r, PROFILES);
   });
   await page.route("**/rest/v1/rpc/get_member_emails**", (r) => fulfill(r, MEMBER_EMAILS));
+  // Expenditure + Payroll modules.
+  await page.route("**/rest/v1/expenses**", (r) => fulfill(r, EXPENSES));
+  await page.route("**/rest/v1/payroll_employees**", (r) => fulfill(r, PAYROLL_EMPLOYEES));
+  await page.route("**/rest/v1/payroll_runs**", (r) => fulfill(r, PAYROLL_RUNS));
+  await page.route("**/rest/v1/payroll_run_lines**", (r) => fulfill(r, PAYROLL_RUN_LINES));
+  // Assets module.
+  await page.route("**/rest/v1/fixed_assets**", (r) => fulfill(r, FIXED_ASSETS));
+  // Accounting module: chart of accounts + general ledger. The statements all read journal_lines;
+  // the P&L's "previous period" call (an older lte with a description select) gets a scaled-down copy
+  // so the comparison column shows realistic growth rather than a flat 0%.
+  await page.route("**/rest/v1/rpc/ensure_chart_of_accounts**", (r) => fulfill(r, {}));
+  await page.route("**/rest/v1/accounts**", (r) => fulfill(r, ACCOUNTS));
+  await page.route("**/rest/v1/journal_entries**", (r) => fulfill(r, JOURNAL_ENTRIES));
+  await page.route("**/rest/v1/journal_lines**", (r) => {
+    const url = r.request().url();
+    const lte = url.match(/entry_date=lte\.(\d{4}-\d{2}-\d{2})/);
+    const isPrevPeriod = url.includes("description") && lte && Date.parse(lte[1]) < Date.now() - 20 * 86_400_000;
+    const lines = isPrevPeriod
+      ? JOURNAL_LINES.map((l) => ({ ...l, debit: Math.round(l.debit * 0.85), credit: Math.round(l.credit * 0.85) }))
+      : JOURNAL_LINES;
+    return fulfill(r, lines);
+  });
   // Generous (unlimited) limits + all modules so no buttons are disabled / hidden in screenshots.
   await page.route("**/rest/v1/plans**", (r) => fulfill(r, [
     {
       key: "free", name: "Free", is_active: true, sort_order: 0,
-      modules: ["inventory", "pos", "suppliers", "raw_materials", "purchase_orders", "invoices", "export_invoices", "general_store", "reports", "team", "production", "csv_import", "csv_export"],
+      modules: ["inventory", "pos", "suppliers", "raw_materials", "purchase_orders", "invoices", "export_invoices", "general_store", "expenditure", "accounting", "assets", "reports", "team", "production", "csv_import", "csv_export"],
       limits: { inventory: null, suppliers: null, invoices: null, team: null, raw_materials: null, purchase_orders: null },
       prices: [],
     },
