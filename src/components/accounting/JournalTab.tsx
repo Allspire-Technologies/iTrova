@@ -140,11 +140,13 @@ export default function JournalTab({ from, to, canManage }: { from: string; to: 
             </div>
             <div className="space-y-2">
               {lines.map((l) => (
-                <div key={l.key} className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2">
+                <div key={l.key} className="rounded-lg border border-border/60 p-2 space-y-2 sm:border-0 sm:p-0 sm:space-y-0 sm:grid sm:grid-cols-[1fr_auto_auto_auto] sm:items-center sm:gap-2">
                   <SearchableSelect value={l.account_id} onValueChange={v => patch(l.key, { account_id: v })} placeholder="Select account" options={accountOptions} className="w-full" />
-                  <Input type="number" min="0" step="0.01" value={l.debit} onChange={e => patch(l.key, { debit: e.target.value, credit: e.target.value ? "" : l.credit })} placeholder="Debit" className="w-28" aria-label="Debit" />
-                  <Input type="number" min="0" step="0.01" value={l.credit} onChange={e => patch(l.key, { credit: e.target.value, debit: e.target.value ? "" : l.debit })} placeholder="Credit" className="w-28" aria-label="Credit" />
-                  <Button variant="ghost" size="icon" className="size-8" onClick={() => setLines(ls => ls.filter(x => x.key !== l.key))} aria-label="Remove line"><X className="size-4" /></Button>
+                  <div className="flex items-center gap-2 sm:contents">
+                    <Input type="number" min="0" step="0.01" value={l.debit} onChange={e => patch(l.key, { debit: e.target.value, credit: e.target.value ? "" : l.credit })} placeholder="Debit" className="flex-1 sm:w-28" aria-label="Debit" />
+                    <Input type="number" min="0" step="0.01" value={l.credit} onChange={e => patch(l.key, { credit: e.target.value, debit: e.target.value ? "" : l.debit })} placeholder="Credit" className="flex-1 sm:w-28" aria-label="Credit" />
+                    <Button variant="ghost" size="icon" className="size-8 shrink-0" onClick={() => setLines(ls => ls.filter(x => x.key !== l.key))} aria-label="Remove line"><X className="size-4" /></Button>
+                  </div>
                 </div>
               ))}
               <Button type="button" variant="outline" size="sm" onClick={() => setLines(ls => [...ls, { key: uid(), account_id: "", debit: "", credit: "" }])}><Plus className="size-3.5" /> Add line</Button>

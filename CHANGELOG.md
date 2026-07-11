@@ -3,6 +3,16 @@
 All notable, user-facing changes to iTrova are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); entries are grouped by ship date, newest first.
 
+## 2026-07-12 — Mobile polish for dense forms & lists
+
+### Changed
+- **Record production, New purchase order and New journal entry** forms now stack neatly on phones —
+  each line puts the item on its own row with the amounts side‑by‑side, instead of squeezing into one
+  cramped row.
+- **Landed‑costs** rows (freight/duty) stack cleanly on mobile (no more collapsed name field).
+- **Purchase Orders** list: the mobile card reads better (formatted dates, clearer total) and its
+  action buttons no longer clip; the filters go full‑width on phones.
+
 ## 2026-07-12 — Production: add shipping/transport to a batch's cost
 
 ### Added

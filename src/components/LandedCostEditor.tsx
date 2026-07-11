@@ -38,25 +38,27 @@ export function LandedCostEditor({ value, onChange, fmt, showBasis = false }: {
   return (
     <div className="space-y-2">
       {value.map((r, i) => (
-        <div key={i} className="flex items-center gap-2">
-          <Input className="flex-1" placeholder="Cost name (e.g. Clearing)" value={r.label} onChange={e => set(i, { label: e.target.value })} />
-          {showBasis && (
-            <SearchableSelect
-              className="w-32 shrink-0"
-              value={r.basis ?? "value"}
-              onValueChange={(v) => set(i, { basis: v as LandedBasis })}
-              options={BASIS_OPTIONS}
+        <div key={i} className="rounded-lg border border-border/60 p-2 space-y-2 sm:border-0 sm:p-0 sm:space-y-0 sm:flex sm:items-center sm:gap-2">
+          <Input className="w-full sm:flex-1" placeholder="Cost name (e.g. Clearing)" value={r.label} onChange={e => set(i, { label: e.target.value })} />
+          <div className="flex items-center gap-2 sm:contents">
+            {showBasis && (
+              <SearchableSelect
+                className="flex-1 sm:w-32 sm:shrink-0"
+                value={r.basis ?? "value"}
+                onValueChange={(v) => set(i, { basis: v as LandedBasis })}
+                options={BASIS_OPTIONS}
+              />
+            )}
+            <Input
+              className="flex-1 sm:w-28 sm:shrink-0" type="number" min="0" step="0.01" placeholder="0"
+              aria-label={`${r.label || "Landed cost"} amount`}
+              value={r.amount} onChange={e => set(i, { amount: e.target.value })}
             />
-          )}
-          <Input
-            className="w-28 shrink-0" type="number" min="0" step="0.01" placeholder="0"
-            aria-label={`${r.label || "Landed cost"} amount`}
-            value={r.amount} onChange={e => set(i, { amount: e.target.value })}
-          />
-          <Button variant="ghost" size="icon" className="shrink-0 text-muted-foreground hover:text-destructive"
-            aria-label={`Remove ${r.label || "cost"}`} onClick={() => onChange(value.filter((_, idx) => idx !== i))}>
-            <Trash2 className="size-4" />
-          </Button>
+            <Button variant="ghost" size="icon" className="shrink-0 text-muted-foreground hover:text-destructive"
+              aria-label={`Remove ${r.label || "cost"}`} onClick={() => onChange(value.filter((_, idx) => idx !== i))}>
+              <Trash2 className="size-4" />
+            </Button>
+          </div>
         </div>
       ))}
       <div className="flex items-center justify-between gap-2">
