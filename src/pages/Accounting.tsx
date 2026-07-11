@@ -8,6 +8,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import DatePicker from "@/components/DatePicker";
 import CashFlowTab from "@/components/accounting/CashFlowTab";
 import BalanceSheetTab from "@/components/accounting/BalanceSheetTab";
+import JournalTab from "@/components/accounting/JournalTab";
+import TrialBalanceTab from "@/components/accounting/TrialBalanceTab";
 import { TablePageSkeleton } from "@/components/Skeletons";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -41,9 +43,10 @@ export default function Accounting() {
   const { business, can, role } = useAuth();
   const { fmt } = useCurrency();
   const canExport = can("accounting", "export");
+  const canManage = can("accounting", "manage");
   const isOwner = role === "owner";
 
-  const [tab, setTab] = useState<"pnl" | "balance" | "cashflow">("pnl");
+  const [tab, setTab] = useState<"pnl" | "balance" | "cashflow" | "journal" | "trialbalance">("pnl");
   const [from, setFrom] = useState(daysAgo(30));
   const [to, setTo] = useState(todayStr());
   const [loading, setLoading] = useState(true);
@@ -166,7 +169,10 @@ export default function Accounting() {
     <span className={cn("tabular-nums", n < 0 && "text-muted-foreground")}>{n < 0 ? `(${fmt(Math.abs(n))})` : fmt(n)}</span>
   );
 
-  const TABS = [{ k: "pnl", l: "Profit & Loss" }, { k: "balance", l: "Balance Sheet" }, { k: "cashflow", l: "Cash Flow" }] as const;
+  const TABS = [
+    { k: "pnl", l: "Profit & Loss" }, { k: "balance", l: "Balance Sheet" }, { k: "cashflow", l: "Cash Flow" },
+    { k: "journal", l: "Journal" }, { k: "trialbalance", l: "Trial Balance" },
+  ] as const;
 
   return (
     <div className="space-y-6 w-full">
@@ -211,6 +217,8 @@ export default function Accounting() {
 
       {tab === "cashflow" && <CashFlowTab from={from} to={to} canExport={canExport} />}
       {tab === "balance" && <BalanceSheetTab canExport={canExport} isOwner={isOwner} />}
+      {tab === "journal" && <JournalTab from={from} to={to} canManage={canManage} />}
+      {tab === "trialbalance" && <TrialBalanceTab from={from} to={to} canManage={canManage} canExport={canExport} />}
 
       {tab === "pnl" && (loading ? <TablePageSkeleton /> : <>
       {/* Accuracy hint when sold items have no recorded cost */}
