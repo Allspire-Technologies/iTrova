@@ -3,6 +3,26 @@
 All notable, user-facing changes to iTrova are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); entries are grouped by ship date, newest first.
 
+## 2026-07-11 — Accounting v2: more of your activity posts itself
+
+The ledger now builds itself from more of your day‑to‑day, not just sales.
+
+### Added
+- **Expenses auto‑post** — every expense (including **payroll salaries**) posts a journal: the cost to
+  Operating Expenses, input VAT to VAT Payable, and the credit to Cash (if paid) or Accounts Payable
+  (if it's a pending bill).
+- **Invoices & payments auto‑post** — issuing a manual invoice records the money owed (Accounts
+  Receivable) and the sale; recording a payment moves it from receivable to Cash.
+- **Stays in sync** — editing, marking‑paid, voiding or deleting any of these updates the ledger
+  automatically, so the Journal and Trial Balance keep matching your records.
+
+### Notes
+- Posting is completely safe — a ledger issue can never block saving an expense, invoice or payment,
+  and nothing posts until you've set up your chart of accounts.
+- Still to come: purchases/stock, and switching the Profit & Loss / Balance Sheet / Cash Flow to read
+  from the ledger so they tie exactly.
+- **Migration to apply:** `20260718100000_ledger_autopost_expenses_ar.sql`.
+
 ## 2026-07-11 — Accounting v2: General Ledger (foundation)
 
 Real double‑entry bookkeeping under the hood, so your books can actually tie out.
