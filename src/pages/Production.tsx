@@ -25,14 +25,15 @@ import {
   REQUISITION_STATUS_LABEL, REQUISITION_STATUS_CLASS,
   type Requisition, type Run,
 } from "@/lib/production";
+import { outputUnitCosts } from "@/lib/productionCost";
 
 // Recipes (product↔material links) live on the Raw Materials page ("Link to product"); Production
 // itself is just the Request → Run → Inventory mechanism.
 const TABS = [{ key: "requests", label: "Requests" }, { key: "runs", label: "Runs" }] as const;
 type TabKey = (typeof TABS)[number]["key"];
 
-type MaterialRow = { id: string; name: string; unit: string | null; stock_quantity: number };
-type ProductRow = { id: string; name: string; unit: string | null; cost_price: number | null };
+type MaterialRow = { id: string; name: string; unit: string | null; stock_quantity: number; cost_per_unit: number | null };
+type ProductRow = { id: string; name: string; unit: string | null; cost_price: number | null; selling_price: number | null };
 type QtyLine = { key_id: string; quantity: string; waste?: string; cost?: string; issued?: string };
 
 export default function Production() {
@@ -59,6 +60,7 @@ export default function Production() {
   const [runOutputs, setRunOutputs] = useState<QtyLine[]>([{ key_id: "", quantity: "" }]);
   const [runMaterials, setRunMaterials] = useState<QtyLine[]>([]);
   const [runNotes, setRunNotes] = useState("");
+  const [labourOverhead, setLabourOverhead] = useState("");
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -66,8 +68,8 @@ export default function Production() {
     try {
       const [req, rn, mat, prod] = await Promise.all([
         listRequisitions(), listRuns(),
-        supabase.from("raw_materials").select("id,name,unit,stock_quantity").order("name"),
-        supabase.from("products").select("id,name,unit,cost_price").order("name"),
+        supabase.from("raw_materials").select("id,name,unit,stock_quantity,cost_per_unit").order("name"),
+        supabase.from("products").select("id,name,unit,cost_price,selling_price").order("name"),
       ]);
       setRequisitions(req); setRuns(rn);
       setMaterials((mat.data as MaterialRow[]) ?? []);
@@ -84,6 +86,19 @@ export default function Production() {
   const matName = (id: string) => materials.find(m => m.id === id)?.name ?? "Material";
   const matUnit = (id: string) => materials.find(m => m.id === id)?.unit || "";
   const approvedReqs = useMemo(() => requisitions.filter(r => r.status === "approved"), [requisitions]);
+
+  // Live auto-cost per output: (materials used+wasted × cost) + labour/overhead, allocated by selling value.
+  const runUnitCosts = useMemo(() => {
+    const mats = runMaterials.filter(l => l.key_id).map(l => {
+      const m = materials.find(x => x.id === l.key_id);
+      return { quantity_used: Number(l.quantity) || 0, quantity_wasted: Number(l.waste) || 0, cost_per_unit: m?.cost_per_unit ?? 0 };
+    });
+    const outs = runOutputs.map(l => {
+      const p = products.find(x => x.id === l.key_id);
+      return { quantity: Number(l.quantity) || 0, selling_price: p?.selling_price ?? 0, cost_price_override: (l.cost != null && l.cost !== "") ? Number(l.cost) : null };
+    });
+    return outputUnitCosts(outs, mats, Number(labourOverhead) || 0);
+  }, [runMaterials, runOutputs, labourOverhead, materials, products]);
 
   // The trail shown on a request: what was actually issued (when reduced at approval) and — once
   // production ran against it — which raw materials the run consumed.
@@ -168,6 +183,7 @@ export default function Production() {
     setRunReq(id);
     setRunOutputs([{ key_id: "", quantity: "" }]);
     setRunNotes("");
+    setLabourOverhead("");
     setRunMaterials(materialsFromReq(id));
     setRunOpen(true);
   };
@@ -200,6 +216,7 @@ export default function Production() {
         outputs,
         materials: mats,
         notes: runNotes,
+        labourOverhead: Number(labourOverhead) || 0,
       });
       toast.success("Production recorded — product stock updated");
       setRunOpen(false);
@@ -332,7 +349,7 @@ export default function Production() {
             />
             <Input
               type="number" min="0" step="any" className="w-24"
-              placeholder={prod && prod.cost_price != null ? String(prod.cost_price) : "Cost"}
+              placeholder={runUnitCosts[idx] ? String(runUnitCosts[idx]) : (prod && prod.cost_price != null ? String(prod.cost_price) : "Cost")}
               aria-label={`Product cost price ${idx + 1}`}
               value={l.cost ?? ""}
               onChange={(e) => setRunOutputs(prev => prev.map((x, i) => i === idx ? { ...x, cost: e.target.value } : x))}
@@ -349,6 +366,7 @@ export default function Production() {
       <Button variant="outline" size="sm" onClick={() => setRunOutputs(prev => [...prev, { key_id: "", quantity: "" }])}>
         <Plus className="size-4" /> Add line
       </Button>
+      <p className="px-1 text-xs text-muted-foreground">Cost/unit is auto-calculated from the materials used (+ waste) and any labour/overhead, split across products by selling value. Type a figure to override.</p>
     </div>
   );
 
@@ -558,12 +576,16 @@ export default function Production() {
               <p className="text-xs text-muted-foreground">Production is recorded against the materials issued for an approved request.</p>
             </div>
             <div className="space-y-2">
-              <Label>Products produced * <span className="font-normal text-muted-foreground">(set a cost/unit to update the product's cost price; leave blank to keep it)</span></Label>
+              <Label>Products produced * <span className="font-normal text-muted-foreground">(cost/unit auto-calculated from inputs; type to override)</span></Label>
               {runOutputsEditor()}
             </div>
             <div className="space-y-2">
               <Label>Materials used &amp; wasted <span className="font-normal text-muted-foreground">(issued amounts prefilled — adjust to what was actually used, and record any waste; leftovers restock automatically)</span></Label>
               {runMaterialsEditor()}
+            </div>
+            <div className="space-y-2 max-w-[12rem]">
+              <Label>Labour / overhead <span className="font-normal text-muted-foreground">(optional)</span></Label>
+              <Input type="number" min="0" step="any" placeholder="0" value={labourOverhead} onChange={(e) => setLabourOverhead(e.target.value)} aria-label="Labour and overhead" />
             </div>
             <div className="space-y-2">
               <Label>Notes <span className="font-normal text-muted-foreground">(optional)</span></Label>
