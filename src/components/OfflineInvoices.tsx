@@ -14,7 +14,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { downloadPdf } from "@/lib/pdf";
-import { buildReceiptHtml } from "@/lib/receipt";
+import { buildReceiptHtml, formatPayments } from "@/lib/receipt";
 import { invoiceFallbackNumber } from "@/lib/invoiceNumber";
 import {
   applyLocalPaymentDelta, discardPaymentReview, discardReviewSale, enqueueInvoice, enqueuePayment,
@@ -187,6 +187,10 @@ export function OfflineInvoices() {
     toast.success("Offline invoice updated.");
   };
 
+  // The payment breakdown for a queued sale — the per-method legs, or the single method for rows
+  // queued before split payment shipped.
+  const rowPayments = (r: Row) => (r.payments?.length ? r.payments : r.paymentMethod ? [{ method: r.paymentMethod, amount: Number(r.total) }] : []);
+
   // Print = open a printable receipt window (mirrors the online "Print"). Download = save a PDF.
   const printReceipt = (r: Row) => {
     const html = buildReceiptHtml({
@@ -202,6 +206,7 @@ export function OfflineInvoices() {
       tin: business?.tin ?? null,
       total: Number(r.total),
       paid: true,
+      payments: rowPayments(r),
       formatMoney: fmt,
     });
     const w = window.open("", "_blank", "width=360,height=640");
@@ -222,6 +227,7 @@ export function OfflineInvoices() {
       party: { name: r.customerName || "Walk-in Customer", phone: r.customerPhone ?? null, email: r.customerEmail ?? null },
       items: r.items.map((i) => ({ description: i.name, quantity: Number(i.quantity), unit_price: Number(i.unit_price), line_total: Number(i.quantity) * Number(i.unit_price) })),
       subtotal: Number(r.subtotal), discount: Number(r.discount) || 0, tax: Number(r.tax) || 0, total: Number(r.total),
+      payments: rowPayments(r),
       formatMoney: fmt,
       notes: r.notes ?? null,
     }, `${r.invoiceNumber}.pdf`);
@@ -381,6 +387,7 @@ export function OfflineInvoices() {
                 <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{fmt(viewing.subtotal)}</span></div>
                 {viewing.discount > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Discount</span><span>−{fmt(viewing.discount)}</span></div>}
                 <div className="flex justify-between font-semibold text-brand-dark"><span>Total</span><span>{fmt(viewing.total)}</span></div>
+                {rowPayments(viewing).length > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Payment</span><span>{formatPayments(rowPayments(viewing), fmt)}</span></div>}
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => printReceipt(viewing)}><Printer className="size-4" /> Print</Button>

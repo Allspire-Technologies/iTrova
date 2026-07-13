@@ -49,6 +49,16 @@ test.describe("Invoices", () => {
     await expect(page.getByRole("button", { name: "Export CSV" })).toHaveCount(0);
   });
 
+  test("shows the split payment methods on a POS invoice's view", async ({ page }) => {
+    await authenticate(page, { role: "owner" });
+    await stubRows(page, "invoices", [paidInvoice]); // sale_id: sale-1 → payment from sale_payments
+    await page.route("**/rest/v1/sale_payments**", (r) =>
+      r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([{ method: "cash", amount: 15000 }, { method: "transfer", amount: 10000 }]) }));
+    await page.goto("/invoices");
+    await page.getByRole("button", { name: "View" }).click();
+    await expect(page.getByText(/Payment: Cash .* Transfer/)).toBeVisible();
+  });
+
   test("any user can print a paid invoice receipt", async ({ page }) => {
     await authenticate(page, { role: "cashier" });
     await stubRows(page, "invoices", [paidInvoice]);
