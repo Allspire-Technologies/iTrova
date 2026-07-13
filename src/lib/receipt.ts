@@ -4,6 +4,11 @@ export interface ReceiptItem {
   line_total: number;
 }
 
+export interface ReceiptPayment {
+  method: string;
+  amount: number;
+}
+
 export interface ReceiptData {
   businessName: string;
   docNumber: string;
@@ -17,12 +22,29 @@ export interface ReceiptData {
   tin?: string | null;       // business Tax ID, printed under the name when present
   total: number;
   paid?: boolean;
+  payments?: ReceiptPayment[]; // payment method(s) — one leg per method; itemised when split
   formatMoney: (n: number) => string;
   widthMm?: number;
   footer?: string;
 }
 
 const DEFAULT_WIDTH_MM = 80;
+
+/** Friendly labels for the built-in POS payment methods; unknown keys pass through unchanged. */
+export const PAYMENT_LABELS: Record<string, string> = { cash: "Cash", transfer: "Transfer", pos: "POS Terminal" };
+export function paymentLabel(id: string): string { return PAYMENT_LABELS[id] ?? id; }
+
+/** A one-line payment summary: the method name when single, or "Cash ₦5,000 · Transfer ₦3,000" when split. */
+export function formatPayments(
+  payments: ReceiptPayment[] | undefined,
+  fmt: (n: number) => string,
+  fallbackMethod?: string,
+): string {
+  const pays = payments && payments.length ? payments : fallbackMethod ? [{ method: fallbackMethod, amount: 0 }] : [];
+  if (!pays.length) return "";
+  if (pays.length === 1) return paymentLabel(pays[0].method);
+  return pays.map((p) => `${paymentLabel(p.method)} ${fmt(p.amount)}`).join(" · ");
+}
 
 function escapeHtml(value: unknown): string {
   return String(value).replace(
@@ -57,6 +79,12 @@ export function buildReceiptHtml(r: ReceiptData): string {
   const taxHtml = hasTax
     ? `<div class="row"><span class="name">VAT</span><span class="amt">${money(r.tax as number)}</span></div>`
     : "";
+  const payments = r.payments ?? [];
+  const paymentHtml = payments.length > 1
+    ? payments.map((p) => `<div class="row"><span class="name">${escapeHtml(paymentLabel(p.method))}</span><span class="amt">${money(p.amount)}</span></div>`).join("")
+    : payments.length === 1
+      ? `<div class="meta">Paid via ${escapeHtml(paymentLabel(payments[0].method))}</div>`
+      : "";
   const paidBadge = r.paid ? `<div class="paid">*** PAID ***</div>` : "";
   const tinHtml = r.tin ? `<div class="muted">TIN: ${escapeHtml(r.tin)}</div>` : "";
   const customerHtml = r.customerName ? `<div class="meta">Customer: ${escapeHtml(r.customerName)}</div>` : "";
@@ -92,6 +120,7 @@ ${subtotalHtml}
 ${discountHtml}
 ${taxHtml}
 <div class="row total"><span class="name">TOTAL</span><span class="amt">${money(r.total)}</span></div>
+${paymentHtml}
 ${paidBadge}
 <div class="foot">${servedHtml}${footer}</div>
 <script>window.onload=function(){window.print();setTimeout(function(){window.close()},300)}</script>

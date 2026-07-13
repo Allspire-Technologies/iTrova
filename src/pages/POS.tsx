@@ -17,6 +17,7 @@ import Paginator, { usePagination } from "@/components/Paginator";
 import { invoiceFallbackNumber } from "@/lib/invoiceNumber";
 import { listTaxes, productRate, summariseCart, type Tax } from "@/lib/tax";
 import { buildReceiptMessage } from "@/lib/whatsapp";
+import { formatPayments } from "@/lib/receipt";
 import WhatsAppShareDialog from "@/components/WhatsAppShareDialog";
 import { POSSkeleton } from "@/components/Skeletons";
 import ConfirmDialog from "@/components/ConfirmDialog";
@@ -24,7 +25,7 @@ import { summarizeHeldSale, heldItemsPreview, parseHeldSales, serializeHeldSales
 import { useOnline } from "@/contexts/OnlineContext";
 import { cacheProducts, readCachedProducts, applyLocalStockDelta, enqueueSale, countPending, listReviewSales, retryReviewSale, discardReviewSale, getLastSync, setLastSync, cacheTaxes, readCachedTaxes } from "@/lib/offlineStore";
 import { drainQueue } from "@/lib/offlineSync";
-import type { ReviewSale } from "@/lib/offlineTypes";
+import type { ReviewSale, SalePayment } from "@/lib/offlineTypes";
 
 type Product = { id: string; name: string; sku: string | null; selling_price: number; stock_quantity: number; reorder_level: number; category: string | null; tax_id?: string | null };
 type CartItem = { product: Product; qty: number };
@@ -47,9 +48,11 @@ export default function POS() {
   const [q, setQ] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [method, setMethod] = useState("cash");
+  const [splitOn, setSplitOn] = useState(false); // optional multi-method payment
+  const [splitAmounts, setSplitAmounts] = useState<Record<string, string>>({});
   const [discount, setDiscount] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [receipt, setReceipt] = useState<{ total: number; discount: number; tax: number; inclusive: boolean; items: CartItem[]; method: string; number?: string | null } | null>(null);
+  const [receipt, setReceipt] = useState<{ total: number; discount: number; tax: number; inclusive: boolean; items: CartItem[]; method: string; payments: SalePayment[]; number?: string | null } | null>(null);
   const taxEnabled = !!business?.tax_enabled;
   const inclusive = business?.prices_include_tax !== false;
   const [taxes, setTaxes] = useState<Tax[]>([]);
@@ -260,6 +263,19 @@ export default function POS() {
   const taxTotal = taxInfo.taxTotal;
   const total = taxInfo.total;
 
+  // Split payment (optional): amounts entered per method must sum to the total.
+  const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+  const methodLabel = (id: string) => methods.find(m => m.id === id)?.label ?? id;
+  const splitPayments: SalePayment[] = methods
+    .map(m => ({ method: m.id, amount: round2(Number(splitAmounts[m.id]) || 0) }))
+    .filter(p => p.amount > 0);
+  const splitPaid = round2(splitPayments.reduce((s, p) => s + p.amount, 0));
+  const splitRemaining = round2(total - splitPaid);
+  const splitValid = !splitOn || (splitPayments.length > 0 && Math.abs(splitRemaining) < 0.005);
+  const salePayments = (): SalePayment[] => (splitOn ? splitPayments : [{ method, amount: round2(total) }]);
+  const summaryMethod = splitOn ? (splitPayments.length > 1 ? "split" : (splitPayments[0]?.method ?? method)) : method;
+  const resetPayment = () => { setSplitOn(false); setSplitAmounts({}); };
+
   const checkout = async () => {
     if (!business || cart.length === 0) return;
     setBusy(true);
@@ -270,17 +286,19 @@ export default function POS() {
       const items = cart.map(i => ({ product_id: i.product.id, name: i.product.name, quantity: i.qty, unit_price: Number(i.product.selling_price) }));
       const invoiceNumber = invoiceFallbackNumber();
       try {
+        const pays = salePayments();
         await enqueueSale({
           saleId: newId(), invoiceId: newId(), invoiceNumber,
           businessId: business.id, staffId: user?.id ?? null,
-          createdAt: new Date().toISOString(), paymentMethod: method,
+          createdAt: new Date().toISOString(), paymentMethod: summaryMethod, payments: pays,
           discount, subtotal, tax: taxTotal, total, customerName: "Walk-in Customer",
           items, status: "pending", attempts: 0,
         });
         await applyLocalStockDelta(business.id, items);
-        setReceipt({ total, discount, tax: taxTotal, inclusive, items: [...cart], method, number: invoiceNumber });
+        setReceipt({ total, discount, tax: taxTotal, inclusive, items: [...cart], method: summaryMethod, payments: pays, number: invoiceNumber });
         setCart([]);
         setDiscount(0);
+        resetPayment();
         await refreshQueues();
         toast.success("Sale saved offline — it will sync when you're back online.");
       } catch {
@@ -303,7 +321,8 @@ export default function POS() {
       business_id: business.id,
       staff_id: user?.id ?? null,
       created_at: new Date().toISOString(),
-      payment_method: method,
+      payment_method: summaryMethod,
+      payments: salePayments(),
       discount,
       subtotal,
       tax: taxTotal,
@@ -324,9 +343,10 @@ export default function POS() {
       return;
     }
 
-    setReceipt({ total, discount, tax: taxTotal, inclusive, items: [...cart], method, number: (data as { invoice_number?: string } | null)?.invoice_number ?? null });
+    setReceipt({ total, discount, tax: taxTotal, inclusive, items: [...cart], method: summaryMethod, payments: salePayments(), number: (data as { invoice_number?: string } | null)?.invoice_number ?? null });
     setCart([]);
     setDiscount(0);
+    resetPayment();
     load();
   };
 
@@ -335,7 +355,7 @@ export default function POS() {
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
     const { data: todaySales, error } = await supabase
       .from("sales")
-      .select("id,total_amount,payment_method,sale_items(product_id,quantity,products(name))")
+      .select("id,total_amount,payment_method,sale_payments(method,amount),sale_items(product_id,quantity,products(name))")
       .eq("business_id", business.id)
       .eq("voided", false)
       .gte("created_at", todayStart.toISOString());
@@ -347,8 +367,15 @@ export default function POS() {
     let total = 0;
     for (const s of todaySales as any[]) {
       total += Number(s.total_amount);
-      const m = s.payment_method || "other";
-      byMethod[m] = (byMethod[m] || 0) + Number(s.total_amount);
+      // Attribute each method its own amount from sale_payments; fall back to the single method for
+      // legacy sales that have no breakdown rows.
+      const pays = (s.sale_payments || []) as { method: string; amount: number }[];
+      if (pays.length > 0) {
+        for (const p of pays) { const m = p.method || "other"; byMethod[m] = (byMethod[m] || 0) + Number(p.amount); }
+      } else {
+        const m = s.payment_method || "other";
+        byMethod[m] = (byMethod[m] || 0) + Number(s.total_amount);
+      }
       for (const si of s.sale_items || []) {
         const pid = si.product_id;
         const name = si.products?.name || "Unknown";
@@ -422,22 +449,50 @@ export default function POS() {
             />
           </div>
         )}
-        <div className="space-y-1">
-          <div className="text-xs uppercase tracking-wider text-muted-foreground">Payment method</div>
-          <div className="grid grid-cols-3 gap-2">
-            {methods.map(m => (
-              <button
-                key={m.id}
-                onClick={() => setMethod(m.id)}
-                className={`p-2.5 rounded-lg border text-xs font-medium transition-all flex flex-col items-center gap-1 ${
-                  method === m.id ? "bg-brand text-brand-foreground border-brand shadow-brand" : "bg-card border-border hover:border-brand/40"
-                }`}
-              >
-                <m.icon className="size-4" />
-                {m.label}
-              </button>
-            ))}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <div className="text-xs uppercase tracking-wider text-muted-foreground">Payment method</div>
+            <button type="button" onClick={() => { setSplitOn(v => !v); setSplitAmounts({}); }} className={`text-xs font-medium transition-colors ${splitOn ? "text-brand" : "text-muted-foreground hover:text-brand"}`}>
+              {splitOn ? "Single payment" : "Split payment"}
+            </button>
           </div>
+          {!splitOn ? (
+            <div className="grid grid-cols-3 gap-2">
+              {methods.map(m => (
+                <button
+                  key={m.id}
+                  onClick={() => setMethod(m.id)}
+                  className={`p-2.5 rounded-lg border text-xs font-medium transition-all flex flex-col items-center gap-1 ${
+                    method === m.id ? "bg-brand text-brand-foreground border-brand shadow-brand" : "bg-card border-border hover:border-brand/40"
+                  }`}
+                >
+                  <m.icon className="size-4" />
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {methods.map(m => (
+                <div key={m.id} className="flex items-center gap-2">
+                  <div className="flex w-28 shrink-0 items-center gap-1.5 text-sm text-muted-foreground"><m.icon className="size-4" /> {m.label}</div>
+                  <Input
+                    type="number" min="0" step="0.01" placeholder="0"
+                    value={splitAmounts[m.id] ?? ""}
+                    onChange={e => setSplitAmounts(a => ({ ...a, [m.id]: e.target.value }))}
+                    className="h-8 flex-1 text-sm"
+                    aria-label={`${m.label} amount`}
+                  />
+                </div>
+              ))}
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">{splitRemaining < -0.005 ? "Over by" : "Remaining"}</span>
+                <span className={`font-medium ${splitValid ? "text-brand" : splitRemaining < -0.005 ? "text-danger" : "text-muted-foreground"}`}>
+                  {fmt(Math.abs(splitRemaining))}{splitValid ? " ✓" : ""}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="pt-2 border-t border-border/60 space-y-1">
@@ -465,7 +520,7 @@ export default function POS() {
           </div>
         </div>
 
-        <Button variant="hero" size="lg" className="w-full" disabled={cart.length === 0 || busy} onClick={checkout}>
+        <Button variant="hero" size="lg" className="w-full" disabled={cart.length === 0 || busy || !splitValid} onClick={checkout}>
           {busy ? "Processing..." : "Complete sale"}
         </Button>
       </div>
@@ -757,7 +812,7 @@ export default function POS() {
                 <hr/>
                 ${receipt.tax > 0 ? `<div class="row"><span>Subtotal</span><span>${fmt(receipt.total - receipt.tax)}</span></div><div class="row"><span>VAT${receipt.inclusive ? " (incl.)" : ""}</span><span>${fmt(receipt.tax)}</span></div>` : ""}
                 <div class="row total"><span>TOTAL</span><span>${fmt(receipt.total)}</span></div>
-                <div class="muted">Paid via ${receipt.method}</div>
+                <div class="muted">Paid via ${formatPayments(receipt.payments, fmt, receipt.method)}</div>
                 <div class="foot">${profile?.owner_name ? `Served by ${profile.owner_name}<br/>` : ""}Thank you for your patronage</div>
                 <script>window.onload=()=>{window.print();setTimeout(()=>window.close(),300)}</script>
               </body></html>`;
@@ -774,7 +829,7 @@ export default function POS() {
                 subtotal: receiptSubtotal,
                 discount: receipt.discount,
                 total: receipt.total,
-                method: receipt.method,
+                method: formatPayments(receipt.payments, fmt, receipt.method),
                 servedBy: profile?.owner_name,
                 fmt,
               }),
@@ -789,7 +844,7 @@ export default function POS() {
                       {fmt(receiptSubtotal)} − {fmt(receipt.discount)} discount
                     </div>
                   )}
-                  <div className="text-sm text-muted-foreground capitalize mt-1">paid via {receipt.method}</div>
+                  <div className="text-sm text-muted-foreground mt-1">Paid via {formatPayments(receipt.payments, fmt, receipt.method)}</div>
                 </div>
                 <div className="border-t border-dashed border-border pt-3 space-y-1.5 text-sm max-h-48 overflow-y-auto">
                   {receipt.items.map(i => (

@@ -79,6 +79,25 @@ describe("syncOne", () => {
     expect(await listQueuedSales(BIZ)).toHaveLength(0);
   });
 
+  it("forwards the split-payment breakdown to the commit RPC", async () => {
+    const split = { ...sale("1"), paymentMethod: "split", payments: [{ method: "cash", amount: 60 }, { method: "transfer", amount: 40 }] };
+    await enqueueSale(split);
+    rpc.mockResolvedValue({ data: { status: "committed" }, error: null });
+    await syncOne(split);
+    const [, args] = rpc.mock.calls[0];
+    expect(args._sale.payment_method).toBe("split");
+    expect(args._sale.payments).toEqual([{ method: "cash", amount: 60 }, { method: "transfer", amount: 40 }]);
+  });
+
+  it("sends payments as null for a legacy single-method sale", async () => {
+    await enqueueSale(sale("1"));
+    rpc.mockResolvedValue({ data: { status: "committed" }, error: null });
+    await syncOne(sale("1"));
+    const [, args] = rpc.mock.calls[0];
+    expect(args._sale.payments).toBeNull();
+    expect(args._sale.payment_method).toBe("cash");
+  });
+
   it("treats a duplicate (ack-loss) as success and removes it", async () => {
     await enqueueSale(sale("1"));
     rpc.mockResolvedValue({ data: { status: "duplicate" }, error: null });

@@ -20,6 +20,12 @@ export interface QueuedSaleItem {
   unit_price: number;
 }
 
+/** One leg of a (possibly split) payment — the method and the amount paid via it. */
+export interface SalePayment {
+  method: string;
+  amount: number;
+}
+
 export type QueuedSaleStatus = "pending" | "syncing" | "failed";
 
 export interface QueuedSale {
@@ -29,7 +35,8 @@ export interface QueuedSale {
   businessId: string;
   staffId: string | null;
   createdAt: string; // ISO; becomes sales.created_at + invoice issue/created
-  paymentMethod: string;
+  paymentMethod: string; // summary method (single method, or "split"); see `payments` for the breakdown
+  payments?: SalePayment[]; // one leg per method (optional: sales queued before this shipped have none)
   discount: number;
   subtotal: number;
   tax?: number; // VAT captured offline (optional: sales queued before this shipped default to 0)
