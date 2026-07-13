@@ -4,18 +4,22 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useDateFormat } from "@/hooks/useDateFormat";
-import { TrendingUp, Package, AlertTriangle, ShoppingBag, Sparkles, FileText, Clock, ArrowUpRight, ArrowDownRight, Receipt } from "lucide-react";
+import { TrendingUp, Package, AlertTriangle, ShoppingBag, Sparkles, FileText, Clock, ArrowUpRight, ArrowDownRight, Receipt, Wallet } from "lucide-react";
 import { DashboardSkeleton } from "@/components/Skeletons";
-import { ResponsiveContainer, AreaChart, Area, XAxis, Tooltip, BarChart, Bar, Cell, YAxis } from "recharts";
+import { ResponsiveContainer, AreaChart, Area, XAxis, Tooltip, BarChart, Bar, Cell, YAxis, PieChart, Pie } from "recharts";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import Paginator, { usePagination } from "@/components/Paginator";
 import OnboardingDialog from "@/components/OnboardingDialog";
-import { outOfStockProducts, lowStockProducts, totalStockUnits as sumStockUnits } from "@/lib/reportMetrics";
+import { outOfStockProducts, lowStockProducts, totalStockUnits as sumStockUnits, type PaymentMethodRow } from "@/lib/reportMetrics";
+import { paymentLabel } from "@/lib/receipt";
 import { useOnline } from "@/contexts/OnlineContext";
 import { cacheDashboard, readCachedDashboard } from "@/lib/offlineStore";
 import { fetchDashboardSnapshot, type DashSnap, type DashProduct as Product, type DashTopProduct as TopProduct, type DashActivityEntry as ActivityEntry } from "@/lib/dashboardSnapshot";
+
+// Donut slice colours for the payment-methods breakdown — brand shades, cycled.
+const PAY_COLORS = ["hsl(var(--brand))", "hsl(var(--brand) / 0.6)", "hsl(var(--brand) / 0.35)", "hsl(var(--muted-foreground) / 0.55)"];
 
 export default function Dashboard() {
   const { business, profile, role, user } = useAuth();
@@ -31,6 +35,7 @@ export default function Dashboard() {
   const [topProducts, setTopProducts] = useState<TopProduct[]>([]);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [vatThisMonth, setVatThisMonth] = useState(0);
+  const [payments, setPayments] = useState<PaymentMethodRow[]>([]);
   const [activityOpen, setActivityOpen] = useState(false);
   const showOnboarding = !!profile && profile.onboarded === false && role === "owner";
 
@@ -52,6 +57,7 @@ export default function Dashboard() {
         setTodaySales(snap.todaySales); setSalesCount(snap.salesCount); setProducts(snap.products);
         setOpenInvoices(snap.openInvoices); setTrend(snap.trend); setTopProducts(snap.topProducts); setActivity(snap.activity);
         setVatThisMonth(snap.vatThisMonth ?? 0);
+        setPayments(snap.payments ?? []);
       }
       setLoading(false);
       return;
@@ -61,6 +67,7 @@ export default function Dashboard() {
       setTodaySales(snap.todaySales); setSalesCount(snap.salesCount); setProducts(snap.products);
       setOpenInvoices(snap.openInvoices); setTrend(snap.trend); setTopProducts(snap.topProducts); setActivity(snap.activity);
       setVatThisMonth(snap.vatThisMonth);
+      setPayments(snap.payments);
       setLoading(false);
       void cacheDashboard(business.id, snap); // read-only snapshot for offline
     }
@@ -292,6 +299,45 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Payment methods this month */}
+      {payments.length > 0 && (
+        <Card className="shadow-card border-border/60">
+          <CardHeader>
+            <CardTitle className="font-display text-lg flex items-center gap-2">
+              <Wallet className="size-4 text-brand" /> Payment methods <span className="text-xs font-normal text-muted-foreground">· this month</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col items-center gap-4 sm:flex-row">
+              <div className="h-44 w-full sm:w-1/2">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={payments} dataKey="total" nameKey="method" innerRadius={42} outerRadius={68} paddingAngle={2}>
+                      {payments.map((_, i) => <Cell key={i} fill={PAY_COLORS[i % PAY_COLORS.length]} />)}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 12, fontSize: 12 }}
+                      formatter={(v: number, n) => [fmt(v), paymentLabel(String(n))]}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="w-full space-y-2 sm:w-1/2">
+                {payments.map((r, i) => (
+                  <div key={r.method} className="flex items-center justify-between gap-2 text-sm">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="size-2.5 shrink-0 rounded-full" style={{ background: PAY_COLORS[i % PAY_COLORS.length] }} />
+                      <span className="truncate">{paymentLabel(r.method)}</span>
+                    </span>
+                    <span className="shrink-0 tabular-nums"><span className="font-medium text-brand-dark">{fmt(r.total)}</span> <span className="text-muted-foreground">· {r.pct}%</span></span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Activity feed + AI teaser */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">

@@ -116,6 +116,28 @@ export function staffRevenue(
   return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue);
 }
 
+export interface PaymentMethodRow {
+  method: string;
+  total: number;
+  pct: number; // share of the total, 1 dp
+}
+
+/** Money collected per payment method, highest first. Takes per-method amount lines (from
+ *  sale_payments), so a split sale contributes to each of its methods. `pct` is the share of the
+ *  grand total (0 when nothing was collected). */
+export function paymentMethodBreakdown(lines: { method: string; amount: number }[]): PaymentMethodRow[] {
+  const map = new Map<string, number>();
+  for (const l of lines) {
+    const m = (l.method || "other").trim() || "other";
+    map.set(m, (map.get(m) ?? 0) + (Number(l.amount) || 0));
+  }
+  const total = [...map.values()].reduce((s, v) => s + v, 0);
+  return [...map.entries()]
+    .map(([method, amt]) => ({ method, total: amt, pct: total > 0 ? Math.round((amt / total) * 1000) / 10 : 0 }))
+    .filter((r) => r.total !== 0)
+    .sort((a, b) => b.total - a.total);
+}
+
 export interface TurnoverRow {
   name: string;
   sold: number;

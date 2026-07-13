@@ -7,7 +7,8 @@ import DatePicker from "@/components/DatePicker";
 import { Label } from "@/components/ui/label";
 import { useCurrency } from "@/hooks/useCurrency";
 import { Download, TrendingUp, ShoppingCart, Package, AlertTriangle, Truck, Users, ArrowUpRight, ArrowDownRight, ChevronLeft, ChevronRight, Wallet, Receipt } from "lucide-react";
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, AreaChart, Area, CartesianGrid } from "recharts";
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, AreaChart, Area, CartesianGrid, PieChart, Pie, Cell } from "recharts";
+import { paymentLabel } from "@/lib/receipt";
 import { toast } from "sonner";
 import { ReportsChartSkeleton } from "@/components/Skeletons";
 import {
@@ -20,6 +21,7 @@ import {
   staffRevenue,
   productTurnover,
   supplierSpendRows as supplierSpendRowsOf,
+  paymentMethodBreakdown,
 } from "@/lib/reportMetrics";
 import { netProfit, fetchExpensesForReport } from "@/lib/expenditure";
 
@@ -30,6 +32,9 @@ type MatPurchase = { supplier_id: string | null; total_cost: number; created_at:
 type Supplier = { id: string; name: string };
 
 function isoDate(d: Date) { return d.toISOString().slice(0, 10); }
+
+// Donut slice colours for the payment-methods breakdown — brand shades, cycled.
+const PAY_COLORS = ["hsl(var(--brand))", "hsl(var(--brand) / 0.6)", "hsl(var(--brand) / 0.35)", "hsl(var(--muted-foreground) / 0.55)"];
 
 export default function Reports() {
   const { business, hasModule } = useAuth();
@@ -51,6 +56,7 @@ export default function Reports() {
   const [prevExpensesTotal, setPrevExpensesTotal] = useState(0);
   const [inputVatTotal, setInputVatTotal] = useState(0);
   const [procurementVatTotal, setProcurementVatTotal] = useState(0); // input VAT from material purchases + received POs
+  const [paymentLines, setPaymentLines] = useState<{ method: string; amount: number }[]>([]); // per-method legs (sale_payments) in the window
   const [outOfStockPage, setOutOfStockPage] = useState(1);
   const [lowStockPage, setLowStockPage] = useState(1);
   const [turnoverPage, setTurnoverPage] = useState(1);
@@ -66,7 +72,7 @@ export default function Reports() {
       const prevToIso = new Date(new Date(fromIso).getTime() - 1).toISOString();
       const prevFromIso = new Date(new Date(prevToIso).getTime() - periodMs).toISOString();
 
-      const [s, p, pr, mp, sup, prevS, prof, po, exp] = await Promise.all([
+      const [s, p, pr, mp, sup, prevS, prof, po, exp, sp] = await Promise.all([
         supabase.from("sales").select("id,total_amount,created_at,staff_id,tax_amount").eq("business_id", business.id).eq("voided", false).gte("created_at", fromIso).lte("created_at", toIso),
         supabase.from("products").select("id,name,stock_quantity,reorder_level,cost_price,selling_price,tax_id").eq("business_id", business.id),
         // Only the items whose sale falls in the report window (previous period start → current
@@ -87,6 +93,10 @@ export default function Reports() {
         supabase.from("purchase_orders").select("tax_amount,created_at").eq("business_id", business.id).eq("status", "received").gte("created_at", fromIso).lte("created_at", toIso),
         // Expenses across both periods (by expense_date); split in memory for the Net-profit change.
         showExpenses ? fetchExpensesForReport(business.id, prevFromIso.slice(0, 10), to) : Promise.resolve([]),
+        // Payment legs for sales in the window (one row per method) — powers the payment-methods card.
+        // sale_payments postdates the generated types, so cast the client.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (supabase as any).from("sale_payments").select("method,amount,sales!inner(id)").eq("sales.business_id", business.id).eq("sales.voided", false).gte("sales.created_at", fromIso).lte("sales.created_at", toIso),
       ]);
 
       if (s.error) { toast.error("Failed to load sales data"); setLoading(false); return; }
@@ -122,6 +132,8 @@ export default function Reports() {
       const matVat = ((mp.data as unknown as MatPurchase[]) || []).reduce((t, m) => t + Number(m.tax_amount || 0), 0);
       const poVat = ((po.data as unknown as { tax_amount: number }[]) || []).reduce((t, o) => t + Number(o.tax_amount || 0), 0);
       setProcurementVatTotal(matVat + poVat);
+
+      setPaymentLines((((sp as { data?: unknown }).data ?? []) as Record<string, unknown>[]).map(r => ({ method: String(r.method), amount: Number(r.amount) })));
 
       setLoading(false);
     })();
@@ -160,6 +172,7 @@ export default function Reports() {
   );
 
   const byStaff = useMemo(() => staffRevenue(sales, staffProfiles), [sales, staffProfiles]);
+  const payMethods = useMemo(() => paymentMethodBreakdown(paymentLines), [paymentLines]);
 
   const turnover = useMemo(() => productTurnover(saleItems, products), [saleItems, products]);
 
@@ -286,6 +299,21 @@ export default function Reports() {
         styles: { fontSize: 10, cellPadding: 6 },
         headStyles: { fillColor: [30, 41, 59], textColor: 255 },
         columnStyles: { 1: { halign: "right" } },
+        margin: { left: M, right: M },
+      });
+    }
+
+    if (payMethods.length > 0) {
+      // @ts-expect-error lastAutoTable
+      y = doc.lastAutoTable.finalY + 20;
+      doc.setFont("helvetica", "bold").setFontSize(12).text("Payment methods", M, y);
+      autoTable(doc, {
+        startY: y + 8,
+        head: [["Method", "Amount", "Share"]],
+        body: payMethods.map(r => [paymentLabel(r.method), fmt(r.total), `${r.pct}%`]),
+        styles: { fontSize: 10, cellPadding: 6 },
+        headStyles: { fillColor: [30, 41, 59], textColor: 255 },
+        columnStyles: { 1: { halign: "right" }, 2: { halign: "right" } },
         margin: { left: M, right: M },
       });
     }
@@ -526,6 +554,44 @@ export default function Reports() {
                     </table>
                     <CardPager page={turnoverPage} pageCount={Math.ceil(turnover.length / PAGE_SIZE)} onPage={setTurnoverPage} />
                   </>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card className="shadow-card border-border/60">
+              <CardHeader><CardTitle className="font-display text-lg flex items-center gap-2"><Wallet className="size-4 text-brand" /> Payment methods</CardTitle></CardHeader>
+              <CardContent>
+                {payMethods.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No sales in this period.</p>
+                ) : (
+                  <div className="flex flex-col items-center gap-4 sm:flex-row">
+                    <div className="h-48 w-full sm:w-1/2">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie data={payMethods} dataKey="total" nameKey="method" innerRadius={45} outerRadius={72} paddingAngle={2}>
+                            {payMethods.map((_, i) => <Cell key={i} fill={PAY_COLORS[i % PAY_COLORS.length]} />)}
+                          </Pie>
+                          <Tooltip
+                            contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 12, fontSize: 12 }}
+                            formatter={(v: number, n) => [fmt(v), paymentLabel(String(n))]}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="w-full space-y-2 sm:w-1/2">
+                      {payMethods.map((r, i) => (
+                        <div key={r.method} className="flex items-center justify-between gap-2 text-sm">
+                          <span className="flex min-w-0 items-center gap-2">
+                            <span className="size-2.5 shrink-0 rounded-full" style={{ background: PAY_COLORS[i % PAY_COLORS.length] }} />
+                            <span className="truncate">{paymentLabel(r.method)}</span>
+                          </span>
+                          <span className="shrink-0 tabular-nums"><span className="font-medium">{fmt(r.total)}</span> <span className="text-muted-foreground">· {r.pct}%</span></span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 )}
               </CardContent>
             </Card>
