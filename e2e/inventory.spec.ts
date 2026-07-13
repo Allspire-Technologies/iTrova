@@ -102,6 +102,45 @@ test.describe("Inventory", () => {
     await expect(page.getByText(/Duplicate SKU/i)).toBeVisible();
   });
 
+  test("adjust stock: reasons follow the direction, and Other needs a required Specify field", async ({ page }) => {
+    let body: Record<string, unknown> | null = null;
+    await page.route("**/rest/v1/stock_adjustments**", (r) => {
+      if (r.request().method() === "POST") { body = r.request().postDataJSON(); return r.fulfill({ status: 201, contentType: "application/json", body: "[]" }); }
+      return r.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+    });
+
+    await page.locator("table").getByRole("button", { name: "Adjust" }).first().click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+
+    // Remove (default) shows product-remove reasons; the add-only reason is absent.
+    await dialog.getByRole("combobox").click();
+    await expect(page.getByRole("option", { name: "Internal use / samples" })).toBeVisible();
+    await expect(page.getByRole("option", { name: "Customer return" })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+
+    // Switch to Add → the reason list changes (Customer return appears, remove-only reason gone).
+    await dialog.getByRole("button", { name: "Add", exact: true }).click();
+    await dialog.getByRole("combobox").click();
+    await expect(page.getByRole("option", { name: "Customer return" })).toBeVisible();
+    await expect(page.getByRole("option", { name: "Internal use / samples" })).toHaveCount(0);
+    await page.getByRole("option", { name: "Other" }).click();
+
+    // Other reveals a required Specify field — Save stays disabled until it's filled.
+    await dialog.locator('input[type="number"]').fill("5");
+    await expect(dialog.getByText("Specify reason")).toBeVisible();
+    const save = dialog.getByRole("button", { name: "Save adjustment" });
+    await expect(save).toBeDisabled();
+    await dialog.getByPlaceholder("Type the reason for this adjustment").fill("Given to staff");
+    await expect(save).toBeEnabled();
+    await save.click();
+
+    await expect(page.getByText(/Stock adjusted/)).toBeVisible();
+    expect(body).not.toBeNull();
+    expect(body!.reason).toBe("Given to staff"); // the typed text is stored as the reason, not "Other"
+    expect(body!.delta).toBe(5);
+  });
+
   test("shows a progress bar while the import is writing rows", async ({ page }) => {
     // Hold the insert open so the progress dialog is observable, then let it complete.
     await page.route("**/rest/v1/products**", async (route) => {
