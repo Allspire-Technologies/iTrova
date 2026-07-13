@@ -13,13 +13,15 @@ const RESOURCE_MODULE: Record<PlanResource, string> = {
   staff:          "team",
 };
 
-const FREE_LIMITS: Record<PlanResource, number> = {
-  products:       100,
-  suppliers:       10,
-  rawMaterials:    50,
-  purchaseOrders:  50,
-  invoices:      300,
-  staff:            3,
+// The Free tier's caps come from the DB (plans.limits) and load into `registry` at startup. These are
+// only the fallback used before that loads (and for an unknown tier), so keep them matching the DB
+// Free plan — and only for the resources Free is actually limited on. Free's other modules (suppliers,
+// raw materials, purchase orders) aren't included in the plan, so they carry no cap here (modules and
+// limits stay aligned).
+const FREE_LIMITS: Partial<Record<PlanResource, number>> = {
+  products:  25,
+  invoices:  50,
+  staff:      3,
 };
 
 const RESOURCE_LABELS: Record<PlanResource, string> = {
@@ -49,7 +51,7 @@ export function getLimit(tier: string | null | undefined, resource: PlanResource
       : undefined;
     if (v !== undefined) return v == null ? null : Number(v);
   }
-  if (!tier || tier === "free") return FREE_LIMITS[resource];
+  if (!tier || tier === "free") return FREE_LIMITS[resource] ?? null;
   return null;
 }
 
@@ -59,9 +61,9 @@ export function isAtLimit(count: number, tier: string | null | undefined, resour
   return limit !== null && count >= limit;
 }
 
-/** Human-readable message to show when a limit is hit. */
+/** Human-readable message to show when a limit is hit — the number comes from the DB-driven cap. */
 export function limitMessage(resource: PlanResource): string {
-  const limit = FREE_LIMITS[resource];
+  const limit = getLimit("free", resource);
   const label = RESOURCE_LABELS[resource];
   return `Free plan limit reached (${limit} ${label}). Upgrade to Pro to add more.`;
 }

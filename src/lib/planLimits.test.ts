@@ -3,9 +3,13 @@ import { getLimit, isAtLimit, limitMessage, registerPlanLimits } from "./planLim
 
 describe("getLimit", () => {
   it("returns the free cap for free/unset tiers", () => {
-    expect(getLimit("free", "products")).toBe(100);
-    expect(getLimit(null, "products")).toBe(100);
+    expect(getLimit("free", "products")).toBe(25);
+    expect(getLimit(null, "products")).toBe(25);
     expect(getLimit(undefined, "staff")).toBe(3);
+  });
+  it("is unlimited for resources Free's plan doesn't include (no module = no cap)", () => {
+    expect(getLimit("free", "suppliers")).toBeNull();
+    expect(getLimit("free", "purchaseOrders")).toBeNull();
   });
   it("returns null (unlimited) for paid tiers", () => {
     expect(getLimit("pro", "products")).toBeNull();
@@ -15,11 +19,11 @@ describe("getLimit", () => {
 
 describe("isAtLimit", () => {
   it("is true at or over the cap on free", () => {
-    expect(isAtLimit(100, "free", "products")).toBe(true);
-    expect(isAtLimit(101, "free", "products")).toBe(true);
+    expect(isAtLimit(25, "free", "products")).toBe(true);
+    expect(isAtLimit(26, "free", "products")).toBe(true);
   });
   it("is false below the cap", () => {
-    expect(isAtLimit(99, "free", "products")).toBe(false);
+    expect(isAtLimit(24, "free", "products")).toBe(false);
   });
   it("is always false on paid tiers", () => {
     expect(isAtLimit(99_999, "pro", "products")).toBe(false);
@@ -29,7 +33,7 @@ describe("isAtLimit", () => {
 describe("limitMessage", () => {
   it("mentions the cap and the resource label", () => {
     const msg = limitMessage("products");
-    expect(msg).toContain("100");
+    expect(msg).toContain("25");
     expect(msg).toContain("products");
   });
 });
