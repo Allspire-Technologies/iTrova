@@ -76,6 +76,8 @@ test.describe("Tax v1 — input VAT on procurement", () => {
 
     await page.goto("/invoices");
     await page.locator("table").getByRole("button", { name: "Print", exact: true }).click();
+    // printReceipt is async (loads items + payment breakdown before writing the window) — wait for it.
+    await page.waitForFunction(() => (window as unknown as { __receipt: string }).__receipt.length > 0);
     const html = await page.evaluate(() => (window as unknown as { __receipt: string }).__receipt);
     expect(html).toContain("VAT");
     expect(html).toContain("TIN: 12345678-0001");
