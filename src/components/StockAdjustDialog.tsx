@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,15 +10,33 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Minus, Plus } from "lucide-react";
 
+type Kind = "product" | "raw_material";
+type Direction = "add" | "remove";
+
 type Target = {
-  kind: "product" | "raw_material";
+  kind: Kind;
   id: string;
   name: string;
   unit?: string | null;
   stock_quantity: number;
 };
 
-const reasons = ["Damage / breakage", "Loss / theft", "Recount correction", "Customer return", "Production use", "Other"];
+const OTHER = "Other";
+
+// Reasons are tailored to what you're doing (Add vs Remove) and to the item type (finished products
+// vs raw materials). "Other" reveals a required Specify field; its text is stored as the reason.
+const REASONS: Record<Kind, Record<Direction, string[]>> = {
+  product: {
+    remove: ["Damage / breakage", "Expired / spoiled", "Loss / theft", "Wastage", "Internal use / samples", "Recount correction", OTHER],
+    add: ["New stock received", "Customer return", "Found stock", "Supplier bonus / free stock", "Recount correction", OTHER],
+  },
+  raw_material: {
+    remove: ["Damage / breakage", "Expired / spoiled", "Loss / theft", "Wastage", "Production use", "Returned to supplier", "Recount correction", OTHER],
+    add: ["New stock received", "Returned from production", "Found stock", "Supplier bonus / free stock", "Recount correction", OTHER],
+  },
+};
+
+const optionsFor = (kind: Kind | undefined, dir: Direction) => REASONS[kind ?? "product"][dir];
 
 export default function StockAdjustDialog({
   target,
@@ -32,18 +50,32 @@ export default function StockAdjustDialog({
   onSaved: () => void;
 }) {
   const { business, user } = useAuth();
-  const [direction, setDirection] = useState<"add" | "remove">("remove");
+  const [direction, setDirection] = useState<Direction>("remove");
   const [qty, setQty] = useState<string>("");
-  const [reason, setReason] = useState(reasons[0]);
+  const [reason, setReason] = useState(optionsFor("product", "remove")[0]);
+  const [specify, setSpecify] = useState("");
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const reset = () => { setDirection("remove"); setQty(""); setReason(reasons[0]); setNotes(""); };
+  const options = optionsFor(target?.kind, direction);
+  const isOther = reason === OTHER;
+
+  // Keep the selected reason valid for the current direction × item type — some reasons (Recount
+  // correction, Other) exist in both lists, so keep those; otherwise snap to the first option.
+  useEffect(() => {
+    if (!open) return;
+    setReason((r) => (options.includes(r) ? r : options[0]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, direction, target?.kind]);
+
+  const reset = () => { setDirection("remove"); setQty(""); setReason(optionsFor("product", "remove")[0]); setSpecify(""); setNotes(""); };
 
   const save = async () => {
     if (!target || !business) return;
     const n = Number(qty);
     if (!n || n <= 0) return toast.error("Enter a positive quantity");
+    const finalReason = isOther ? specify.trim() : reason;
+    if (isOther && !finalReason) return toast.error("Please specify the reason");
     const delta = direction === "add" ? n : -n;
     const newStock = Number(target.stock_quantity) + delta;
     if (newStock < 0) return toast.error("Not enough stock");
@@ -53,7 +85,7 @@ export default function StockAdjustDialog({
       product_id: target.kind === "product" ? target.id : null,
       raw_material_id: target.kind === "raw_material" ? target.id : null,
       delta,
-      reason,
+      reason: finalReason,
       notes: notes || null,
       user_id: user?.id,
     });
@@ -92,16 +124,22 @@ export default function StockAdjustDialog({
             <Label>Reason</Label>
             <Select value={reason} onValueChange={setReason}>
               <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>{reasons.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
+              <SelectContent>{options.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
             </Select>
           </div>
+          {isOther && (
+            <div className="space-y-2">
+              <Label>Specify reason</Label>
+              <Input value={specify} onChange={(e) => setSpecify(e.target.value)} placeholder="Type the reason for this adjustment" autoFocus />
+            </div>
+          )}
           <div className="space-y-2">
             <Label>Notes (optional)</Label>
             <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything to remember about this adjustment" />
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button variant="brand" onClick={save} disabled={busy}>{busy ? "Saving..." : "Save adjustment"}</Button>
+            <Button variant="brand" onClick={save} disabled={busy || (isOther && !specify.trim())}>{busy ? "Saving..." : "Save adjustment"}</Button>
           </DialogFooter>
         </div>
       </DialogContent>
