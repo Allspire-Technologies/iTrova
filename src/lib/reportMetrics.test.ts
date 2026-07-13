@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  paymentMethodBreakdown,
   salesRevenue,
   unitsSold,
   computeCogs,
@@ -136,5 +137,31 @@ describe("supplier spend", () => {
       { name: "Olu Farms", total: 150 },
       { name: "Unknown", total: 30 },
     ]);
+  });
+});
+
+describe("paymentMethodBreakdown", () => {
+  it("groups amounts by method, sorts by total desc, and computes the share", () => {
+    const rows = paymentMethodBreakdown([
+      { method: "cash", amount: 6000 },
+      { method: "transfer", amount: 3000 },
+      { method: "cash", amount: 1000 },
+    ]);
+    expect(rows).toEqual([
+      { method: "cash", total: 7000, pct: 70 },
+      { method: "transfer", total: 3000, pct: 30 },
+    ]);
+    expect(rows.reduce((s, r) => s + r.pct, 0)).toBeCloseTo(100, 5);
+  });
+
+  it("handles a split sale contributing to each of its methods", () => {
+    const rows = paymentMethodBreakdown([{ method: "cash", amount: 5000 }, { method: "transfer", amount: 3500 }]);
+    expect(rows.map((r) => r.method)).toEqual(["cash", "transfer"]);
+    expect(rows[0].total).toBe(5000);
+  });
+
+  it("returns empty for no lines and skips zero-total methods", () => {
+    expect(paymentMethodBreakdown([])).toEqual([]);
+    expect(paymentMethodBreakdown([{ method: "cash", amount: 0 }])).toEqual([]);
   });
 });

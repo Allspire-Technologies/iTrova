@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import { salesRevenue } from "@/lib/reportMetrics";
+import { salesRevenue, paymentMethodBreakdown, type PaymentMethodRow } from "@/lib/reportMetrics";
 
 // Builds the read-only Dashboard snapshot from the same queries the Dashboard page runs.
 // Shared so the page (online render) and the offline pre-warm cache identical data — no drift.
@@ -11,6 +11,7 @@ export type DashSnap = {
   todaySales: number; salesCount: number; products: DashProduct[]; openInvoices: number;
   trend: { day: string; total: number }[]; topProducts: DashTopProduct[]; activity: DashActivityEntry[];
   vatThisMonth: number;
+  payments: PaymentMethodRow[]; // money collected per method, this calendar month
 };
 
 type Sale = { id: string; total_amount: number; created_at: string };
@@ -29,6 +30,7 @@ export async function fetchDashboardSnapshot(): Promise<DashSnap> {
     { data: activityLog },
     { data: profs },
     { data: monthSales },
+    { data: monthPayments },
   ] = await Promise.all([
     supabase.from("sales").select("id,total_amount,created_at").eq("voided", false).gte("created_at", since.toISOString()),
     supabase.from("products").select("id,name,stock_quantity,reorder_level,selling_price").order("created_at", { ascending: false }),
@@ -38,7 +40,13 @@ export async function fetchDashboardSnapshot(): Promise<DashSnap> {
     supabase.from("activity_log").select("id,created_at,summary,actor_name").order("created_at", { ascending: false }).limit(50),
     supabase.from("profiles").select("id, owner_name"),
     supabase.from("sales").select("tax_amount").eq("voided", false).gte("created_at", monthStart.toISOString()),
+    // sale_payments postdates the generated types → cast the client.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any).from("sale_payments").select("method,amount,sales!inner(id)").eq("sales.voided", false).gte("sales.created_at", monthStart.toISOString()),
   ]);
+
+  // Money collected per payment method this month (one row per method, split-aware).
+  const payments = paymentMethodBreakdown((((monthPayments as unknown) as Record<string, unknown>[] | null ?? [])).map(r => ({ method: String(r.method), amount: Number(r.amount) })));
 
   // Output VAT collected this calendar month (tax_amount postdates generated types).
   const vatThisMonth = ((monthSales as unknown as { tax_amount: number | null }[] | null) ?? [])
@@ -107,5 +115,6 @@ export async function fetchDashboardSnapshot(): Promise<DashSnap> {
     topProducts,
     activity,
     vatThisMonth,
+    payments,
   };
 }
