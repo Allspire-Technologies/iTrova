@@ -115,11 +115,38 @@ test.describe("Point of Sale", () => {
     const sale = rpcPayloads[0]._sale;
     expect(sale.items).toEqual([{ product_id: "prod-1", name: "Garri 50kg", quantity: 1, unit_price: 8500 }]);
     expect(sale.total).toBe(8500);
+    expect(sale.payment_method).toBe("cash");
+    expect(sale.payments).toEqual([{ method: "cash", amount: 8500 }]); // single method → one payment leg
     expect(sale.invoice_number).toBeUndefined(); // sequential number is assigned server-side
     expect(tableWrites).toEqual([]);
 
     await page.keyboard.press("Escape"); // close the receipt
     await expect(page.getByText("Cart is empty")).toBeVisible();
+  });
+
+  test("split payment: amounts must sum to the total, and the breakdown reaches the RPC", async ({ page }) => {
+    const rpcPayloads: any[] = [];
+    await page.route("**/rest/v1/rpc/commit_pos_sale**", (r) => {
+      rpcPayloads.push(r.request().postDataJSON());
+      return r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "committed", sale_id: "s-1", invoice_number: "INV-0043" }) });
+    });
+
+    await page.getByRole("button", { name: /Garri 50kg/ }).click(); // total 8,500
+    await page.getByRole("button", { name: "Split payment" }).click();
+
+    const complete = page.getByRole("button", { name: "Complete sale" });
+    await page.getByLabel("Cash amount").fill("5000");
+    await expect(complete).toBeDisabled(); // ₦3,500 remaining
+    await page.getByLabel("Transfer amount").fill("3500");
+    await expect(complete).toBeEnabled(); // sums to the total
+
+    await complete.click();
+    await expect(page.getByText("Sale Complete")).toBeVisible();
+    expect(rpcPayloads).toHaveLength(1);
+    const sale = rpcPayloads[0]._sale;
+    expect(sale.payment_method).toBe("split");
+    expect(sale.payments).toEqual([{ method: "cash", amount: 5000 }, { method: "transfer", amount: 3500 }]);
+    await expect(page.getByText(/Paid via Cash .* Transfer/)).toBeVisible(); // receipt shows the split
   });
 
   test("oversell rejection from the RPC surfaces the friendly stock toast", async ({ page }) => {

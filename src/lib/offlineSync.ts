@@ -29,6 +29,7 @@ function toPayload(s: QueuedSale) {
     staff_id: s.staffId,
     created_at: s.createdAt,
     payment_method: s.paymentMethod,
+    payments: s.payments ?? null, // per-method breakdown; RPC falls back to payment_method when null
     discount: s.discount,
     subtotal: s.subtotal,
     tax: s.tax ?? 0, // sales queued before offline VAT shipped default to 0
