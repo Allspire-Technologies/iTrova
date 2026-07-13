@@ -17,7 +17,8 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { Plus, Search, FileText, Trash2, Download, Eye, MessageCircle, Pencil, Mail, ArrowUp, ArrowDown, ArrowUpDown, Printer, MoreHorizontal, Wallet, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { downloadPdf } from "@/lib/pdf";
-import { buildReceiptHtml } from "@/lib/receipt";
+import { buildReceiptHtml, formatPayments, type ReceiptPayment } from "@/lib/receipt";
+import { invoicePaymentBreakdown } from "@/lib/invoicePayments";
 import { toCsv, downloadCsv } from "@/lib/csv";
 import { invoiceFallbackNumber } from "@/lib/invoiceNumber";
 import { buildInvoiceMessage, toWaNumber, isValidWaNumber, waLink } from "@/lib/whatsapp";
@@ -70,6 +71,7 @@ export default function Invoices() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [open, setOpen] = useState(false);
   const [viewing, setViewing] = useState<Invoice | null>(null);
+  const [viewPayments, setViewPayments] = useState<ReceiptPayment[]>([]); // payment-method breakdown for the open invoice
   const [viewItems, setViewItems] = useState<Item[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [paying, setPaying] = useState<Invoice | null>(null);
@@ -397,6 +399,7 @@ export default function Invoices() {
   const openView = async (i: Invoice) => {
     setViewing(i);
     loadPayments(i.id);
+    invoicePaymentBreakdown(i).then(setViewPayments).catch(() => setViewPayments([]));
     const { data, error } = await supabase.from("invoice_items").select("*").eq("invoice_id", i.id);
     if (error) toast.error("Couldn't load this invoice's items.");
     let resolved = (data as Item[]) || [];
@@ -430,6 +433,7 @@ export default function Invoices() {
   const exportPdf = async (i: Invoice) => {
     const { data, error } = await supabase.from("invoice_items").select("*").eq("invoice_id", i.id);
     if (error) return toast.error("Couldn't load the invoice's items — PDF not generated.");
+    const payments = await invoicePaymentBreakdown(i);
     downloadPdf({
       docType: "INVOICE", docNumber: i.invoice_number, date: i.issue_date,
       dueDate: i.due_date, status: i.status,
@@ -438,6 +442,7 @@ export default function Invoices() {
       party: { name: i.customer_name, phone: i.customer_phone, email: i.customer_email },
       items: (data as Item[]) || [],
       subtotal: Number(i.subtotal), discount: Number(i.discount_amount) || 0, tax: Number(i.tax), total: Number(i.total),
+      payments,
       formatMoney: fmt,
       notes: i.notes,
     }, `${i.invoice_number}.pdf`);
@@ -451,6 +456,7 @@ export default function Invoices() {
       quantity: Number(it.quantity),
       line_total: Number(it.line_total),
     }));
+    const payments = await invoicePaymentBreakdown(i);
     const html = buildReceiptHtml({
       businessName: business?.name || "",
       docNumber: i.invoice_number,
@@ -464,6 +470,7 @@ export default function Invoices() {
       tin: business?.tin ?? null,
       total: Number(i.total),
       paid: i.status === "paid",
+      payments,
       formatMoney: fmt,
     });
     const w = window.open("", "_blank", "width=360,height=640");
@@ -826,7 +833,7 @@ export default function Invoices() {
       </Dialog>
 
       {/* View dialog */}
-      <Dialog open={!!viewing} onOpenChange={(o) => !o && setViewing(null)}>
+      <Dialog open={!!viewing} onOpenChange={(o) => { if (!o) { setViewing(null); setViewPayments([]); } }}>
         <DialogContent variant="wide">
           {viewing && (
             <>
@@ -872,6 +879,9 @@ export default function Invoices() {
                     </>
                   )}
                 </div>
+                {viewPayments.length > 0 && (
+                  <div className="text-sm text-muted-foreground">Payment: <span className="font-medium text-foreground">{formatPayments(viewPayments, fmt)}</span></div>
+                )}
                 {payments.length > 0 && (
                   <div className="space-y-1">
                     <div className="text-xs uppercase tracking-wider text-muted-foreground">Payments</div>

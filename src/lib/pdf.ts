@@ -1,5 +1,7 @@
 // jsPDF's built-in Helvetica is Latin-1 only, so currency SYMBOLS like ₦/₵/₦ render as tofu (and
 // can mangle nearby digits). For print we format with the ASCII currency CODE instead — "NGN 22,050.00".
+import { paymentLabel } from "./receipt";
+
 export function pdfMoneyFormatter(currency?: string): (n: number) => string {
   const code = (currency || "NGN").toUpperCase();
   try {
@@ -35,6 +37,7 @@ export type PdfDocInput = {
   tax?: number;
   total: number;
   landedCosts?: { label: string; amount: number }[]; // freight/duty/other (PO) — shown below the total
+  payments?: { method: string; amount: number }[]; // payment method(s) — "Paid via …" below the total (invoices)
   formatMoney?: (n: number) => string; // ignored for print — amounts use the ASCII currency code (see pdfMoneyFormatter)
   notes?: string | null;
 };
@@ -124,6 +127,21 @@ export async function buildPdf(input: PdfDocInput) {
   doc.text("Total", lx, row);
   doc.text(money(input.total), vx, row, { align: "right" });
   doc.setTextColor(0);
+
+  // Payment method(s) below the total: "Paid via Cash" (single) or an itemised split.
+  const pays = (input.payments ?? []).filter((p) => p.method);
+  if (pays.length) {
+    row += 16;
+    doc.setFont("helvetica", "normal").setFontSize(9).setTextColor(90);
+    doc.text(pays.length === 1 ? `Paid via ${paymentLabel(pays[0].method)}` : "Paid via:", lx, row);
+    if (pays.length > 1) {
+      for (const p of pays) {
+        doc.text(`${paymentLabel(p.method)}  ${money(p.amount)}`, vx, row, { align: "right" });
+        row += 12;
+      }
+    }
+    doc.setTextColor(0);
+  }
 
   // Landed costs (freight/duty/other) below the total, with a landed-cost grand total.
   const landed = input.landedCosts?.filter(l => Number(l.amount) > 0) ?? [];
