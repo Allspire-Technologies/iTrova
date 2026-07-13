@@ -3,6 +3,30 @@
 All notable, user-facing changes to iTrova are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); entries are grouped by ship date, newest first.
 
+## 2026-07-13 — Split payments & payment methods everywhere
+
+Record exactly how a customer paid — including part cash, part transfer — and see it on every receipt,
+invoice, and report.
+
+### Added
+- **Split payment at the till.** Point of Sale has a new **Split payment** toggle: enter an amount per
+  method (Cash / Transfer / POS Terminal) with a live **Remaining** indicator; **Complete sale** stays
+  disabled until the amounts add up to the total. Single-method sales work exactly as before.
+- **Payment methods on Reports and the Dashboard.** A new **Payment methods** card — a donut chart plus
+  an amount-and-share list — shows how money came in over the period (Reports) and this month (Dashboard).
+  Included in the Reports PDF export.
+
+### Changed
+- **Payment method now shows everywhere.** Receipts, the invoice view, print and PDF download all display
+  how the sale was paid — "Paid via Cash" for a single method, or an itemised split like
+  "Cash ₦5,000 · Transfer ₦3,000". End-of-Day totals attribute each split sale's amounts to the right
+  methods.
+- Existing sales are shown against their recorded method automatically — no action needed.
+
+### Notes
+- One new migration adds the `sale_payments` table (one row per method) and backfills your past sales.
+- The general ledger still posts sale proceeds to Cash; mapping transfer/POS to Bank is a future refinement.
+
 ## 2026-07-12 — Accounting: purchase-orders now post to your books
 
 The last inventory‑posting gap is closed — your Balance Sheet now reflects stock you buy on a purchase
