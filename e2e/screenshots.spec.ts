@@ -84,6 +84,12 @@ test.describe("Guide desktop", () => {
     await page.getByRole("button", { name: /Indomie \(carton\)/ }).click();
     await settle(page);
     await snap(page, "04-pos-cart");
+    // Split payment: cart total 43,500 = Cash 25,000 + Transfer 18,500 (Remaining ₦0 ✓).
+    await page.getByRole("button", { name: "Split payment" }).click();
+    await page.getByLabel("Cash amount").fill("25000");
+    await page.getByLabel("Transfer amount").fill("18500");
+    await settle(page);
+    await snap(page, "04-pos-split");
   });
 
   test("invoices", async ({ page }) => {
@@ -201,6 +207,11 @@ test.describe("Guide desktop", () => {
     await expect(page.getByText("Revenue trend")).toBeVisible({ timeout: 20000 }); // wait for data, not skeletons
     await settle(page, 800);
     await snap(page, "09-reports");
+    // Payment-methods breakdown card (donut + amount/share list) lives further down the page.
+    const payCard = page.getByText("Payment methods", { exact: true });
+    await payCard.scrollIntoViewIfNeeded();
+    await settle(page, 500);
+    await snap(page, "09-reports-payments");
   });
 
   test("team", async ({ page }) => {

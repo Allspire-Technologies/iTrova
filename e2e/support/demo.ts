@@ -28,12 +28,26 @@ const PRODUCTS = [
 const SALES = [
   { id: "s1", business_id: BIZ, staff_id: FAKE_USER.id, total_amount: 45000, discount_amount: 0, payment_method: "cash", voided: false, created_at: iso("30", 9) },
   { id: "s2", business_id: BIZ, staff_id: STAFF_3, total_amount: 26500, discount_amount: 0, payment_method: "transfer", voided: false, created_at: iso("30", 11) },
-  { id: "s3", business_id: BIZ, staff_id: FAKE_USER.id, total_amount: 18500, discount_amount: 500, payment_method: "cash", voided: false, created_at: iso("30", 13) },
+  { id: "s3", business_id: BIZ, staff_id: FAKE_USER.id, total_amount: 18500, discount_amount: 500, payment_method: "split", voided: false, created_at: iso("30", 13) },
   { id: "s4", business_id: BIZ, staff_id: STAFF_3, total_amount: 14400, discount_amount: 0, payment_method: "pos", voided: false, created_at: iso("29", 12) },
   { id: "s5", business_id: BIZ, staff_id: FAKE_USER.id, total_amount: 41000, discount_amount: 0, payment_method: "transfer", voided: false, created_at: iso("28", 10) },
   { id: "s6", business_id: BIZ, staff_id: STAFF_2, total_amount: 9800, discount_amount: 0, payment_method: "cash", voided: false, created_at: iso("27", 15) },
   { id: "s7", business_id: BIZ, staff_id: STAFF_3, total_amount: 21600, discount_amount: 0, payment_method: "cash", voided: false, created_at: iso("26", 14) },
   { id: "s8", business_id: BIZ, staff_id: FAKE_USER.id, total_amount: 33000, discount_amount: 0, payment_method: "transfer", voided: false, created_at: iso("25", 11) },
+];
+
+// One row per payment method (single-method sales = 1 row; s3 is a split of cash + transfer).
+// Feeds the Payment-methods breakdown on Reports and the Dashboard.
+const SALE_PAYMENTS = [
+  { sale_id: "s1", method: "cash", amount: 45000 },
+  { sale_id: "s2", method: "transfer", amount: 26500 },
+  { sale_id: "s3", method: "cash", amount: 10000 },
+  { sale_id: "s3", method: "transfer", amount: 8500 },
+  { sale_id: "s4", method: "pos", amount: 14400 },
+  { sale_id: "s5", method: "transfer", amount: 41000 },
+  { sale_id: "s6", method: "cash", amount: 9800 },
+  { sale_id: "s7", method: "cash", amount: 21600 },
+  { sale_id: "s8", method: "transfer", amount: 33000 },
 ];
 
 const SALE_ITEMS = [
@@ -274,6 +288,7 @@ export async function seedDemo(page: Page) {
   await page.route("**/rest/v1/products**", (r) => fulfill(r, PRODUCTS, range(PRODUCTS.length)));
   await page.route("**/rest/v1/sales**", (r) => fulfill(r, SALES, range(SALES.length)));
   await page.route("**/rest/v1/sale_items**", (r) => fulfill(r, SALE_ITEMS));
+  await page.route("**/rest/v1/sale_payments**", (r) => fulfill(r, SALE_PAYMENTS));
   await page.route("**/rest/v1/invoices**", (r) => arrayOrObjectWithCount(r, INVOICES));
   await page.route("**/rest/v1/invoice_items**", (r) => fulfill(r, INVOICE_ITEMS));
   await page.route("**/rest/v1/invoice_payments**", (r) => fulfill(r, []));
