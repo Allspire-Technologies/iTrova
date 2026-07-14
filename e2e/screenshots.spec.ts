@@ -24,6 +24,9 @@ async function snapPath(page: Page, fullPath: string) {
   await page.evaluate(() => {
     document.querySelectorAll("[data-sonner-toaster], [data-sonner-toast], [role='progressbar']").forEach((n) => n.remove());
   }).catch(() => {});
+  // Never silently save an ErrorBoundary ("Something went wrong") screenshot — fail the capture loudly
+  // so a transient crash during the serial run can't ship a broken guide image.
+  await expect(page.getByRole("heading", { name: "Something went wrong" })).toHaveCount(0);
   await page.screenshot({ path: fullPath, animations: "disabled" });
 }
 const snap = (page: Page, name: string) => snapPath(page, `${OUT}/${name}.png`);
