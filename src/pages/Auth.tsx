@@ -217,7 +217,7 @@ export default function Auth() {
                   </div>
                   <div className="relative">
                     <Input id="lp" type={showLoginPassword ? "text" : "password"} required value={loginPassword} onChange={e => setLoginPassword(e.target.value)} placeholder="Enter your password" className="pr-10" />
-                    <button type="button" onClick={() => setShowLoginPassword(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" tabIndex={-1} aria-label={showLoginPassword ? "Hide password" : "Show password"}>
+                    <button type="button" onClick={() => setShowLoginPassword(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" tabIndex={-1} aria-pressed={showLoginPassword} aria-label={showLoginPassword ? "Hide password" : "Show password"}>
                       {showLoginPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                     </button>
                   </div>
@@ -283,7 +283,7 @@ export default function Auth() {
                   <Label htmlFor="sp">Password *</Label>
                   <div className="relative">
                     <Input id="sp" type={showSignupPassword ? "text" : "password"} required minLength={8} value={signupPassword} onChange={e => setSignupPassword(e.target.value)} placeholder="Create a password (min. 8 characters)" className="pr-10" />
-                    <button type="button" onClick={() => setShowSignupPassword(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" tabIndex={-1} aria-label={showSignupPassword ? "Hide password" : "Show password"}>
+                    <button type="button" onClick={() => setShowSignupPassword(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" tabIndex={-1} aria-pressed={showSignupPassword} aria-label={showSignupPassword ? "Hide password" : "Show password"}>
                       {showSignupPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                     </button>
                   </div>
@@ -292,7 +292,7 @@ export default function Auth() {
                   <Label htmlFor="cp">Confirm password *</Label>
                   <div className="relative">
                     <Input id="cp" type={showConfirmPassword ? "text" : "password"} required minLength={8} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="Re-enter your password" className="pr-10" />
-                    <button type="button" onClick={() => setShowConfirmPassword(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" tabIndex={-1} aria-label={showConfirmPassword ? "Hide password" : "Show password"}>
+                    <button type="button" onClick={() => setShowConfirmPassword(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" tabIndex={-1} aria-pressed={showConfirmPassword} aria-label={showConfirmPassword ? "Hide password" : "Show password"}>
                       {showConfirmPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                     </button>
                   </div>

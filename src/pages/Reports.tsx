@@ -404,7 +404,7 @@ export default function Reports() {
           <Card className="shadow-card border-border/60">
             <CardHeader><CardTitle className="font-display text-lg">Revenue trend</CardTitle></CardHeader>
             <CardContent>
-              <div className="h-64">
+              <div className="h-64" role="img" aria-label="Area chart of daily sales revenue across the selected period">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={dailyTrend}>
                     <defs>
@@ -468,7 +468,7 @@ export default function Reports() {
                 {topProducts.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No sales in this period.</p>
                 ) : (
-                  <div className="h-64">
+                  <div className="h-64" role="img" aria-label="Horizontal bar chart of the top products ranked by revenue in the selected period">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={topProducts} layout="vertical" margin={{ left: 8 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
@@ -507,7 +507,7 @@ export default function Reports() {
                 {byStaff.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No sales in this period.</p>
                 ) : (
-                  <div className="h-56">
+                  <div className="h-56" role="img" aria-label="Horizontal bar chart of sales revenue per staff member in the selected period">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={byStaff} layout="vertical" margin={{ left: 8 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
@@ -567,7 +567,7 @@ export default function Reports() {
                   <p className="text-sm text-muted-foreground">No sales in this period.</p>
                 ) : (
                   <div className="flex flex-col items-center gap-4 sm:flex-row">
-                    <div className="h-48 w-full sm:w-1/2">
+                    <div className="h-48 w-full sm:w-1/2" role="img" aria-label="Donut chart of money collected by payment method in the selected period; the list beside it gives each method's amount and share">
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
                           <Pie data={payMethods} dataKey="total" nameKey="method" innerRadius={45} outerRadius={72} paddingAngle={2}>

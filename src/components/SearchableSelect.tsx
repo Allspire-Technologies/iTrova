@@ -16,6 +16,8 @@ interface SearchableSelectProps {
   disabled?: boolean;
   /** Forwarded to the trigger button — use for width/height overrides e.g. "w-40 h-8" */
   className?: string;
+  /** Accessible name for the combobox trigger; falls back to the placeholder. */
+  ariaLabel?: string;
 }
 
 export default function SearchableSelect({
@@ -27,6 +29,7 @@ export default function SearchableSelect({
   emptyText = "No results found.",
   disabled,
   className,
+  ariaLabel,
 }: SearchableSelectProps) {
   const [open, setOpen] = useState(false);
   const selected = options.find(o => o.value === value);
@@ -38,6 +41,7 @@ export default function SearchableSelect({
           type="button"
           role="combobox"
           aria-expanded={open}
+          aria-label={ariaLabel ?? placeholder}
           disabled={disabled}
           className={cn(
             "flex h-10 w-full items-center justify-between whitespace-nowrap rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm ring-offset-background focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
