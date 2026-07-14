@@ -51,7 +51,7 @@ test("tall dialogs fit and scroll at keyboard-height viewport", async ({ page })
   // Invoices — New invoice (longest form in the app)
   await stubRows(page, "invoices", []);
   await page.goto("/invoices");
-  await page.getByRole("button", { name: "New invoice" }).click();
+  await page.getByRole("button", { name: "New invoice" }).first().click();
   await checkDialog(page, "invoices-new", /Create invoice|Save/);
 
   // Settings — Permissions role editor (has its own inner scroll)
@@ -79,7 +79,7 @@ test("no sub-16px text controls on phones (prevents iOS focus zoom)", async ({ p
 
   await stubRows(page, "invoices", []);
   await page.goto("/invoices");
-  await page.getByRole("button", { name: "New invoice" }).first().click();
+  await page.getByRole("button", { name: "New invoice" }).first().first().click();
   await page.getByRole("dialog").waitFor();
   expect(await audit(), "invoices dialog").toEqual([]);
   await page.keyboard.press("Escape");

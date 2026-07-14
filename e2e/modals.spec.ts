@@ -7,7 +7,7 @@ test.describe("Modal width", () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await authenticate(page, { role: "owner" });
     await page.goto("/purchase-orders");
-    await page.getByRole("button", { name: "New PO" }).click();
+    await page.getByRole("button", { name: "New PO" }).first().click();
     const box = await page.getByRole("dialog").boundingBox();
     const vw = page.viewportSize()!.width;
     expect(box!.width).toBeGreaterThan(vw * 0.70); // ~75vw (0.75 ± tolerance)
@@ -18,7 +18,7 @@ test.describe("Modal width", () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await authenticate(page, { role: "owner" });
     await page.goto("/purchase-orders");
-    await page.getByRole("button", { name: "New PO" }).click();
+    await page.getByRole("button", { name: "New PO" }).first().click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
     await page.mouse.click(5, 5); // click on the overlay, outside the dialog

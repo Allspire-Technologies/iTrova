@@ -19,7 +19,7 @@ test.describe("Purchase Orders", () => {
     await stubRows(page, "products", [RICE]);
     await stubRows(page, "raw_materials", [CASSAVA]);
     await page.reload();
-    await page.getByRole("button", { name: "New PO" }).click();
+    await page.getByRole("button", { name: "New PO" }).first().click();
     const dialog = page.getByRole("dialog");
 
     // Default source = Inventory → the item dropdown lists products only.
@@ -56,7 +56,7 @@ test.describe("Purchase Orders", () => {
       return r.fallback();
     });
 
-    await page.getByRole("button", { name: "New PO" }).click();
+    await page.getByRole("button", { name: "New PO" }).first().click();
     const dialog = page.getByRole("dialog");
     // Line 1 — Inventory (default): pick Rice.
     await dialog.getByRole("combobox").nth(1).click();
@@ -117,7 +117,7 @@ test.describe("Purchase Orders", () => {
     });
     await page.route("**/rest/v1/purchase_order_items**", (r) => r.request().method() === "POST" ? r.fulfill({ status: 201, contentType: "application/json", body: "[]" }) : r.fallback());
 
-    await page.getByRole("button", { name: "New PO" }).click();
+    await page.getByRole("button", { name: "New PO" }).first().click();
     const dialog = page.getByRole("dialog");
     await dialog.getByRole("combobox").nth(1).click();
     await page.getByRole("option", { name: "Rice 25kg" }).click(); // auto-fills unit cost 6000
@@ -159,8 +159,8 @@ test.describe("Purchase Orders", () => {
   });
 
   test("renders the page with an empty state", async ({ page }) => {
-    await expect(page.getByRole("heading", { name: "Purchase Orders" })).toBeVisible();
-    await expect(page.getByText("No purchase orders yet.")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Purchase Orders", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "No purchase orders yet" })).toBeVisible();
   });
 
   test("enables the CSV template and import buttons", async ({ page }) => {
