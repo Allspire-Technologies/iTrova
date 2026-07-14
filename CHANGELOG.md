@@ -3,6 +3,21 @@
 All notable, user-facing changes to iTrova are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); entries are grouped by ship date, newest first.
 
+## 2026-07-14 — Profit at a glance in Inventory
+
+See what your stock is worth and what it will earn you, right in the product list.
+
+### Added
+- **Cost total** column on each product — cost price × the stock you hold.
+- **Profit** column — (sale price − cost price) × stock on hand, with the **markup on cost** shown
+  beneath it. A product priced below cost shows a red, negative profit.
+- An **info button** on the Profit column (and beside Profit on phones) explains exactly how the
+  figures are worked out.
+
+### Changed
+- The selling-price column is now labelled **Sale price**.
+- Products with no cost price yet show **—** for cost and profit (nothing is guessed).
+
 ## 2026-07-13 — Split payments & payment methods everywhere
 
 Record exactly how a customer paid — including part cash, part transfer — and see it on every receipt,
