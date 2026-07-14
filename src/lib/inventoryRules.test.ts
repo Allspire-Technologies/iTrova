@@ -1,5 +1,37 @@
 import { describe, it, expect } from "vitest";
-import { findSkuConflict, buildImportPlan, expiryAlert, canonicalizeRow, normalizeHeader, parseImportNumber } from "./inventoryRules";
+import { findSkuConflict, buildImportPlan, expiryAlert, canonicalizeRow, normalizeHeader, parseImportNumber, productProfitStats } from "./inventoryRules";
+
+describe("productProfitStats", () => {
+  it("computes total cost, total profit and markup on cost", () => {
+    const s = productProfitStats({ selling_price: 18500, cost_price: 15000, stock_quantity: 24 });
+    expect(s.costTotal).toBe(360000);
+    expect(s.profitTotal).toBe(84000);
+    expect(s.markupPct).toBeCloseTo(23.333, 2);
+  });
+  it("markup is quantity-independent (same at any stock level)", () => {
+    const a = productProfitStats({ selling_price: 100, cost_price: 80, stock_quantity: 1 });
+    const b = productProfitStats({ selling_price: 100, cost_price: 80, stock_quantity: 500 });
+    expect(a.markupPct).toBeCloseTo(25, 5);
+    expect(b.markupPct).toBeCloseTo(25, 5);
+  });
+  it("treats a missing/zero cost as unknown (null markup) rather than dividing by zero", () => {
+    const s = productProfitStats({ selling_price: 5000, cost_price: 0, stock_quantity: 10 });
+    expect(s.markupPct).toBeNull();
+    expect(s.costTotal).toBe(0);
+    expect(s.profitTotal).toBe(50000);
+  });
+  it("handles a loss (selling below cost) with a negative profit and markup", () => {
+    const s = productProfitStats({ selling_price: 900, cost_price: 1000, stock_quantity: 3 });
+    expect(s.profitTotal).toBe(-300);
+    expect(s.markupPct).toBeCloseTo(-10, 5);
+  });
+  it("zero stock yields zero totals but still reports markup", () => {
+    const s = productProfitStats({ selling_price: 150, cost_price: 100, stock_quantity: 0 });
+    expect(s.costTotal).toBe(0);
+    expect(s.profitTotal).toBe(0);
+    expect(s.markupPct).toBeCloseTo(50, 5);
+  });
+});
 
 describe("expiryAlert", () => {
   const today = "2026-06-30";
