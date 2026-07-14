@@ -457,9 +457,13 @@ export default function PurchaseOrders() {
 
       <Card className="overflow-hidden">
         {filtered.length === 0 ? (
-          <div className="p-12 text-center text-muted-foreground">
-            <ClipboardList className="size-10 mx-auto mb-3 opacity-40" />
-            No purchase orders yet.
+          <div className="p-12 text-center">
+            <div className="size-14 rounded-2xl bg-brand-light text-brand grid place-items-center mx-auto mb-4"><ClipboardList className="size-6" /></div>
+            <h3 className="font-display text-lg font-semibold text-brand-dark">No purchase orders yet</h3>
+            <p className="text-muted-foreground text-sm mt-1 mb-4">Raise an order to a supplier — receiving it books the stock (and landed costs) automatically.</p>
+            {can("purchase_orders", "create") && (
+              <Button variant="brand" onClick={() => { if (atPoLimit) { toast.error(limitMessage("purchaseOrders")); return; } setOpen(true); }} disabled={atPoLimit}><Plus className="size-4" /> New PO</Button>
+            )}
           </div>
         ) : (
           <>

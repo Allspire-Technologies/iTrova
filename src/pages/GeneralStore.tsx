@@ -224,7 +224,7 @@ export default function GeneralStore() {
                 <TableHead>Item</TableHead><TableHead>Type</TableHead><TableHead className="text-right">Available</TableHead><TableHead className="text-right">Actions</TableHead>
               </TableRow></TableHeader>
               <TableBody>
-                {items.length === 0 && <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-8">No items yet.</TableCell></TableRow>}
+                {items.length === 0 && <TableRow><TableCell colSpan={4} className="text-center py-10"><span className="block font-medium text-brand-dark">No items yet</span><span className="mt-1 block text-sm text-muted-foreground">Add tools, consumables or equipment your staff check out and return.</span>{can("general_store", "item_manage") && <Button variant="brand" size="sm" className="mt-3" onClick={() => setItemForm({ ...emptyItemForm })}><Plus className="size-4" /> Add item</Button>}</TableCell></TableRow>}
                 {items.map((it) => {
                   const st = itemStatus(it);
                   return (
@@ -244,7 +244,7 @@ export default function GeneralStore() {
           </div>
           {/* Cards (mobile) — table columns/actions would clip off-screen at phone widths (mobile audit). */}
           <div className="space-y-2 sm:hidden">
-            {items.length === 0 && <p className="rounded-xl border border-dashed border-border bg-card/50 px-4 py-8 text-center text-sm text-muted-foreground">No items yet.</p>}
+            {items.length === 0 && <div className="rounded-xl border border-dashed border-border bg-card/50 px-4 py-8 text-center"><p className="font-medium text-brand-dark">No items yet</p><p className="mt-1 text-sm text-muted-foreground">Add tools, consumables or equipment your staff check out and return.</p>{can("general_store", "item_manage") && <Button variant="brand" size="sm" className="mt-3" onClick={() => setItemForm({ ...emptyItemForm })}><Plus className="size-4" /> Add item</Button>}</div>}
             {items.map((it) => {
               const st = itemStatus(it);
               return (

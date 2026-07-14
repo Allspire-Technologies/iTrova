@@ -24,6 +24,7 @@ import { listTaxes, formatRate, type Tax } from "@/lib/tax";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { useOnline } from "@/contexts/OnlineContext";
+import { ReadOnlyOfflineNotice } from "@/components/OfflineBanner";
 import { cacheProducts, readCachedProducts } from "@/lib/offlineStore";
 
 type Product = {
