@@ -108,7 +108,7 @@ export default function OnboardingDialog({ open, onClose }: { open: boolean; onC
         // Persist the selection once both picker steps are done — even "Maybe later" businesses
         // leave a trail of what they wanted (sales follow-up, future plan design).
         const { error } = await supabase.from("businesses")
-          .update({ onboarding_profile: { modules: picked, scale } } as never)
+          .update({ onboarding_profile: { modules: picked, scale } })
           .eq("id", business.id);
         if (error) throw error;
       } else if (step === 3) {

@@ -101,8 +101,8 @@ export default function RawMaterials() {
     setLoading(false);
     // Seed the Requests-tab badge on page entry (the panel itself refreshes it once opened).
     if (canApproveRequests) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { count } = await (supabase as any).from("production_requisitions")
+       
+      const { count } = await supabase.from("production_requisitions")
         .select("id", { count: "exact", head: true }).eq("status", "pending");
       setPendingRequests(count ?? 0);
     }
@@ -131,8 +131,8 @@ export default function RawMaterials() {
     };
     // weight postdates the generated types — cast until regenerated.
     const { error } = editing
-      ? await supabase.from("raw_materials").update(payload as never).eq("id", editing.id)
-      : await supabase.from("raw_materials").insert({ ...payload, business_id: business.id } as never);
+      ? await supabase.from("raw_materials").update(payload).eq("id", editing.id)
+      : await supabase.from("raw_materials").insert({ ...payload, business_id: business.id });
     setBusy(false);
     if (error) return toast.error(error.message);
     toast.success(editing ? "Material updated" : "Material added");
@@ -152,7 +152,7 @@ export default function RawMaterials() {
       tax_amount: taxEnabled ? (pTax || 0) : 0,
       landed_costs: landedLines,
       landed_total: landedTotal(landedLines),
-    } as never); // tax_amount/landed_costs postdate the generated types
+    }); // tax_amount/landed_costs postdate the generated types
     if (error) return toast.error(error.message);
     toast.success(`Recorded purchase of ${pQty} ${purchaseFor.unit}`);
     setPurchaseOpen(false); setPQty(0); setPCost(0); setPTax(0); setPLanded(defaultLandedRows()); load();
@@ -208,7 +208,7 @@ export default function RawMaterials() {
 
       let restocked = 0;
       for (const u of plan.updates) {
-        const { error } = await supabase.from("raw_materials").update({ ...u.fields, stock_quantity: u.stock } as never).eq("id", u.id);
+        const { error } = await supabase.from("raw_materials").update({ ...u.fields, stock_quantity: u.stock }).eq("id", u.id);
         if (error) failed.push({ values: materialValues(u.fields, u.stock), reason: `Update failed: ${error.message}` });
         else restocked++;
         tick();
@@ -216,7 +216,7 @@ export default function RawMaterials() {
 
       let added = 0;
       for (const batch of insertBatches) {
-        const { error } = await supabase.from("raw_materials").insert(batch.map(i => ({ ...i, business_id: business.id })) as never);
+        const { error } = await supabase.from("raw_materials").insert(batch.map(i => ({ ...i, business_id: business.id })));
         if (error) batch.forEach(i => failed.push({ values: materialValues(i, i.stock_quantity), reason: `Upload failed: ${error.message}` }));
         else added += batch.length;
         tick();

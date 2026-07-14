@@ -205,7 +205,7 @@ export default function PurchaseOrders() {
       total_amount: subtotal, status: "draft",
       tax_amount: taxEnabled ? (poTax || 0) : 0,
       landed_costs: fromLandedRows(landedRows),
-    } as never).select().single(); // tax_amount/landed_costs postdate the generated types
+    }).select().single(); // tax_amount/landed_costs postdate the generated types
     if (error) { setBusy(false); return toast.error(error.message); }
     const payload = lines.map(l => ({
       purchase_order_id: po!.id, raw_material_id: l.raw_material_id, product_id: l.product_id,
@@ -250,7 +250,7 @@ export default function PurchaseOrders() {
     // One update: persist the final landed costs AND flip to received, so the trigger costs stock
     // using the amounts just entered.
     const { error } = await supabase.from("purchase_orders")
-      .update({ landed_costs: fromLandedRows(receiveRows), status: "received" } as never)
+      .update({ landed_costs: fromLandedRows(receiveRows), status: "received" })
       .eq("id", receiving.id);
     setReceiveBusy(false);
     if (error) return toast.error(error.message);

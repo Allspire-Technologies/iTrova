@@ -2,8 +2,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { ReceiptPayment } from "@/lib/receipt";
 
 // sale_payments / sales postdate the generated Supabase types, so cast the client once.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const sb = supabase as any;
+const sb = supabase;
 
 /** The payment-method breakdown for an invoice, resolved at render time:
  *  - POS invoice (has sale_id): from `sale_payments` (falls back to the sale's single method).

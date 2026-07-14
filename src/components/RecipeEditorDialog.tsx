@@ -47,8 +47,8 @@ export default function RecipeEditorDialog({
 
       setProduct(productId ?? "");
       if (productId) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data } = await (supabase as any).from("product_materials")
+         
+        const { data } = await supabase.from("product_materials")
           .select("raw_material_id, quantity_per_unit").eq("product_id", productId);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const existing = ((data ?? []) as any[]).map((r) => ({ raw_material_id: r.raw_material_id, quantity: String(r.quantity_per_unit) }));

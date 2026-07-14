@@ -1,10 +1,8 @@
 import { supabase } from "@/integrations/supabase/client";
+import type { TablesInsert } from "@/integrations/supabase/types";
 import { loadPdf } from "./pdf";
 
-// The expenses table postdates the generated Supabase types, so cast the client once (same pattern
-// as generalStore.ts / exportInvoice.ts) rather than sprinkling `as any`.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const sb = supabase as any;
+const sb = supabase;
 
 export type ExpenseStatus = "paid" | "pending";
 
@@ -111,7 +109,9 @@ export async function deleteExpense(id: string): Promise<void> {
 export async function insertExpenseBatch(
   businessId: string, userId: string | null, rows: Record<string, unknown>[],
 ): Promise<{ error: { message: string } | null }> {
-  const { error } = await sb.from("expenses").insert(rows.map(r => ({ ...r, business_id: businessId, created_by: userId })));
+  // CSV rows arrive loosely typed from the import planner — assert against the generated Insert type.
+  const payload = rows.map(r => ({ ...r, business_id: businessId, created_by: userId })) as unknown as TablesInsert<"expenses">[];
+  const { error } = await sb.from("expenses").insert(payload);
   return { error: error ?? null };
 }
 

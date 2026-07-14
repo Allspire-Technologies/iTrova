@@ -165,8 +165,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // system defaults. Errors (e.g. migration not applied yet) resolve to nulls → code defaults,
   // which reproduce pre-RBAC behavior exactly. Also re-run by the realtime subscription below.
   const loadAccess = async (uid: string, businessId: string, appRole: AppRole | null) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const sb = supabase as any;
+    const sb = supabase;
     const [{ data: ma }, { data: sysRoles }] = await Promise.all([
       sb.from("member_access").select("permissions, team_role_id, team_roles(permissions)")
         .eq("user_id", uid).eq("business_id", businessId).maybeSingle(),

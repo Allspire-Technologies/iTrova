@@ -15,8 +15,7 @@ import { PermissionMatrixEditor } from "./PermissionMatrixEditor";
 import { DEFAULT_ROLE_PERMISSIONS, clonePermissionMap, type PermissionMap } from "@/lib/permissions";
 
 // The new tables/RPC aren't in the generated Supabase types yet — cast once.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const sb = supabase as any;
+const sb = supabase;
 
 type TeamRoleRow = { id: string; name: string; system_key: "manager" | "cashier" | null; permissions: PermissionMap };
 type MemberRow = { user_id: string; app_role: "owner" | "manager" | "cashier"; name: string; email: string | null };

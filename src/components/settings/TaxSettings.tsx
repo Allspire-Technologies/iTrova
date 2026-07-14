@@ -12,9 +12,9 @@ import ConfirmDialog from "@/components/ConfirmDialog";
 import { toast } from "sonner";
 import { Receipt, Plus, Pencil, Trash2 } from "lucide-react";
 import { listTaxes, saveTax, deleteTax, formatRate, type Tax } from "@/lib/tax";
+import type { TablesUpdate } from "@/integrations/supabase/types";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const sb = supabase as any;
+const sb = supabase;
 
 export default function TaxSettings() {
   const { business, refresh } = useAuth();
@@ -33,7 +33,7 @@ export default function TaxSettings() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { setTin(business?.tin || ""); }, [business?.tin]);
 
-  const patchBusiness = async (patch: Record<string, unknown>) => {
+  const patchBusiness = async (patch: TablesUpdate<"businesses">) => {
     if (!business) return;
     const { error } = await sb.from("businesses").update(patch).eq("id", business.id);
     if (error) { toast.error(error.message); return; }
