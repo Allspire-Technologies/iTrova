@@ -1,8 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 
 // fixed_assets + run_depreciation postdate the generated Supabase types, so cast the client once.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const sb = supabase as any;
+const sb = supabase;
 
 export interface FixedAsset {
   id: string;

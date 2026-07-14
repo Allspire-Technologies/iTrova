@@ -3,8 +3,7 @@ import { loadPdf } from "./pdf";
 
 // The payroll_* tables postdate the generated Supabase types, so cast the client once (same pattern
 // as generalStore.ts / expenditure.ts) rather than sprinkling `as any` everywhere.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const sb = supabase as any;
+const sb = supabase;
 
 export type PayType = "monthly" | "daily" | "hourly";
 export const PAY_TYPES: { value: PayType; label: string; rateLabel: string }[] = [
@@ -172,7 +171,8 @@ export async function listRuns(): Promise<PayrollRun[]> {
 export async function getRunLines(runId: string): Promise<PayrollRunLine[]> {
   const { data, error } = await sb.from("payroll_run_lines").select("*").eq("run_id", runId).order("employee_name");
   if (error) throw new Error(error.message);
-  return (data ?? []).map((l: PayrollRunLine) => ({ ...l, deductions: (l.deductions ?? []) as Deduction[] })) as PayrollRunLine[];
+  // deductions is stored as jsonb (typed Json) — narrow it to the app's Deduction[] shape.
+  return ((data ?? []) as unknown as PayrollRunLine[]).map((l) => ({ ...l, deductions: (l.deductions ?? []) as Deduction[] }));
 }
 
 export type RunInput = {

@@ -1,8 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 
 // The ledger tables/RPCs postdate the generated Supabase types, so cast the client once.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const sb = supabase as any;
+const sb = supabase;
 
 export type AccountType = "asset" | "liability" | "equity" | "income" | "expense";
 export const ACCOUNT_TYPES: { value: AccountType; label: string }[] = [

@@ -41,8 +41,8 @@ export async function fetchDashboardSnapshot(): Promise<DashSnap> {
     supabase.from("profiles").select("id, owner_name"),
     supabase.from("sales").select("tax_amount").eq("voided", false).gte("created_at", monthStart.toISOString()),
     // sale_payments postdates the generated types → cast the client.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (supabase as any).from("sale_payments").select("method,amount,sales!inner(id)").eq("sales.voided", false).gte("sales.created_at", monthStart.toISOString()),
+     
+    supabase.from("sale_payments").select("method,amount,sales!inner(id)").eq("sales.voided", false).gte("sales.created_at", monthStart.toISOString()),
   ]);
 
   // Money collected per payment method this month (one row per method, split-aware).

@@ -80,8 +80,8 @@ export default function Team() {
         .eq("business_id", business.id).order("created_at", { ascending: false }),
       supabase.from("sales").select("staff_id, total_amount").eq("business_id", business.id).eq("voided", false),
       supabase.rpc("get_member_emails", { p_business_id: business.id }),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (supabase as any).from("team_roles").select("id,name").eq("business_id", business.id).is("system_key", null).order("name"),
+       
+      supabase.from("team_roles").select("id,name").eq("business_id", business.id).is("system_key", null).order("name"),
     ]);
     setCustomRoles(((teamRoles ?? []) as CustomRole[]));
     const userIds = Array.from(new Set((roles || []).map(r => r.user_id)));
@@ -124,12 +124,12 @@ export default function Team() {
     }
     setSubmitting(true);
     const custom = customRoles.find(r => r.id === inviteRole) ?? null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (supabase as any).from("invitations").insert({
+    const { error } = await supabase.from("invitations").insert({
       business_id: business.id,
       email: inviteEmail.trim().toLowerCase(),
       // Custom roles ride on the least-privilege base role; permissions come from the team role.
-      role: custom ? "cashier" : inviteRole,
+      // (inviteRole is a select value — narrow it to the enum the schema accepts.)
+      role: custom ? "cashier" : (inviteRole as "manager" | "cashier"),
       team_role_id: custom ? custom.id : null,
       invited_by: user?.id,
     });

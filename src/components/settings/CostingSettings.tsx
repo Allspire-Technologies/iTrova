@@ -5,8 +5,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toast } from "sonner";
 import { Scale } from "lucide-react";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const sb = supabase as any;
+const sb = supabase;
 
 /** How purchases (POs + material deliveries) value inventory when they add stock. */
 export default function CostingSettings() {

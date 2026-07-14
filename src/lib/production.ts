@@ -2,8 +2,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 // Production module data layer. The production tables/RPCs postdate the generated Supabase types,
 // so calls go through one localized cast (same pattern as generalStore.ts).
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const sb = supabase as any;
+const sb = supabase;
 
 export type RequisitionStatus = "pending" | "approved" | "rejected" | "cancelled" | "completed";
 

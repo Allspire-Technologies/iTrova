@@ -2,8 +2,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 // The taxes table postdates the generated Supabase types, so cast the client once (same pattern as
 // generalStore.ts / expenditure.ts).
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const sb = supabase as any;
+const sb = supabase;
 
 export type Tax = {
   id: string;

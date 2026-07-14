@@ -2,8 +2,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 // The General Store tables/RPCs aren't in the generated Supabase types (types.ts isn't regenerated),
 // so cast the client once rather than sprinkling `as any` everywhere.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const sb = supabase as any;
+const sb = supabase;
 
 export type StoreItemKind = "borrowable" | "consumable";
 export type TxnKind = "borrow" | "collect";

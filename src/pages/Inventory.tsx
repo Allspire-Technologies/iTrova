@@ -147,8 +147,8 @@ export default function Inventory() {
     };
     // tax_id postdates the generated Supabase types — cast until types are regenerated.
     const { error } = editing
-      ? await supabase.from("products").update(payload as never).eq("id", editing.id)
-      : await supabase.from("products").insert({ ...payload, stock_quantity: Number(form.stock_quantity) || 0, business_id: business.id } as never);
+      ? await supabase.from("products").update(payload).eq("id", editing.id)
+      : await supabase.from("products").insert({ ...payload, stock_quantity: Number(form.stock_quantity) || 0, business_id: business.id });
     setBusy(false);
     if (error) return toast.error(error.message);
     toast.success(editing ? "Product updated" : "Product added");
@@ -224,7 +224,7 @@ export default function Inventory() {
 
       let restocked = 0;
       for (const u of plan.updates) {
-        const { error } = await supabase.from("products").update({ ...u.fields, stock_quantity: u.stock } as never).eq("id", u.id);
+        const { error } = await supabase.from("products").update({ ...u.fields, stock_quantity: u.stock }).eq("id", u.id);
         if (error) failed.push({ values: templateValuesFromFields(u.fields, u.stock), reason: `Update failed: ${error.message}` });
         else restocked++;
         tick();
@@ -232,7 +232,7 @@ export default function Inventory() {
 
       let added = 0;
       for (const batch of insertBatches) {
-        const { error } = await supabase.from("products").insert(batch.map(i => ({ ...i, business_id: business.id })) as never);
+        const { error } = await supabase.from("products").insert(batch.map(i => ({ ...i, business_id: business.id })));
         if (error) batch.forEach(i => failed.push({ values: templateValuesFromFields(i, i.stock_quantity), reason: `Upload failed: ${error.message}` }));
         else added += batch.length;
         tick();

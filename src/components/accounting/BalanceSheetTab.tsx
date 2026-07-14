@@ -61,8 +61,8 @@ export default function BalanceSheetTab({ canExport, isOwner }: { canExport: boo
     if (!business) return;
     if (!oDate) return toast.error("Pick the date your figures are as of");
     setBusy(true);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (supabase as any).from("businesses")
+     
+    const { error } = await supabase.from("businesses")
       .update({ opening_cash: Number(oCash) || 0, opening_capital: Number(oCapital) || 0, books_opening_date: oDate })
       .eq("id", business.id);
     setBusy(false);

@@ -95,8 +95,8 @@ export default function Reports() {
         showExpenses ? fetchExpensesForReport(business.id, prevFromIso.slice(0, 10), to) : Promise.resolve([]),
         // Payment legs for sales in the window (one row per method) — powers the payment-methods card.
         // sale_payments postdates the generated types, so cast the client.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (supabase as any).from("sale_payments").select("method,amount,sales!inner(id)").eq("sales.business_id", business.id).eq("sales.voided", false).gte("sales.created_at", fromIso).lte("sales.created_at", toIso),
+         
+        supabase.from("sale_payments").select("method,amount,sales!inner(id)").eq("sales.business_id", business.id).eq("sales.voided", false).gte("sales.created_at", fromIso).lte("sales.created_at", toIso),
       ]);
 
       if (s.error) { toast.error("Failed to load sales data"); setLoading(false); return; }
