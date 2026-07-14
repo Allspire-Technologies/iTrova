@@ -160,7 +160,7 @@ export default function Dashboard() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="h-64">
+          <div className="h-64" role="img" aria-label="Area chart of total sales revenue per day over the last 7 days">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={trend}>
                 <defs>
@@ -278,7 +278,7 @@ export default function Dashboard() {
             {stockChart.length === 0 ? (
               <p className="text-sm text-muted-foreground">No products in inventory yet.</p>
             ) : (
-              <div className="h-48">
+              <div className="h-48" role="img" aria-label="Bar chart of stock on hand per product; low-stock products are highlighted">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={stockChart} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                     <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} />
@@ -310,7 +310,7 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="flex flex-col items-center gap-4 sm:flex-row">
-              <div className="h-44 w-full sm:w-1/2">
+              <div className="h-44 w-full sm:w-1/2" role="img" aria-label="Donut chart of money collected this month by payment method; the list beside it gives each method's amount and share">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie data={payments} dataKey="total" nameKey="method" innerRadius={42} outerRadius={68} paddingAngle={2}>
