@@ -10,7 +10,8 @@ import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { ImportProgressDialog, ImportResultDialog, type FailedImportRow, type ImportOutcome, type ImportProgress } from "@/components/ImportDialogs";
-import { Plus, Search, Package, Pencil, Upload, Download, SlidersHorizontal } from "lucide-react";
+import { Plus, Search, Package, Pencil, Upload, Download, SlidersHorizontal, Info } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import SearchableSelect from "@/components/SearchableSelect";
 import { toast } from "sonner";
 import { toCsv, downloadCsv, parseCsv, readFileText } from "@/lib/csv";
@@ -18,7 +19,7 @@ import StockAdjustDialog from "@/components/StockAdjustDialog";
 import Paginator, { usePagination } from "@/components/Paginator";
 import { TablePageSkeleton } from "@/components/Skeletons";
 import { getLimit, isAtLimit, limitMessage } from "@/lib/planLimits";
-import { findSkuConflict, buildImportPlan, expiryAlert, canonicalizeRow, type ProductFields } from "@/lib/inventoryRules";
+import { findSkuConflict, buildImportPlan, expiryAlert, canonicalizeRow, productProfitStats, type ProductFields } from "@/lib/inventoryRules";
 import { listTaxes, formatRate, type Tax } from "@/lib/tax";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useDateFormat } from "@/hooks/useDateFormat";
@@ -41,6 +42,31 @@ type Product = {
 };
 
 const empty = { name: "", category: "", sku: "", unit: "pcs", selling_price: "", cost_price: "", stock_quantity: "", reorder_level: 5, expiry_date: "", tax_id: "", weight: "" };
+
+// Markup on cost, one decimal place — e.g. 23.3% or -10.0% for a loss.
+const formatMarkup = (pct: number) => `${pct.toFixed(1)}%`;
+
+// Click-to-open explainer for the Profit column (how the totals and markup % are worked out).
+function ProfitInfo() {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button type="button" aria-label="How profit is calculated" className="text-muted-foreground hover:text-brand transition-colors">
+          <Info className="size-3.5" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-72 text-left normal-case tracking-normal">
+        <p className="text-sm font-medium text-brand-dark">How profit is calculated</p>
+        <ul className="mt-2 space-y-1.5 text-xs text-muted-foreground">
+          <li><span className="font-medium text-brand-dark">Cost total</span> = cost price × stock on hand.</li>
+          <li><span className="font-medium text-brand-dark">Profit</span> = (sale price − cost price) × stock on hand.</li>
+          <li>The percentage is <span className="font-medium text-brand-dark">markup on cost</span> — (sale price − cost price) ÷ cost price.</li>
+        </ul>
+        <p className="mt-2 text-xs text-muted-foreground">Shown as “—” when a product has no cost price yet.</p>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 export default function Inventory() {
   const { business, hasModule } = useAuth();
@@ -431,6 +457,7 @@ export default function Inventory() {
             {paged.map(p => {
               const s = statusOf(p);
               const ex = expiryAlert(p.expiry_date, todayInTz);
+              const pp = productProfitStats(p);
               return (
                 <div key={p.id} className="p-4 space-y-2">
                   <div className="flex items-start justify-between gap-3">
@@ -444,6 +471,12 @@ export default function Inventory() {
                       <div className="text-sm">{Number(p.stock_quantity)} <span className="text-xs text-muted-foreground">{p.unit}</span></div>
                     </div>
                   </div>
+                  {pp.markupPct !== null && (
+                    <div className="flex items-center justify-between gap-3 text-sm">
+                      <span className="text-muted-foreground">Cost total <span className="font-medium text-brand-dark">{fmt(pp.costTotal)}</span></span>
+                      <span className={`inline-flex items-center gap-1 ${pp.profitTotal < 0 ? "text-danger" : "text-brand-dark"}`}>Profit <span className="font-medium">{fmt(pp.profitTotal)}</span> <span className={`text-xs ${pp.profitTotal < 0 ? "text-danger/80" : "text-muted-foreground"}`}>{formatMarkup(pp.markupPct)}</span> <ProfitInfo /></span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 flex-wrap min-w-0">
                       <Badge variant="outline" className={s.className}>{s.label}</Badge>
@@ -469,7 +502,11 @@ export default function Inventory() {
                   <th className="px-4 py-3">Product</th>
                   <th className="px-4 py-3">Category</th>
                   <th className="px-4 py-3 text-right">Stock</th>
-                  <th className="px-4 py-3 text-right">Price</th>
+                  <th className="px-4 py-3 text-right">Sale price</th>
+                  <th className="px-4 py-3 text-right">Cost total</th>
+                  <th className="px-4 py-3 text-right">
+                    <span className="inline-flex items-center justify-end gap-1">Profit <ProfitInfo /></span>
+                  </th>
                   <th className="px-4 py-3">Expiry</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3 text-right">Actions</th>
@@ -479,6 +516,7 @@ export default function Inventory() {
                 {paged.map(p => {
                   const s = statusOf(p);
                   const ex = expiryAlert(p.expiry_date, todayInTz);
+                  const pp = productProfitStats(p);
                   return (
                     <tr key={p.id} className="border-b border-border/50 hover:bg-secondary/40 transition-colors">
                       <td className="px-4 py-3">
@@ -488,6 +526,19 @@ export default function Inventory() {
                       <td className="px-4 py-3 text-muted-foreground">{p.category || "Uncategorized"}</td>
                       <td className="px-4 py-3 text-right font-medium">{Number(p.stock_quantity)} <span className="text-xs text-muted-foreground">{p.unit}</span></td>
                       <td className="px-4 py-3 text-right font-display font-semibold text-brand-dark">{fmt(p.selling_price)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums whitespace-nowrap">
+                        {pp.markupPct === null ? <span className="text-muted-foreground">—</span> : fmt(pp.costTotal)}
+                      </td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">
+                        {pp.markupPct === null ? (
+                          <span className="text-muted-foreground">—</span>
+                        ) : (
+                          <div className={`tabular-nums ${pp.profitTotal < 0 ? "text-danger" : "text-brand-dark"}`}>
+                            <div className="font-medium">{fmt(pp.profitTotal)}</div>
+                            <div className={`text-xs ${pp.profitTotal < 0 ? "text-danger/80" : "text-muted-foreground"}`}>{formatMarkup(pp.markupPct)}</div>
+                          </div>
+                        )}
+                      </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         {p.expiry_date ? (
                           <div className="flex flex-col items-start gap-1">

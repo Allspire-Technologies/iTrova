@@ -29,6 +29,19 @@ test.describe("Inventory", () => {
     await expect(page.locator("table").getByText("GAR-50")).toBeVisible();
   });
 
+  test("shows cost total, profit and markup, with a click-to-open profit explainer", async ({ page }) => {
+    // 8,500 sell − 6,000 cost = 2,500 × 20 in stock → cost total 120,000, profit 50,000, markup 41.7%.
+    const row = page.locator("table tbody tr").first();
+    await expect(page.getByRole("columnheader", { name: "Sale price" })).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: "Cost total" })).toBeVisible();
+    await expect(row.getByText(/120[,]?000/)).toBeVisible();
+    await expect(row.getByText(/50[,]?000/)).toBeVisible();
+    await expect(row.getByText("41.7%")).toBeVisible();
+
+    await page.getByRole("button", { name: "How profit is calculated" }).first().click();
+    await expect(page.getByText("markup on cost", { exact: false })).toBeVisible();
+  });
+
   test("opens the add-product dialog with required fields asterisked and an optional expiry date", async ({ page }) => {
     await page.getByRole("button", { name: "Add product" }).click();
     await expect(page.getByText("Add a new product")).toBeVisible();

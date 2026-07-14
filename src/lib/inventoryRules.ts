@@ -216,6 +216,33 @@ export function buildImportPlan(
   return { inserts: allowedInserts.map(i => i.insert), updates, rejected };
 }
 
+export type ProductProfitStats = {
+  costTotal: number; // cost price × stock on hand
+  profitTotal: number; // (selling − cost) × stock on hand
+  /** Markup on cost: (selling − cost) ÷ cost, as a percent. null when cost is unknown (≤ 0). */
+  markupPct: number | null;
+};
+
+/**
+ * Inventory valuation for one product row: what the stock on hand cost, the profit it will yield
+ * if sold at the current price, and the markup on cost. Markup is quantity-independent, so it's the
+ * same whether figured per unit or on the totals. Returns a null `markupPct` (and treats cost as
+ * unknown) when the cost price is ≤ 0 — e.g. not entered, or absent from the offline cache.
+ */
+export function productProfitStats(
+  p: { selling_price: number; cost_price: number; stock_quantity: number },
+): ProductProfitStats {
+  const cost = Number(p.cost_price) || 0;
+  const selling = Number(p.selling_price) || 0;
+  const qty = Number(p.stock_quantity) || 0;
+  const known = cost > 0;
+  return {
+    costTotal: cost * qty,
+    profitTotal: (selling - cost) * qty,
+    markupPct: known ? ((selling - cost) / cost) * 100 : null,
+  };
+}
+
 export type ExpiryBand = "expired" | "critical" | "warning" | "soon" | "notice";
 export type ExpiryAlert = { band: ExpiryBand; daysLeft: number; label: string; className: string };
 
