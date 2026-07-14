@@ -665,9 +665,13 @@ export default function Invoices() {
 
       <Card className="overflow-hidden">
         {filtered.length === 0 ? (
-          <div className="p-12 text-center text-muted-foreground">
-            <FileText className="size-10 mx-auto mb-3 opacity-40" />
-            No invoices yet. Sales recorded in POS will appear here automatically.
+          <div className="p-12 text-center">
+            <div className="size-14 rounded-2xl bg-brand-light text-brand grid place-items-center mx-auto mb-4"><FileText className="size-6" /></div>
+            <h3 className="font-display text-lg font-semibold text-brand-dark">No invoices yet</h3>
+            <p className="text-muted-foreground text-sm mt-1 mb-4">Sales recorded at the Point of Sale appear here automatically — or create a manual invoice for a customer.</p>
+            {can("invoices", "create") && (
+              <Button variant="brand" onClick={openAdd} disabled={atInvoiceLimit} title={atInvoiceLimit ? limitMessage("invoices") : undefined}><Plus className="size-4" /> New invoice</Button>
+            )}
           </div>
         ) : (
           <>

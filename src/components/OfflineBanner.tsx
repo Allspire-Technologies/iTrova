@@ -13,3 +13,16 @@ export function OfflineBanner() {
     </div>
   );
 }
+
+// Compact on-page notice for pages that render a read-only snapshot while offline (Dashboard,
+// Inventory). The global bar says the app is offline; this explains what THIS page is showing.
+export function ReadOnlyOfflineNotice() {
+  const { online } = useOnline();
+  if (online) return null;
+  return (
+    <div className="flex items-center gap-2 rounded-xl border border-warning/30 bg-warning/10 px-4 py-2.5 text-sm text-warning">
+      <WifiOff className="size-4 shrink-0" />
+      <span>Offline — showing your last-synced data. Editing resumes when you’re back online.</span>
+    </div>
+  );
+}

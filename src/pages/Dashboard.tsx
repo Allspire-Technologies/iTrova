@@ -15,6 +15,7 @@ import OnboardingDialog from "@/components/OnboardingDialog";
 import { outOfStockProducts, lowStockProducts, totalStockUnits as sumStockUnits, type PaymentMethodRow } from "@/lib/reportMetrics";
 import { paymentLabel } from "@/lib/receipt";
 import { useOnline } from "@/contexts/OnlineContext";
+import { ReadOnlyOfflineNotice } from "@/components/OfflineBanner";
 import { cacheDashboard, readCachedDashboard } from "@/lib/offlineStore";
 import { fetchDashboardSnapshot, type DashSnap, type DashProduct as Product, type DashTopProduct as TopProduct, type DashActivityEntry as ActivityEntry } from "@/lib/dashboardSnapshot";
 
