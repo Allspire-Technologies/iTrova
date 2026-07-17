@@ -274,7 +274,7 @@ export default function Production() {
         <span className="flex-1">Material</span>
         <span className="w-20 text-center">Used</span>
         <span className="w-20 text-center">Waste</span>
-        <span className="w-10" /><span className="size-9 shrink-0" />
+        <span className="w-10" /><span className="size-10 shrink-0" />
       </div>
       {runMaterials.map((l, idx) => (
         <div key={idx} className="rounded-lg border border-border/60 p-2 space-y-2 sm:border-0 sm:p-0 sm:space-y-0 sm:flex sm:items-center sm:gap-2">
@@ -288,13 +288,13 @@ export default function Production() {
           </div>
           <div className="flex items-center gap-2 sm:contents">
             <Input
-              type="number" min="0" step="any" placeholder="Used" className="flex-1 sm:w-20"
+              type="number" min="0" step="any" placeholder="Used" className="flex-1 sm:w-20 sm:flex-none"
               aria-label={`Material used quantity ${idx + 1}`}
               value={l.quantity}
               onChange={(e) => setRunMaterials(prev => prev.map((x, i) => i === idx ? { ...x, quantity: e.target.value } : x))}
             />
             <Input
-              type="number" min="0" step="any" placeholder="Waste" className="flex-1 sm:w-20"
+              type="number" min="0" step="any" placeholder="Waste" className="flex-1 sm:w-20 sm:flex-none"
               aria-label={`Material wasted quantity ${idx + 1}`}
               value={l.waste ?? ""}
               onChange={(e) => {
@@ -331,8 +331,9 @@ export default function Production() {
       <div className="hidden sm:flex items-center gap-2 px-1 text-xs text-muted-foreground">
         <span className="flex-1">Product</span>
         <span className="w-20 text-center">Qty</span>
+        <span className="w-10" />
         <span className="w-24 text-center">Cost/unit</span>
-        <span className="w-10" /><span className="size-9 shrink-0" />
+        <span className="size-10 shrink-0" />
       </div>
       {runOutputs.map((l, idx) => {
         const prod = products.find(p => p.id === l.key_id);
@@ -348,19 +349,19 @@ export default function Production() {
             </div>
             <div className="flex items-center gap-2 sm:contents">
               <Input
-                type="number" min="0" step="any" placeholder="Qty" className="flex-1 sm:w-20"
+                type="number" min="0" step="any" placeholder="Qty" className="flex-1 sm:w-20 sm:flex-none"
                 aria-label={`Product quantity ${idx + 1}`}
                 value={l.quantity}
                 onChange={(e) => setRunOutputs(prev => prev.map((x, i) => i === idx ? { ...x, quantity: e.target.value } : x))}
               />
+              <span className="w-10 shrink-0 text-xs text-muted-foreground">{prod?.unit || ""}</span>
               <Input
-                type="number" min="0" step="any" className="flex-1 sm:w-24"
+                type="number" min="0" step="any" className="flex-1 sm:w-24 sm:flex-none"
                 placeholder={runUnitCosts[idx] ? String(runUnitCosts[idx]) : (prod && prod.cost_price != null ? String(prod.cost_price) : "Cost")}
                 aria-label={`Product cost price ${idx + 1}`}
                 value={l.cost ?? ""}
                 onChange={(e) => setRunOutputs(prev => prev.map((x, i) => i === idx ? { ...x, cost: e.target.value } : x))}
               />
-              <span className="w-10 shrink-0 text-xs text-muted-foreground">{prod?.unit || ""}</span>
               <Button variant="ghost" size="icon" className="shrink-0 text-muted-foreground hover:text-destructive"
                 aria-label={`Remove product line ${idx + 1}`}
                 onClick={() => setRunOutputs(prev => prev.filter((_, i) => i !== idx))}>

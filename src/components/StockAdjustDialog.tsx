@@ -5,10 +5,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import DatePicker from "@/components/DatePicker";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Minus, Plus } from "lucide-react";
+
+const todayStr = () => new Date().toISOString().slice(0, 10);
 
 type Kind = "product" | "raw_material";
 type Direction = "add" | "remove";
@@ -55,6 +58,7 @@ export default function StockAdjustDialog({
   const [reason, setReason] = useState(optionsFor("product", "remove")[0]);
   const [specify, setSpecify] = useState("");
   const [notes, setNotes] = useState("");
+  const [stockedDate, setStockedDate] = useState(todayStr());
   const [busy, setBusy] = useState(false);
 
   const options = optionsFor(target?.kind, direction);
@@ -68,7 +72,7 @@ export default function StockAdjustDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, direction, target?.kind]);
 
-  const reset = () => { setDirection("remove"); setQty(""); setReason(optionsFor("product", "remove")[0]); setSpecify(""); setNotes(""); };
+  const reset = () => { setDirection("remove"); setQty(""); setReason(optionsFor("product", "remove")[0]); setSpecify(""); setNotes(""); setStockedDate(todayStr()); };
 
   const save = async () => {
     if (!target || !business) return;
@@ -80,6 +84,7 @@ export default function StockAdjustDialog({
     const newStock = Number(target.stock_quantity) + delta;
     if (newStock < 0) return toast.error("Not enough stock");
     setBusy(true);
+    // stocked_date postdates the generated types (migration 20260728100000) — cast until regenerated.
     const { error: e1 } = await supabase.from("stock_adjustments").insert({
       business_id: business.id,
       product_id: target.kind === "product" ? target.id : null,
@@ -88,7 +93,8 @@ export default function StockAdjustDialog({
       reason: finalReason,
       notes: notes || null,
       user_id: user?.id,
-    });
+      stocked_date: stockedDate || todayStr(),
+    } as never);
     if (e1) { setBusy(false); return toast.error(e1.message); }
     const table = target.kind === "product" ? "products" : "raw_materials";
     const { error: e2 } = await supabase.from(table).update({ stock_quantity: newStock }).eq("id", target.id);
@@ -116,9 +122,15 @@ export default function StockAdjustDialog({
               <Plus className="size-4" /> Add
             </button>
           </div>
-          <div className="space-y-2">
-            <Label>Quantity ({target?.unit})</Label>
-            <Input type="number" min="0" step="0.01" placeholder="0" value={qty} onChange={(e) => setQty(e.target.value)} autoFocus />
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-2">
+              <Label>Quantity ({target?.unit})</Label>
+              <Input type="number" min="0" step="0.01" placeholder="0" value={qty} onChange={(e) => setQty(e.target.value)} autoFocus />
+            </div>
+            <div className="space-y-2">
+              <Label>Date</Label>
+              <DatePicker value={stockedDate} onChange={setStockedDate} max={todayStr()} placeholder="Date" />
+            </div>
           </div>
           <div className="space-y-2">
             <Label>Reason</Label>
