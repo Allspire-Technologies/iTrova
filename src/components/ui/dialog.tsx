@@ -81,7 +81,18 @@ const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivEleme
 DialogHeader.displayName = "DialogHeader";
 
 const DialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn("flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2", className)} {...props} />
+  // Sticky: DialogContent is the scroll container, so on dialogs taller than the viewport the
+  // actions used to sit half-visible at the scroll fold (looked broken — e.g. New PO on a laptop).
+  // Pinned to the bottom with the dialog's own background, they stay visible while the body
+  // scrolls; on short dialogs sticky is inert and the layout is unchanged.
+  <div
+    className={cn(
+      "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
+      "sticky bottom-0 z-10 -mx-6 -mb-6 bg-background px-6 pb-6 pt-2",
+      className,
+    )}
+    {...props}
+  />
 );
 DialogFooter.displayName = "DialogFooter";
 
