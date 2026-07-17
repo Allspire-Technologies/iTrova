@@ -30,6 +30,7 @@ import { useCurrency } from "@/hooks/useCurrency";
 import { LandedCostEditor, defaultLandedRows, fromLandedRows, type LandedRow } from "@/components/LandedCostEditor";
 import { landedTotal, landedUnitCost } from "@/lib/landedCost";
 import { useDateFormat } from "@/hooks/useDateFormat";
+import DatePicker from "@/components/DatePicker";
 
 type Material = {
   id: string; name: string; sku: string | null; unit: string; stock_quantity: number;
@@ -37,7 +38,7 @@ type Material = {
 };
 type Supplier = { id: string; name: string; phone: string | null; contact_name: string | null };
 type Purchase = {
-  id: string; created_at: string; quantity: number; unit_cost: number; total_cost: number;
+  id: string; created_at: string; stocked_date?: string | null; quantity: number; unit_cost: number; total_cost: number;
   raw_material_id: string; supplier_id: string | null; notes: string | null; tax_amount?: number; landed_total?: number;
 };
 
@@ -81,6 +82,7 @@ export default function RawMaterials() {
   const [purchaseFor, setPurchaseFor] = useState<Material | null>(null);
   const [pQty, setPQty] = useState<number>(0);
   const [pCost, setPCost] = useState<number>(0);
+  const [pDate, setPDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [pTax, setPTax] = useState<number>(0); // input VAT on this purchase (from the supplier invoice)
   const [pLanded, setPLanded] = useState<LandedRow[]>(defaultLandedRows()); // freight/duty/other → item cost
   const taxEnabled = !!business?.tax_enabled;
@@ -92,7 +94,7 @@ export default function RawMaterials() {
         .order("created_at", { ascending: false }),
       supabase.from("suppliers").select("id,name,phone,contact_name").order("name"),
       supabase.from("material_purchases")
-        .select("id,created_at,quantity,unit_cost,total_cost,raw_material_id,supplier_id,notes,tax_amount,landed_total")
+        .select("id,created_at,stocked_date,quantity,unit_cost,total_cost,raw_material_id,supplier_id,notes,tax_amount,landed_total")
         .order("created_at", { ascending: false }),
     ]);
     setItems((m as unknown as Material[]) || []); // weight postdates generated types
@@ -152,10 +154,11 @@ export default function RawMaterials() {
       tax_amount: taxEnabled ? (pTax || 0) : 0,
       landed_costs: landedLines,
       landed_total: landedTotal(landedLines),
-    }); // tax_amount/landed_costs postdate the generated types
+      stocked_date: pDate || new Date().toISOString().slice(0, 10),
+    } as never); // tax_amount/landed_costs/stocked_date postdate the generated types
     if (error) return toast.error(error.message);
     toast.success(`Recorded purchase of ${pQty} ${purchaseFor.unit}`);
-    setPurchaseOpen(false); setPQty(0); setPCost(0); setPTax(0); setPLanded(defaultLandedRows()); load();
+    setPurchaseOpen(false); setPQty(0); setPCost(0); setPTax(0); setPDate(new Date().toISOString().slice(0, 10)); setPLanded(defaultLandedRows()); load();
   };
 
   // Human-readable headers for the template/export. Import is case/spacing-insensitive and accepts
@@ -436,7 +439,7 @@ export default function RawMaterials() {
                       <div className="min-w-0">
                         <div className="font-medium text-brand-dark truncate">{mat?.name || "—"}</div>
                         {p.notes && <div className="text-xs text-muted-foreground truncate">{p.notes}</div>}
-                        <div className="text-xs text-muted-foreground mt-0.5 truncate">{supp?.name || "—"} · {fmtDate(p.created_at)}</div>
+                        <div className="text-xs text-muted-foreground mt-0.5 truncate">{supp?.name || "—"} · {fmtDate(p.stocked_date || p.created_at)}</div>
                       </div>
                       <div className="text-right shrink-0">
                         <div className="font-display font-semibold text-brand-dark">{fmt(p.total_cost)}</div>
@@ -468,7 +471,7 @@ export default function RawMaterials() {
                       return (
                         <tr key={p.id} className="border-b border-border/50 hover:bg-secondary/40">
                           <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
-                            {fmtDate(p.created_at)}
+                            {fmtDate(p.stocked_date || p.created_at)}
                           </td>
                           <td className="px-4 py-3">
                             <div className="font-medium text-brand-dark">{mat?.name || "—"}</div>
@@ -549,6 +552,7 @@ export default function RawMaterials() {
               <div className="space-y-2"><Label>Quantity ({purchaseFor?.unit})</Label><Input type="number" min="0" step="0.01" placeholder="0" value={pQty || ""} onChange={e => setPQty(Number(e.target.value))} /></div>
               <div className="space-y-2"><Label>Unit cost ({symbol})</Label><Input type="number" min="0" step="0.01" placeholder="0" value={pCost || ""} onChange={e => setPCost(Number(e.target.value))} /></div>
             </div>
+            <div className="space-y-2"><Label>Date stocked</Label><DatePicker value={pDate} onChange={setPDate} max={new Date().toISOString().slice(0, 10)} placeholder="Date stocked" /></div>
             {taxEnabled && (
               <div className="space-y-2">
                 <Label>of which VAT ({symbol}) <span className="font-normal text-muted-foreground">(input VAT — optional)</span></Label>

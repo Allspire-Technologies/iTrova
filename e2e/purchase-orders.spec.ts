@@ -61,11 +61,13 @@ test.describe("Purchase Orders", () => {
     // Line 1 — Inventory (default): pick Rice.
     await dialog.getByRole("combobox").nth(1).click();
     await page.getByRole("option", { name: "Rice 25kg" }).click();
+    await dialog.getByPlaceholder("Qty").first().fill("1");
     // Line 2 — switch to Raw material: pick Cassava.
     await dialog.getByRole("button", { name: "Add line" }).click();
     await dialog.getByRole("radio", { name: "Raw material" }).nth(1).click();
     await dialog.getByRole("combobox").nth(2).click();
     await page.getByRole("option", { name: "Cassava" }).click();
+    await dialog.getByPlaceholder("Qty").nth(1).fill("1");
 
     await dialog.getByRole("button", { name: "Create PO" }).click();
     await expect(page.getByText(/Purchase order PO-0007 created/)).toBeVisible();
@@ -121,6 +123,7 @@ test.describe("Purchase Orders", () => {
     const dialog = page.getByRole("dialog");
     await dialog.getByRole("combobox").nth(1).click();
     await page.getByRole("option", { name: "Rice 25kg" }).click(); // auto-fills unit cost 6000
+    await dialog.getByPlaceholder("Qty").first().fill("1");
     await dialog.getByLabel("Freight amount").fill("5000"); // Duty left blank → dropped
     await dialog.getByRole("button", { name: "Create PO" }).click();
     await expect(page.getByText(/Purchase order PO-0009 created/)).toBeVisible();

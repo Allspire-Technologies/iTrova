@@ -79,7 +79,7 @@ export default function Invoices() {
   const [waShare, setWaShare] = useState<{ message: string } | null>(null);
   const [form, setForm] = useState({ customer_name: "", customer_phone: "", customer_email: "", due_date: "", notes: "" });
   const [discount, setDiscount] = useState(0);
-  const [lines, setLines] = useState<Item[]>([{ description: "", quantity: 1, unit_price: 0, line_total: 0 }]);
+  const [lines, setLines] = useState<Item[]>([{ description: "", quantity: 0, unit_price: 0, line_total: 0 }]);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<Invoice | null>(null);
   const [pending, setPending] = useState<{ title: string; description: string; confirmLabel?: string; variant?: "destructive" | "default"; onConfirm: () => void } | null>(null);
@@ -149,7 +149,7 @@ export default function Invoices() {
     setEditing(null);
     setForm({ customer_name: "", customer_phone: "", customer_email: "", due_date: "", notes: "" });
     setDiscount(0);
-    setLines([{ description: "", quantity: 1, unit_price: 0, line_total: 0 }]);
+    setLines([{ description: "", quantity: 0, unit_price: 0, line_total: 0 }]);
     setOpen(true);
   };
 
@@ -165,7 +165,7 @@ export default function Invoices() {
     setDiscount(Number(inv.discount_amount) || 0);
     const { data, error } = await supabase.from("invoice_items").select("*").eq("invoice_id", inv.id);
     if (error) toast.error("Couldn't load this invoice's items.");
-    setLines((data as Item[]) || [{ description: "", quantity: 1, unit_price: 0, line_total: 0 }]);
+    setLines((data as Item[]) || [{ description: "", quantity: 0, unit_price: 0, line_total: 0 }]);
     setOpen(true);
   };
 
@@ -213,7 +213,7 @@ export default function Invoices() {
       return merged;
     }));
   };
-  const addLine = () => setLines(prev => [...prev, { description: "", quantity: 1, unit_price: 0, line_total: 0 }]);
+  const addLine = () => setLines(prev => [...prev, { description: "", quantity: 0, unit_price: 0, line_total: 0 }]);
   const removeLine = (idx: number) => setLines(prev => prev.length === 1 ? prev : prev.filter((_, i) => i !== idx));
 
   const subtotal = lines.reduce((s, l) => s + (l.line_total || 0), 0);
@@ -233,6 +233,7 @@ export default function Invoices() {
     }
     if (!form.customer_name.trim()) return toast.error("Customer name is required");
     if (lines.some(l => !l.description.trim())) return toast.error("Every line needs a description");
+    if (lines.some(l => Number(l.quantity) <= 0)) return toast.error("Every line needs a quantity");
     setBusy(true);
 
     const itemPayload = (invId: string) => lines.map(l => ({
@@ -281,7 +282,7 @@ export default function Invoices() {
     setEditing(null);
     setForm({ customer_name: "", customer_phone: "", customer_email: "", due_date: "", notes: "" });
     setDiscount(0);
-    setLines([{ description: "", quantity: 1, unit_price: 0, line_total: 0 }]);
+    setLines([{ description: "", quantity: 0, unit_price: 0, line_total: 0 }]);
     load();
   };
 
@@ -794,7 +795,7 @@ export default function Invoices() {
                   <div key={idx} className="rounded-lg border border-border/60 p-2 space-y-2 sm:border-0 sm:p-0 sm:space-y-0 sm:grid sm:grid-cols-12 sm:gap-2 sm:items-center">
                     <Input className="sm:col-span-6" placeholder="Description" value={l.description} disabled={posLocked} onChange={e => updateLine(idx, { description: e.target.value })} />
                     <div className="flex gap-2 sm:contents">
-                      <Input className="flex-1 sm:col-span-2" type="number" min={0} placeholder="Qty" value={l.quantity} onChange={e => updateLine(idx, { quantity: Number(e.target.value) })} />
+                      <Input className="flex-1 sm:col-span-2" type="number" min={0} placeholder="Qty" value={l.quantity || ""} onChange={e => updateLine(idx, { quantity: Number(e.target.value) })} />
                       <Input className="flex-1 sm:col-span-3" type="number" min={0} placeholder="Unit price" value={l.unit_price || ""} disabled={posLocked} onChange={e => updateLine(idx, { unit_price: Number(e.target.value) })} />
                       <Button variant="ghost" size="icon" className="shrink-0 sm:col-span-1" aria-label="Remove line" disabled={posLocked} onClick={() => removeLine(idx)}><Trash2 className="size-4" /></Button>
                     </div>

@@ -62,12 +62,13 @@ export default function PurchaseOrders() {
   const [viewing, setViewing] = useState<PO | null>(null);
   const [viewItems, setViewItems] = useState<POItemRow[]>([]);
   const [form, setForm] = useState({ supplier_id: "", expected_date: "", notes: "" });
-  const [lines, setLines] = useState<Item[]>([{ product_id: null, raw_material_id: null, description: "", quantity: 1, unit_cost: 0, line_total: 0, source: "product" }]);
+  const [lines, setLines] = useState<Item[]>([{ product_id: null, raw_material_id: null, description: "", quantity: 0, unit_cost: 0, line_total: 0, source: "product" }]);
   const [poTax, setPoTax] = useState<number>(0); // input VAT on this order (from the supplier invoice)
   const [landedRows, setLandedRows] = useState<LandedRow[]>(defaultLandedRows()); // freight/duty/other
   const taxEnabled = !!business?.tax_enabled;
   // Receive flow: edit landed costs before the PO is received and stock is valued.
   const [receiving, setReceiving] = useState<PO | null>(null);
+  const [receiveDate, setReceiveDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [receiveRows, setReceiveRows] = useState<LandedRow[]>([]);
   const [receiveItems, setReceiveItems] = useState<POItemRow[]>([]);
   const [receiveBusy, setReceiveBusy] = useState(false);
@@ -164,7 +165,7 @@ export default function PurchaseOrders() {
       updateLine(idx, { raw_material_id: id, product_id: null, description: `${m.name} (${m.unit})`, unit_cost: Number(m.cost_per_unit) });
     }
   };
-  const addLine = () => setLines(prev => [...prev, { product_id: null, raw_material_id: null, description: "", quantity: 1, unit_cost: 0, line_total: 0, source: "product" }]);
+  const addLine = () => setLines(prev => [...prev, { product_id: null, raw_material_id: null, description: "", quantity: 0, unit_cost: 0, line_total: 0, source: "product" }]);
   const removeLine = (idx: number) => setLines(prev => prev.length === 1 ? prev : prev.filter((_, i) => i !== idx));
 
   const subtotal = lines.reduce((s, l) => s + (l.line_total || 0), 0);
@@ -192,6 +193,7 @@ export default function PurchaseOrders() {
       return;
     }
     if (lines.some(l => !l.description.trim())) return toast.error("Every line needs a description");
+    if (lines.some(l => Number(l.quantity) <= 0)) return toast.error("Every line needs a quantity");
     setBusy(true);
     const { data: numData } = await supabase.rpc("next_doc_number" as any, {
       _business_id: business.id, _prefix: "PO", _table: "purchase_orders", _col: "po_number"
@@ -217,7 +219,7 @@ export default function PurchaseOrders() {
     toast.success(`Purchase order ${po_number} created`);
     setOpen(false);
     setForm({ supplier_id: "", expected_date: "", notes: "" });
-    setLines([{ product_id: null, raw_material_id: null, description: "", quantity: 1, unit_cost: 0, line_total: 0, source: "product" }]);
+    setLines([{ product_id: null, raw_material_id: null, description: "", quantity: 0, unit_cost: 0, line_total: 0, source: "product" }]);
     setPoTax(0);
     setLandedRows(defaultLandedRows());
     load();
@@ -236,6 +238,7 @@ export default function PurchaseOrders() {
     if (status === i.status) return;
     if (status === "received") {
       setReceiving(i);
+      setReceiveDate(new Date().toISOString().slice(0, 10));
       setReceiveRows(toLandedRows(i.landed_costs));
       const { data } = await supabase.from("purchase_order_items").select("*").eq("purchase_order_id", i.id);
       setReceiveItems((data as POItemRow[]) || []);
@@ -250,7 +253,9 @@ export default function PurchaseOrders() {
     // One update: persist the final landed costs AND flip to received, so the trigger costs stock
     // using the amounts just entered.
     const { error } = await supabase.from("purchase_orders")
-      .update({ landed_costs: fromLandedRows(receiveRows), status: "received" })
+      // received_at (settable receive date) is kept by the trigger's coalesce; stocked_date on the
+      // rows it creates derives from it. Cast — received_at is set here for the first time via the app.
+      .update({ landed_costs: fromLandedRows(receiveRows), status: "received", received_at: receiveDate } as never)
       .eq("id", receiving.id);
     setReceiveBusy(false);
     if (error) return toast.error(error.message);
@@ -590,7 +595,7 @@ export default function PurchaseOrders() {
                       </>
                     )}
                     <div className="grid grid-cols-2 gap-2 sm:contents">
-                      <Input className="sm:col-span-2" type="number" min={0} placeholder="Qty" value={l.quantity} onChange={e => updateLine(idx, { quantity: Number(e.target.value) })} />
+                      <Input className="sm:col-span-2" type="number" min={0} placeholder="Qty" value={l.quantity || ""} onChange={e => updateLine(idx, { quantity: Number(e.target.value) })} />
                       <Input className="sm:col-span-2" type="number" min={0} placeholder="Cost" value={l.unit_cost || ""} onChange={e => updateLine(idx, { unit_cost: Number(e.target.value) })} />
                     </div>
                   </div>
@@ -706,6 +711,10 @@ export default function PurchaseOrders() {
             Add the actual freight, duty and clearing costs from the supplier/agent bills. Stock is added and
             <span className="font-medium text-foreground"> valued at cost including these</span> (allocated across items by value). This can{"'"}t be undone.
           </p>
+          <div className="space-y-2">
+            <Label>Received date</Label>
+            <DatePicker value={receiveDate} onChange={setReceiveDate} max={new Date().toISOString().slice(0, 10)} placeholder="Received date" />
+          </div>
           <div className="space-y-2">
             <Label>Landed costs</Label>
             <LandedCostEditor value={receiveRows} onChange={setReceiveRows} fmt={fmt} showBasis />

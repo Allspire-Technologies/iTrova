@@ -8,15 +8,17 @@ import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { saveRecipe, validateLines } from "@/lib/production";
+import { useCurrency } from "@/hooks/useCurrency";
 
 // Shared recipe (BOM) editor: which raw materials — and how much of each — go into ONE unit of a
 // product. Opened from the Production → Recipes tab (by product) and from a Raw Materials row
-// ("Link to product", seeded with that material).
+// ("Link to product", seeded with that material). Shows a live unit-cost estimate from the recipe
+// (materials × cost + optional labour/overhead) with one-tap write-back to the product's cost price.
 
 type Line = { raw_material_id: string; quantity: string };
 
-type ProductOpt = { id: string; name: string; unit: string | null };
-type MaterialOpt = { id: string; name: string; unit: string | null };
+type ProductOpt = { id: string; name: string; unit: string | null; cost_price: number | null };
+type MaterialOpt = { id: string; name: string; unit: string | null; cost_per_unit: number | null };
 
 export default function RecipeEditorDialog({
   open, onClose, onSaved, productId, seedMaterialId,
@@ -29,18 +31,22 @@ export default function RecipeEditorDialog({
   /** Pre-adds this material as the first line (Raw Materials entry point). */
   seedMaterialId?: string | null;
 }) {
+  const { fmt } = useCurrency();
   const [products, setProducts] = useState<ProductOpt[]>([]);
   const [materials, setMaterials] = useState<MaterialOpt[]>([]);
   const [product, setProduct] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
+  const [labour, setLabour] = useState(""); // optional labour/overhead per unit
   const [busy, setBusy] = useState(false);
+  const [savingCost, setSavingCost] = useState(false);
 
   useEffect(() => {
     if (!open) return;
+    setLabour("");
     (async () => {
       const [p, m] = await Promise.all([
-        supabase.from("products").select("id,name,unit").order("name"),
-        supabase.from("raw_materials").select("id,name,unit").order("name"),
+        supabase.from("products").select("id,name,unit,cost_price").order("name"),
+        supabase.from("raw_materials").select("id,name,unit,cost_per_unit").order("name"),
       ]);
       setProducts((p.data as ProductOpt[]) ?? []);
       setMaterials((m.data as MaterialOpt[]) ?? []);
@@ -61,6 +67,26 @@ export default function RecipeEditorDialog({
 
   const matUnit = (id: string) => materials.find((m) => m.id === id)?.unit || "unit";
   const productLabel = useMemo(() => products.find((p) => p.id === product), [products, product]);
+
+  // Live unit-cost estimate: Σ(qty per unit × material cost) + optional labour/overhead per unit.
+  const estimate = useMemo(() => {
+    const costById = new Map(materials.map((m) => [m.id, Number(m.cost_per_unit) || 0]));
+    const materialsCost = lines.reduce((sum, l) => sum + (Number(l.quantity) || 0) * (costById.get(l.raw_material_id) ?? 0), 0);
+    const labourCost = Number(labour) || 0;
+    return { materialsCost, labourCost, unitCost: materialsCost + labourCost };
+  }, [lines, labour, materials]);
+
+  const setAsCostPrice = async () => {
+    if (!product) return toast.error("Pick the product first.");
+    if (estimate.unitCost <= 0) return toast.error("Add materials (with costs) to estimate a unit cost.");
+    setSavingCost(true);
+    const rounded = Math.round(estimate.unitCost * 100) / 100;
+    const { error } = await supabase.from("products").update({ cost_price: rounded }).eq("id", product);
+    setSavingCost(false);
+    if (error) return toast.error(error.message);
+    setProducts((prev) => prev.map((p) => (p.id === product ? { ...p, cost_price: rounded } : p)));
+    toast.success(`Cost price set to ${fmt(rounded)}`);
+  };
 
   const save = async () => {
     if (!product) return toast.error("Pick the product this recipe makes.");
@@ -133,6 +159,46 @@ export default function RecipeEditorDialog({
             </Button>
             <p className="text-xs text-muted-foreground">
               Quantities are per one {productLabel?.unit || "unit"} of the product — used to guide material requests and production runs.
+            </p>
+          </div>
+
+          {/* Unit-cost estimator */}
+          <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <Label className="text-sm">Estimated unit cost</Label>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground whitespace-nowrap">Labour / overhead per unit</span>
+                <Input
+                  type="number" min="0" step="any" placeholder="0"
+                  className="h-8 w-28"
+                  aria-label="Labour and overhead per unit"
+                  value={labour}
+                  onChange={(e) => setLabour(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="space-y-1 text-sm">
+              <div className="flex justify-between text-muted-foreground"><span>Materials</span><span className="tabular-nums">{fmt(estimate.materialsCost)}</span></div>
+              {estimate.labourCost > 0 && <div className="flex justify-between text-muted-foreground"><span>Labour / overhead</span><span className="tabular-nums">{fmt(estimate.labourCost)}</span></div>}
+              <div className="flex justify-between border-t border-border pt-1 font-medium text-brand-dark">
+                <span>Estimated cost per {productLabel?.unit || "unit"}</span>
+                <span className="tabular-nums">{fmt(estimate.unitCost)}</span>
+              </div>
+              {productLabel && productLabel.cost_price != null && (
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Current cost price</span><span className="tabular-nums">{fmt(Number(productLabel.cost_price))}</span>
+                </div>
+              )}
+            </div>
+            <Button
+              variant="outline" size="sm" className="w-full"
+              disabled={savingCost || !product || estimate.unitCost <= 0}
+              onClick={setAsCostPrice}
+            >
+              {savingCost ? "Saving…" : "Set as cost price"}
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Uses each material's current cost per unit. Setting the cost price updates the product now; recording a production run still recomputes cost from the actual materials used.
             </p>
           </div>
         </div>

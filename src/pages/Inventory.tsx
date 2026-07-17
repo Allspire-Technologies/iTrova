@@ -42,7 +42,8 @@ type Product = {
   weight?: number | null;
 };
 
-const empty = { name: "", category: "", sku: "", unit: "pcs", selling_price: "", cost_price: "", stock_quantity: "", reorder_level: 5, expiry_date: "", tax_id: "", weight: "" };
+const empty = { name: "", category: "", sku: "", unit: "pcs", selling_price: "", cost_price: "", stock_quantity: "", reorder_level: 5, expiry_date: "", tax_id: "", weight: "", stocked_date: "" };
+const todayStr = () => new Date().toISOString().slice(0, 10);
 
 // Markup on cost, one decimal place — e.g. 23.3% or -10.0% for a loss.
 const formatMarkup = (pct: number) => `${pct.toFixed(1)}%`;
@@ -70,7 +71,7 @@ function ProfitInfo() {
 }
 
 export default function Inventory() {
-  const { business, hasModule } = useAuth();
+  const { business, hasModule, user } = useAuth();
   const { online } = useOnline();
   const { fmt, symbol } = useCurrency();
   const { fmtDate, timezone } = useDateFormat();
@@ -118,7 +119,7 @@ export default function Inventory() {
 
   useEffect(() => { if (business) load(); }, [business, online]);
 
-  const openAdd = () => { setEditing(null); setForm({ ...empty, tax_id: taxEnabled ? defaultTaxId : "" }); setOpen(true); };
+  const openAdd = () => { setEditing(null); setForm({ ...empty, tax_id: taxEnabled ? defaultTaxId : "", stocked_date: todayStr() }); setOpen(true); };
   const openEdit = (p: Product) => { setEditing(p); setForm(p); setOpen(true); };
 
   const save = async (e: React.FormEvent) => {
@@ -146,12 +147,27 @@ export default function Inventory() {
       tax_id: form.tax_id || null,
       weight: Number(form.weight) || null, // per-unit weight for landed-cost (freight) allocation
     };
-    // tax_id postdates the generated Supabase types — cast until types are regenerated.
-    const { error } = editing
-      ? await supabase.from("products").update(payload).eq("id", editing.id)
-      : await supabase.from("products").insert({ ...payload, stock_quantity: Number(form.stock_quantity) || 0, business_id: business.id });
-    setBusy(false);
-    if (error) return toast.error(error.message);
+    const initialStock = Number(form.stock_quantity) || 0;
+    if (editing) {
+      const { error } = await supabase.from("products").update(payload).eq("id", editing.id);
+      setBusy(false);
+      if (error) return toast.error(error.message);
+    } else {
+      const { data: created, error } = await supabase.from("products")
+        .insert({ ...payload, stock_quantity: initialStock, business_id: business.id })
+        .select("id").single();
+      // Log the opening stock as a dated stock-in so it appears in the stocking history/report.
+      if (!error && created && initialStock > 0) {
+        // stocked_date postdates the generated types (migration 20260728100000) — cast until regenerated.
+        await supabase.from("stock_adjustments").insert({
+          business_id: business.id, product_id: (created as { id: string }).id,
+          delta: initialStock, reason: "Opening stock", notes: null, user_id: user?.id,
+          stocked_date: form.stocked_date || todayStr(),
+        } as never);
+      }
+      setBusy(false);
+      if (error) return toast.error(error.message);
+    }
     toast.success(editing ? "Product updated" : "Product added");
     setOpen(false);
     load();
@@ -366,6 +382,13 @@ export default function Inventory() {
                     <Input type="number" required min="0" step="1" value={form.reorder_level} onChange={e => setForm({ ...form, reorder_level: e.target.value })} />
                   </div>
                 </div>
+                {!editing && Number(form.stock_quantity) > 0 && (
+                  <div className="space-y-2">
+                    <Label>Date stocked</Label>
+                    <DatePicker value={form.stocked_date} onChange={(v) => setForm({ ...form, stocked_date: v })} max={todayStr()} placeholder="Date stocked" />
+                    <p className="text-xs text-muted-foreground">When this opening stock came in — recorded in your stocking history.</p>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label>Expiry date <span className="font-normal text-muted-foreground">(optional)</span></Label>

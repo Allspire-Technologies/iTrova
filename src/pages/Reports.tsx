@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import DatePicker from "@/components/DatePicker";
 import { Label } from "@/components/ui/label";
 import { useCurrency } from "@/hooks/useCurrency";
+import { useDateFormat } from "@/hooks/useDateFormat";
 import { Download, TrendingUp, ShoppingCart, Package, AlertTriangle, Truck, Users, ArrowUpRight, ArrowDownRight, ChevronLeft, ChevronRight, Wallet, Receipt } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, AreaChart, Area, CartesianGrid, PieChart, Pie, Cell } from "recharts";
 import { paymentLabel } from "@/lib/receipt";
@@ -33,12 +34,17 @@ type Supplier = { id: string; name: string };
 
 function isoDate(d: Date) { return d.toISOString().slice(0, 10); }
 
+// A dated stock-in for the Stocking history section (manual adds, opening stock, PO receipts →
+// stock_adjustments with delta > 0; raw-material purchases → material_purchases).
+type StockInRow = { date: string; item: string; qty: number; source: string };
+
 // Donut slice colours for the payment-methods breakdown — brand shades, cycled.
 const PAY_COLORS = ["hsl(var(--brand))", "hsl(var(--brand) / 0.6)", "hsl(var(--brand) / 0.35)", "hsl(var(--muted-foreground) / 0.55)"];
 
 export default function Reports() {
   const { business, hasModule } = useAuth();
   const { fmt } = useCurrency();
+  const { fmtDate } = useDateFormat();
   const showExpenses = hasModule("expenditure");
   const [from, setFrom] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 29); return isoDate(d); });
   const [to, setTo] = useState(() => isoDate(new Date()));
@@ -57,6 +63,8 @@ export default function Reports() {
   const [inputVatTotal, setInputVatTotal] = useState(0);
   const [procurementVatTotal, setProcurementVatTotal] = useState(0); // input VAT from material purchases + received POs
   const [paymentLines, setPaymentLines] = useState<{ method: string; amount: number }[]>([]); // per-method legs (sale_payments) in the window
+  const [stockIns, setStockIns] = useState<StockInRow[]>([]); // dated stock-ins (adjustments + raw purchases) in the window
+  const [stockInPage, setStockInPage] = useState(1);
   const [outOfStockPage, setOutOfStockPage] = useState(1);
   const [lowStockPage, setLowStockPage] = useState(1);
   const [turnoverPage, setTurnoverPage] = useState(1);
@@ -72,7 +80,7 @@ export default function Reports() {
       const prevToIso = new Date(new Date(fromIso).getTime() - 1).toISOString();
       const prevFromIso = new Date(new Date(prevToIso).getTime() - periodMs).toISOString();
 
-      const [s, p, pr, mp, sup, prevS, prof, po, exp, sp] = await Promise.all([
+      const [s, p, pr, mp, sup, prevS, prof, po, exp, sp, adj, mpi] = await Promise.all([
         supabase.from("sales").select("id,total_amount,created_at,staff_id,tax_amount").eq("business_id", business.id).eq("voided", false).gte("created_at", fromIso).lte("created_at", toIso),
         supabase.from("products").select("id,name,stock_quantity,reorder_level,cost_price,selling_price,tax_id").eq("business_id", business.id),
         // Only the items whose sale falls in the report window (previous period start → current
@@ -97,6 +105,11 @@ export default function Reports() {
         // sale_payments postdates the generated types, so cast the client.
          
         supabase.from("sale_payments").select("method,amount,sales!inner(id)").eq("sales.business_id", business.id).eq("sales.voided", false).gte("sales.created_at", fromIso).lte("sales.created_at", toIso),
+        // Stocking history: stock-ins in the window. delta>0 covers manual adds, opening stock and
+        // PO product receipts; raw-material purchases come from material_purchases. (stocked_date
+        // postdates the generated types — read via the loosely-typed rows below.)
+        supabase.from("stock_adjustments").select("delta,reason,created_at,stocked_date,products(name),raw_materials(name)").eq("business_id", business.id).gt("delta", 0).gte("created_at", fromIso).lte("created_at", toIso).order("created_at", { ascending: false }).limit(200),
+        supabase.from("material_purchases").select("quantity,created_at,stocked_date,raw_materials(name)").eq("business_id", business.id).gte("created_at", fromIso).lte("created_at", toIso).order("created_at", { ascending: false }).limit(200),
       ]);
 
       if (s.error) { toast.error("Failed to load sales data"); setLoading(false); return; }
@@ -134,6 +147,25 @@ export default function Reports() {
       setProcurementVatTotal(matVat + poVat);
 
       setPaymentLines((((sp as { data?: unknown }).data ?? []) as Record<string, unknown>[]).map(r => ({ method: String(r.method), amount: Number(r.amount) })));
+
+      // Stocking history — merge both sources, effective date = stocked_date or created_at.
+      const eff = (r: Record<string, unknown>) => String((r.stocked_date as string) || (r.created_at as string)).slice(0, 10);
+      const adjRows: StockInRow[] = (((adj as { data?: unknown }).data ?? []) as Record<string, unknown>[])
+        .filter(r => Number(r.delta) > 0)
+        .map(r => ({
+          date: eff(r),
+          item: (r.products as { name?: string } | null)?.name || (r.raw_materials as { name?: string } | null)?.name || "Item",
+          qty: Number(r.delta),
+          source: String(r.reason || "Adjustment"),
+        }));
+      const purRows: StockInRow[] = (((mpi as { data?: unknown }).data ?? []) as Record<string, unknown>[]).map(r => ({
+        date: eff(r),
+        item: (r.raw_materials as { name?: string } | null)?.name || "Raw material",
+        qty: Number(r.quantity),
+        source: "Raw material purchase",
+      }));
+      setStockIns([...adjRows, ...purRows].sort((a, b) => b.date.localeCompare(a.date)));
+      setStockInPage(1);
 
       setLoading(false);
     })();
@@ -596,6 +628,31 @@ export default function Reports() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Stocking history — dated stock-ins (adds, opening stock, PO receipts, raw purchases). */}
+          <Card className="shadow-card border-border/60">
+            <CardHeader><CardTitle className="font-display text-lg flex items-center gap-2"><Package className="size-4 text-brand" /> Stocking history</CardTitle></CardHeader>
+            <CardContent>
+              {stockIns.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No stock was added in this period.</p>
+              ) : (
+                <>
+                  <div className="divide-y divide-border/50">
+                    {stockIns.slice((stockInPage - 1) * PAGE_SIZE, stockInPage * PAGE_SIZE).map((r, i) => (
+                      <div key={i} className="flex items-center justify-between gap-3 py-2 text-sm">
+                        <div className="min-w-0">
+                          <div className="font-medium text-brand-dark truncate">{r.item}</div>
+                          <div className="text-xs text-muted-foreground">{fmtDate(r.date)} · {r.source}</div>
+                        </div>
+                        <span className="shrink-0 font-medium tabular-nums text-brand">+{r.qty.toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <CardPager page={stockInPage} pageCount={Math.ceil(stockIns.length / PAGE_SIZE)} onPage={setStockInPage} />
+                </>
+              )}
+            </CardContent>
+          </Card>
         </>
       )}
     </div>
