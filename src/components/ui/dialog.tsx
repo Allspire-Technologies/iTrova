@@ -47,54 +47,65 @@ const WIDE =
   "data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom " +
   "sm:data-[state=closed]:slide-out-to-left-1/2 sm:data-[state=closed]:slide-out-to-top-[48%] sm:data-[state=open]:slide-in-from-left-1/2 sm:data-[state=open]:slide-in-from-top-[48%] sm:data-[state=closed]:zoom-out-95 sm:data-[state=open]:zoom-in-95";
 
+// The action row. It is rendered OUTSIDE the scrolling body by DialogContent (below), so it is
+// always visible on tall dialogs AND can never cover content. It used to be `sticky` inside the
+// scroll area, but a sticky footer with a negative bottom margin shrinks the scroll container's
+// scrollHeight — leaving the last line of content permanently hidden behind it (the invoice
+// "Payment: …" row was cut in half). Guarded by e2e/dialog-footer.spec.ts.
+const DialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
+  <div
+    data-slot="dialog-footer"
+    className={cn("flex shrink-0 flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2", className)}
+    {...props}
+  />
+);
+DialogFooter.displayName = "DialogFooter";
+
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { variant?: "full" | "compact" | "wide" }
->(({ className, children, variant = "full", onInteractOutside, ...props }, ref) => (
-  <DialogPortal>
-    <DialogOverlay />
-    <DialogPrimitive.Content
-      ref={ref}
-      className={cn(
-        "fixed z-50 grid gap-4 border bg-background p-6 shadow-lg overflow-y-auto overscroll-contain duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
-        variant === "compact" ? COMPACT : variant === "wide" ? WIDE : FULL_MOBILE,
-        className,
-      )}
-      // Don't close on outside click (or focus leaving) — only the X, Cancel, or Escape close a modal,
-      // so a stray click never discards a half-filled form. Callers can still override onInteractOutside.
-      onInteractOutside={onInteractOutside ?? ((e) => e.preventDefault())}
-      {...props}
-    >
-      {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity data-[state=open]:bg-accent data-[state=open]:text-muted-foreground hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
-        <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
-      </DialogPrimitive.Close>
-    </DialogPrimitive.Content>
-  </DialogPortal>
-));
+>(({ className, children, variant = "full", onInteractOutside, ...props }, ref) => {
+  // Split the footer out of the body: the body is the only scrolling region, the footer is a static
+  // sibling. This makes "content hidden behind the actions" structurally impossible, and keeps the
+  // actions (and the X) visible without scrolling on tall dialogs.
+  const kids = React.Children.toArray(children);
+  const footer = kids.find((k) => React.isValidElement(k) && k.type === DialogFooter);
+  const body = footer ? kids.filter((k) => k !== footer) : kids;
+
+  return (
+    <DialogPortal>
+      <DialogOverlay />
+      <DialogPrimitive.Content
+        ref={ref}
+        className={cn(
+          "fixed z-50 flex flex-col gap-4 border bg-background p-6 shadow-lg overflow-hidden duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+          variant === "compact" ? COMPACT : variant === "wide" ? WIDE : FULL_MOBILE,
+          className,
+        )}
+        // Don't close on outside click (or focus leaving) — only the X, Cancel, or Escape close a modal,
+        // so a stray click never discards a half-filled form. Callers can still override onInteractOutside.
+        onInteractOutside={onInteractOutside ?? ((e) => e.preventDefault())}
+        {...props}
+      >
+        {/* min-h-0 lets this flex child shrink so it — and only it — scrolls. */}
+        <div data-slot="dialog-body" className="grid min-h-0 flex-1 content-start gap-4 overflow-y-auto overscroll-contain">
+          {body}
+        </div>
+        {footer}
+        <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity data-[state=open]:bg-accent data-[state=open]:text-muted-foreground hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
+          <X className="h-4 w-4" />
+          <span className="sr-only">Close</span>
+        </DialogPrimitive.Close>
+      </DialogPrimitive.Content>
+    </DialogPortal>
+  );
+});
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
 const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
   <div className={cn("flex flex-col space-y-1.5 text-center sm:text-left", className)} {...props} />
 );
 DialogHeader.displayName = "DialogHeader";
-
-const DialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  // Sticky: DialogContent is the scroll container, so on dialogs taller than the viewport the
-  // actions used to sit half-visible at the scroll fold (looked broken — e.g. New PO on a laptop).
-  // Pinned to the bottom with the dialog's own background, they stay visible while the body
-  // scrolls; on short dialogs sticky is inert and the layout is unchanged.
-  <div
-    className={cn(
-      "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
-      "sticky bottom-0 z-10 -mx-6 -mb-6 bg-background px-6 pb-6 pt-2",
-      className,
-    )}
-    {...props}
-  />
-);
-DialogFooter.displayName = "DialogFooter";
 
 const DialogTitle = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Title>,
