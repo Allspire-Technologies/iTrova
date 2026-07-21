@@ -15,7 +15,7 @@ import { Gift, Copy, MessageCircle } from "lucide-react";
 
 const SIGNUP_BASE = "https://itrova.allspire.tech/auth";
 
-type Config = { affiliate_share_percent: number; referee_discount_percent: number; business_free_months: number };
+type Config = { affiliate_share_percent: number; referee_discount_percent: number; business_free_months: number; business_referrals_per_free_month: number };
 
 export default function ReferEarnCard() {
   const { business } = useAuth();
@@ -39,7 +39,7 @@ export default function ReferEarnCard() {
     if (!business) return;
     (async () => {
       const [cfg, biz] = await Promise.all([
-        sb.from("referral_config").select("affiliate_share_percent, referee_discount_percent, business_free_months").maybeSingle(),
+        sb.from("referral_config").select("affiliate_share_percent, referee_discount_percent, business_free_months, business_referrals_per_free_month").maybeSingle(),
         sb.from("businesses").select("referral_code, referred_by_code").eq("id", business.id).maybeSingle(),
       ]);
       if (cfg.data) setConfig(cfg.data as Config);
@@ -81,9 +81,10 @@ export default function ReferEarnCard() {
           <div>
             <CardTitle className="font-display text-lg">Refer &amp; earn</CardTitle>
             <CardDescription>
-              Refer another business — when they make their first payment you earn{" "}
+              Refer other businesses — earn{" "}
               <strong className="text-foreground">{config?.business_free_months ?? 1} free month{(config?.business_free_months ?? 1) === 1 ? "" : "s"}</strong>{" "}
-              and they get <strong className="text-foreground">{config?.referee_discount_percent ?? 20}% off</strong>.
+              for every <strong className="text-foreground">{config?.business_referrals_per_free_month ?? 3}</strong>{" "}
+              that subscribe, and each of them gets <strong className="text-foreground">{config?.referee_discount_percent ?? 20}% off</strong> their first payment.
             </CardDescription>
           </div>
         </div>

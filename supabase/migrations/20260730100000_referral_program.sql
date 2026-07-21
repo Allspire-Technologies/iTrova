@@ -15,10 +15,11 @@ alter table public.businesses add column if not exists referral_code text unique
 -- ---------------------------------------------------------------- program config (single row)
 create table if not exists public.referral_config (
   id                       boolean primary key default true check (id), -- single-row guard
-  affiliate_share_percent  numeric not null default 25,
-  referee_discount_percent numeric not null default 20,
-  business_free_months     int     not null default 1,
-  staff_bonus              jsonb   not null default '{"pro": 2000, "business": 5000, "enterprise": 10000}'::jsonb,
+  affiliate_share_percent           numeric not null default 25,
+  referee_discount_percent          numeric not null default 20,
+  business_free_months              int     not null default 1,  -- free months granted per threshold
+  business_referrals_per_free_month int     not null default 3,  -- converted referrals needed per grant
+  staff_bonus                       jsonb   not null default '{"pro": 2000, "business": 5000, "enterprise": 10000}'::jsonb,
   updated_at               timestamptz not null default now()
 );
 insert into public.referral_config (id) values (true) on conflict (id) do nothing;
