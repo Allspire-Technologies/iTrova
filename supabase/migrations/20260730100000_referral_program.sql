@@ -23,11 +23,16 @@ create table if not exists public.referral_config (
   updated_at               timestamptz not null default now()
 );
 insert into public.referral_config (id) values (true) on conflict (id) do nothing;
+-- Idempotent: adds the column when re-applying over an already-created table (create-table above
+-- is a no-op then), so this file can be re-run to pick up later additions.
+alter table public.referral_config add column if not exists business_referrals_per_free_month int not null default 3;
 
 alter table public.referral_config enable row level security;
 revoke all on public.referral_config from anon;
-grant select on public.referral_config to authenticated;
-grant select, update on public.referral_config to service_role; -- table GRANTs still apply to service_role
+-- UPDATE is granted at the table level so the admin RLS policy below can take effect — the policy
+-- restricts WHO updates (CRM admins); without the privilege even they get "permission denied".
+grant select, update on public.referral_config to authenticated;
+grant select, update on public.referral_config to service_role;
 
 -- Any signed-in user may read the program numbers (the app shows the referee discount);
 -- only CRM admins may change them (cs_my_role() ships with the CRM on this shared project).
