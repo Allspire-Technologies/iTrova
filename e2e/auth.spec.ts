@@ -106,6 +106,47 @@ test.describe("Auth — signup", () => {
     await expect(page.getByText("Passwords do not match")).toBeVisible();
   });
 
+  test("referral code: typed freely, sent in the signup metadata", async ({ page }) => {
+    let payload = "";
+    await page.route("**/auth/v1/signup**", (route) => {
+      payload = route.request().postData() ?? "";
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ...FAKE_USER, confirmation_sent_at: "2026-07-18T00:00:00Z" }) });
+    });
+    await page.goto("/auth");
+    await page.getByRole("tab", { name: "Create account" }).click();
+    // Field is optional and editable without ?ref=; input upper-cases as you type.
+    const ref = page.locator("#refcode");
+    await expect(ref).toBeVisible();
+    await expect(ref).not.toHaveAttribute("readonly", "");
+    await ref.fill("adaobi0305");
+    await expect(ref).toHaveValue("ADAOBI0305");
+    await page.locator("#bn").fill("Sunrise Stores");
+    await page.locator("#on").fill("Ada Obi");
+    await page.locator("#se").fill("ada@sunrise.test");
+    await page.locator("#sp").fill("password123");
+    await page.locator("#cp").fill("password123");
+    await page.getByRole("button", { name: "Create my business" }).click();
+    await expect(page.getByRole("heading", { name: "Check your inbox" })).toBeVisible();
+    expect(payload).toContain('"referral_code":"ADAOBI0305"');
+
+    // Completing signup returns the user to Sign in with the create-account form cleared.
+    await page.getByRole("button", { name: "Back to sign in" }).click();
+    await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
+    await page.getByRole("tab", { name: "Create account" }).click();
+    await expect(page.locator("#bn")).toHaveValue("");
+    await expect(page.locator("#refcode")).toHaveValue("");
+  });
+
+  test("referral code from a ?ref= share link is pre-filled and locked", async ({ page }) => {
+    await page.goto("/auth?ref=mamaput7811");
+    // The share link must land on Create account directly (not Sign in) — no tab click needed.
+    await expect(page.getByRole("heading", { name: "Start in minutes" })).toBeVisible();
+    const ref = page.locator("#refcode");
+    await expect(ref).toHaveValue("MAMAPUT7811");
+    await expect(ref).toHaveAttribute("readonly", "");
+    await expect(page.getByText(/Referral applied/)).toBeVisible();
+  });
+
   test("shows 'check your inbox' when confirmation is required", async ({ page }) => {
     await stubSignup(page, { status: 200, body: { ...FAKE_USER, confirmation_sent_at: "2026-06-22T00:00:00Z" } });
     await page.goto("/auth");

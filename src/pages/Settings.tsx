@@ -30,6 +30,7 @@ const TaxSettings = () => (
   </Suspense>
 );
 const CostingSettingsInner = lazy(() => import("@/components/settings/CostingSettings"));
+const ReferEarnCard = lazy(() => import("@/components/settings/ReferEarnCard"));
 const CostingSettings = () => (
   <Suspense fallback={<p className="py-8 text-center text-sm text-muted-foreground">Loading costing settings…</p>}>
     <CostingSettingsInner />
@@ -881,6 +882,7 @@ export default function Settings() {
 
       {/* Subscription Plan — owner only */}
       {tab === "billing" && isOwner && (
+        <>
         <Card className="shadow-card border-border/60">
           <CardHeader className="pb-4">
             <div className="flex items-center gap-3">
@@ -933,6 +935,8 @@ export default function Settings() {
             <CustomPlanCard reference={highestCataloguePlan(plans)} />
           </CardContent>
         </Card>
+        <Suspense fallback={null}><ReferEarnCard /></Suspense>
+        </>
       )}
 
       {/* Permissions & Access — owner + manager */}

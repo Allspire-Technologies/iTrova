@@ -82,4 +82,23 @@ test.describe("Settings", () => {
     await expect(page.getByRole("button", { name: "Annually" }).first()).toBeVisible();
     await expect(page.getByText(/Launch offer/)).toBeVisible();
   });
+
+  test("Refer & earn card shows the code, share actions and referral count (Billing tab)", async ({ page }) => {
+    await authenticate(page, { role: "owner", businessName: "Sunrise Stores", onRoutes: async (p) => {
+      const j = (r: Parameters<Parameters<typeof p.route>[1]>[0], body: unknown) =>
+        r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+      await p.route("**/rest/v1/referral_config**", (r) => j(r, { affiliate_share_percent: 25, referee_discount_percent: 20, business_free_months: 1 }));
+      await p.route("**/rest/v1/rpc/my_referral_stats**", (r) => j(r, [{ referred_count: 4, converted_count: 2 }]));
+      await p.route("**/rest/v1/rpc/ensure_referral_code**", (r) => j(r, "SUNRISESTO0305"));
+    }});
+    await page.goto("/settings");
+    await page.getByRole("button", { name: "Billing", exact: true }).click();
+    await expect(page.getByText("Refer & earn")).toBeVisible();
+    // Owner has no code yet → generate it → code + share + counts appear.
+    await page.getByRole("button", { name: /Get my referral code/ }).click();
+    await expect(page.getByText("SUNRISESTO0305")).toBeVisible();
+    await expect(page.getByRole("button", { name: /Share on WhatsApp/ })).toBeVisible();
+    await expect(page.getByText("businesses referred")).toBeVisible();
+    await expect(page.getByText("now subscribed")).toBeVisible();
+  });
 });
