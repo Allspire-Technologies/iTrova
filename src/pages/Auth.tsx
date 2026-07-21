@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,13 @@ export default function Auth() {
   const [industryOther, setIndustryOther] = useState("");
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
+  // ?ref=CODE (from a share link) pre-fills AND locks the referral field; typed freely otherwise.
+  const [searchParams] = useSearchParams();
+  const refFromLink = (searchParams.get("ref") || "").trim().toUpperCase();
+  const [referralCode, setReferralCode] = useState(refFromLink);
+  // Controlled tabs: a ?ref= share link (or ?tab=signup) opens Create account; after signup we
+  // return the user to Sign in with the form cleared.
+  const [tab, setTab] = useState<"login" | "signup">(refFromLink || searchParams.get("tab") === "signup" ? "signup" : "login");
   const [ownerName, setOwnerName] = useState("");
   const [phone, setPhone] = useState("");
   const [signupEmail, setSignupEmail] = useState("");
@@ -40,6 +47,12 @@ export default function Auth() {
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [showLoginPassword, setShowLoginPassword] = useState(false);
+
+  const resetSignupForm = () => {
+    setBusinessName(""); setIndustry(""); setIndustryOther(""); setCity(""); setState("");
+    setOwnerName(""); setPhone(""); setSignupEmail(""); setSignupPassword(""); setConfirmPassword("");
+    setReferralCode("");
+  };
 
   if (!loading && user) return <Navigate to="/" replace />;
 
@@ -75,6 +88,7 @@ export default function Auth() {
           industry_other: industry === "Other" ? industryOther.trim() : "",
           city: city.trim(),
           state: state.trim(),
+          referral_code: referralCode.trim(),
         },
       },
     });
@@ -174,12 +188,12 @@ export default function Auth() {
               <p className="text-xs text-muted-foreground">
                 Didn't receive it? Check your spam folder — the link can take a minute to arrive.
               </p>
-              <Button variant="hero" size="lg" className="w-full" onClick={() => setSignupComplete(false)}>
+              <Button variant="hero" size="lg" className="w-full" onClick={() => { setSignupComplete(false); setTab("login"); resetSignupForm(); }}>
                 Back to sign in
               </Button>
             </div>
           ) : (
-          <Tabs defaultValue="login" className="w-full">
+          <Tabs value={tab} onValueChange={(v) => setTab(v as "login" | "signup")} className="w-full">
             <TabsList className="grid grid-cols-2 w-full mb-8 bg-secondary">
               <TabsTrigger value="login">Sign in</TabsTrigger>
               <TabsTrigger value="signup">Create account</TabsTrigger>
@@ -264,6 +278,18 @@ export default function Auth() {
                     <Label htmlFor="state">State</Label>
                     <Input id="state" value={state} onChange={e => setState(e.target.value)} placeholder="e.g. Lagos" />
                   </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="refcode">Referral code {!refFromLink && <span className="text-muted-foreground font-normal">(optional)</span>}</Label>
+                  <Input
+                    id="refcode"
+                    value={referralCode}
+                    onChange={e => setReferralCode(e.target.value.toUpperCase())}
+                    placeholder="Who referred you?"
+                    readOnly={!!refFromLink}
+                    className={refFromLink ? "bg-brand-light/50 text-brand-dark font-medium" : undefined}
+                  />
+                  {refFromLink && <p className="text-xs text-brand">Referral applied — you'll get a discount on your first payment.</p>}
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-2">
