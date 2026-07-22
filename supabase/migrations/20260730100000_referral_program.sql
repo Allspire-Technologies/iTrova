@@ -15,17 +15,19 @@ alter table public.businesses add column if not exists referral_code text unique
 -- ---------------------------------------------------------------- program config (single row)
 create table if not exists public.referral_config (
   id                       boolean primary key default true check (id), -- single-row guard
-  affiliate_share_percent           numeric not null default 25,
+  affiliate_share_percent           numeric not null default 25,  -- affiliates' cash share of first-year revenue
+  business_share_percent            numeric not null default 25,  -- referring businesses' subscription-credit share
   referee_discount_percent          numeric not null default 20,
-  business_free_months              int     not null default 1,  -- free months granted per threshold
-  business_referrals_per_free_month int     not null default 3,  -- converted referrals needed per grant
+  business_free_months              int     not null default 1,  -- (legacy, unused) free months per threshold
+  business_referrals_per_free_month int     not null default 3,  -- (legacy, unused) referrals needed per grant
   staff_bonus                       jsonb   not null default '{"pro": 2000, "business": 5000, "enterprise": 10000}'::jsonb,
   updated_at               timestamptz not null default now()
 );
 insert into public.referral_config (id) values (true) on conflict (id) do nothing;
--- Idempotent: adds the column when re-applying over an already-created table (create-table above
+-- Idempotent: adds columns when re-applying over an already-created table (the create-table above
 -- is a no-op then), so this file can be re-run to pick up later additions.
 alter table public.referral_config add column if not exists business_referrals_per_free_month int not null default 3;
+alter table public.referral_config add column if not exists business_share_percent numeric not null default 25;
 
 alter table public.referral_config enable row level security;
 revoke all on public.referral_config from anon;

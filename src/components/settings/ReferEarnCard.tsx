@@ -15,14 +15,17 @@ import { Gift, Copy, MessageCircle } from "lucide-react";
 
 const SIGNUP_BASE = "https://itrova.allspire.tech/auth";
 
-type Config = { affiliate_share_percent: number; referee_discount_percent: number; business_free_months: number; business_referrals_per_free_month: number };
+type Config = { business_share_percent: number; referee_discount_percent: number };
+type Earnings = { referred: number; converted: number; earned: number; credited: number; accrued: number };
+
+const money = (n: number) => `₦${Math.round(n).toLocaleString("en-NG")}`;
 
 export default function ReferEarnCard() {
   const { business } = useAuth();
   const [config, setConfig] = useState<Config | null>(null);
   const [code, setCode] = useState<string | null>(null);
   const [referredBy, setReferredBy] = useState<string | null>(null);
-  const [stats, setStats] = useState<{ referred: number; converted: number } | null>(null);
+  const [stats, setStats] = useState<Earnings | null>(null);
   const [busy, setBusy] = useState(false);
 
   // referral columns/config/RPCs postdate the generated Supabase types — cast until the next regen.
@@ -30,16 +33,21 @@ export default function ReferEarnCard() {
   const sb = supabase as any;
 
   const loadStats = async () => {
-    const { data } = await sb.rpc("my_referral_stats");
+    // my_referral_earnings lives in the CRM migration (reads cs_renewal_payment + cs_referral_payout
+    // on the shared DB); it returns counts + earned/credited/accrued for this business.
+    const { data } = await sb.rpc("my_referral_earnings");
     const row = Array.isArray(data) ? data[0] : data;
-    if (row) setStats({ referred: Number(row.referred_count) || 0, converted: Number(row.converted_count) || 0 });
+    if (row) setStats({
+      referred: Number(row.referred_count) || 0, converted: Number(row.converted_count) || 0,
+      earned: Number(row.earned) || 0, credited: Number(row.credited) || 0, accrued: Number(row.accrued) || 0,
+    });
   };
 
   useEffect(() => {
     if (!business) return;
     (async () => {
       const [cfg, biz] = await Promise.all([
-        sb.from("referral_config").select("affiliate_share_percent, referee_discount_percent, business_free_months, business_referrals_per_free_month").maybeSingle(),
+        sb.from("referral_config").select("business_share_percent, referee_discount_percent").maybeSingle(),
         sb.from("businesses").select("referral_code, referred_by_code").eq("id", business.id).maybeSingle(),
       ]);
       if (cfg.data) setConfig(cfg.data as Config);
@@ -82,9 +90,10 @@ export default function ReferEarnCard() {
             <CardTitle className="font-display text-lg">Refer &amp; earn</CardTitle>
             <CardDescription>
               Refer other businesses — earn{" "}
-              <strong className="text-foreground">{config?.business_free_months ?? 1} free month{(config?.business_free_months ?? 1) === 1 ? "" : "s"}</strong>{" "}
-              for every <strong className="text-foreground">{config?.business_referrals_per_free_month ?? 3}</strong>{" "}
-              that subscribe, and each of them gets <strong className="text-foreground">{config?.referee_discount_percent ?? 20}% off</strong> their first payment.
+              <strong className="text-foreground">{config?.business_share_percent ?? 25}%</strong>{" "}
+              of what they pay in their first year as{" "}
+              <strong className="text-foreground">credit toward your own subscription</strong>, and each of them gets{" "}
+              <strong className="text-foreground">{config?.referee_discount_percent ?? 20}% off</strong> their first payment.
             </CardDescription>
           </div>
         </div>
@@ -107,18 +116,27 @@ export default function ReferEarnCard() {
               </Button>
             </div>
             {stats && stats.referred > 0 ? (
-              <div className="flex flex-wrap gap-3 pt-1">
-                <div className="rounded-lg border border-border bg-muted/30 px-4 py-2">
-                  <div className="text-lg font-semibold text-brand-dark">{stats.referred}</div>
-                  <div className="text-xs text-muted-foreground">business{stats.referred === 1 ? "" : "es"} referred</div>
+              <>
+                <div className="flex flex-wrap gap-3 pt-1">
+                  <div className="rounded-lg border border-border bg-muted/30 px-4 py-2">
+                    <div className="text-lg font-semibold text-brand-dark">{stats.referred}</div>
+                    <div className="text-xs text-muted-foreground">business{stats.referred === 1 ? "" : "es"} referred</div>
+                  </div>
+                  <div className="rounded-lg border border-border bg-muted/30 px-4 py-2">
+                    <div className="text-lg font-semibold text-brand">{stats.converted}</div>
+                    <div className="text-xs text-muted-foreground">now subscribed</div>
+                  </div>
+                  <div className="rounded-lg border border-brand/30 bg-brand-light/40 px-4 py-2">
+                    <div className="text-lg font-semibold text-brand-dark">{money(stats.accrued)}</div>
+                    <div className="text-xs text-muted-foreground">credit available</div>
+                  </div>
                 </div>
-                <div className="rounded-lg border border-border bg-muted/30 px-4 py-2">
-                  <div className="text-lg font-semibold text-brand">{stats.converted}</div>
-                  <div className="text-xs text-muted-foreground">now subscribed</div>
-                </div>
-              </div>
+                <p className="text-xs text-muted-foreground">
+                  You've earned {money(stats.earned)} in referral credit so far{stats.credited > 0 ? `, ${money(stats.credited)} already applied` : ""}. Contact us to put your available credit toward your subscription.
+                </p>
+              </>
             ) : (
-              <p className="text-xs text-muted-foreground">Anyone who signs up through your link is counted here automatically. Rewards are applied by our team once they pay.</p>
+              <p className="text-xs text-muted-foreground">Anyone who signs up through your link is counted here automatically. You earn {config?.business_share_percent ?? 25}% of their first-year payments as subscription credit once they subscribe.</p>
             )}
           </>
         ) : (

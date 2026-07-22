@@ -87,8 +87,8 @@ test.describe("Settings", () => {
     await authenticate(page, { role: "owner", businessName: "Sunrise Stores", onRoutes: async (p) => {
       const j = (r: Parameters<Parameters<typeof p.route>[1]>[0], body: unknown) =>
         r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
-      await p.route("**/rest/v1/referral_config**", (r) => j(r, { affiliate_share_percent: 25, referee_discount_percent: 20, business_free_months: 1 }));
-      await p.route("**/rest/v1/rpc/my_referral_stats**", (r) => j(r, [{ referred_count: 4, converted_count: 2 }]));
+      await p.route("**/rest/v1/referral_config**", (r) => j(r, { business_share_percent: 25, referee_discount_percent: 20 }));
+      await p.route("**/rest/v1/rpc/my_referral_earnings**", (r) => j(r, [{ referred_count: 4, converted_count: 2, earned: 45000, credited: 0, accrued: 45000 }]));
       await p.route("**/rest/v1/rpc/ensure_referral_code**", (r) => j(r, "SUNRISESTO0305"));
     }});
     await page.goto("/settings");
@@ -100,5 +100,8 @@ test.describe("Settings", () => {
     await expect(page.getByRole("button", { name: /Share on WhatsApp/ })).toBeVisible();
     await expect(page.getByText("businesses referred")).toBeVisible();
     await expect(page.getByText("now subscribed")).toBeVisible();
+    // Earnings accrue as subscription credit at the business share rate.
+    await expect(page.getByText("credit available")).toBeVisible();
+    await expect(page.getByText("₦45,000").first()).toBeVisible();
   });
 });
