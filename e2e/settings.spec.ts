@@ -83,6 +83,22 @@ test.describe("Settings", () => {
     await expect(page.getByText(/Launch offer/)).toBeVisible();
   });
 
+  test("a referred first-time payer's discount auto-applies to the plan prices (Billing tab)", async ({ page }) => {
+    await authenticate(page, { role: "owner", businessName: "Sunrise Stores", onRoutes: async (p) => {
+      // Referred by a valid code + never paid → the RPC returns the first-payment discount.
+      await p.route("**/rest/v1/rpc/my_referee_discount**", (r) =>
+        r.fulfill({ status: 200, contentType: "application/json", body: "20" }));
+    }});
+    await stubRows(page, "plans", plans);
+    await page.goto("/settings");
+    await page.getByRole("button", { name: "Billing", exact: true }).click();
+    // Pro monthly: ₦5,000 − 10% launch promo = ₦4,500, then − 20% referral = ₦3,600.
+    await expect(page.getByText("Referral · 20% off first payment").first()).toBeVisible();
+    await expect(page.getByText("₦3,600").first()).toBeVisible();
+    // The upgrade request carries the referral discount to the sales team.
+    await expect(page.getByRole("button", { name: "Request upgrade" }).first()).toBeVisible();
+  });
+
   test("Refer & earn card shows the code, share actions and referral count (Billing tab)", async ({ page }) => {
     await authenticate(page, { role: "owner", businessName: "Sunrise Stores", onRoutes: async (p) => {
       const j = (r: Parameters<Parameters<typeof p.route>[1]>[0], body: unknown) =>

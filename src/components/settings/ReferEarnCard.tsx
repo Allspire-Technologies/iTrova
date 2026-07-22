@@ -102,7 +102,7 @@ export default function ReferEarnCard() {
         {showRefereeNote && (
           <div className="rounded-xl border border-brand/30 bg-brand-light/50 px-4 py-2.5 text-sm text-brand-dark">
             Referral applied (code <span className="font-semibold">{referredBy}</span>) — you get{" "}
-            <span className="font-semibold">{config?.referee_discount_percent ?? 20}% off your first payment</span>. The discount is applied when you upgrade.
+            <span className="font-semibold">{config?.referee_discount_percent ?? 20}% off your first payment</span>. It's applied automatically to the plan prices below.
           </div>
         )}
         {code ? (
