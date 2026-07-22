@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth, type Plan } from "@/contexts/AuthContext";
-import { CYCLE_ORDER, CYCLE_LABEL, CYCLE_PERIOD, isPromoActive, cyclePrice, type BillingCycle } from "@/lib/planPricing";
+import { CYCLE_ORDER, CYCLE_LABEL, CYCLE_PERIOD, isPromoActive, cyclePrice, applyDiscount, type BillingCycle } from "@/lib/planPricing";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -90,7 +90,7 @@ function ViewField({ label, value }: { label: string; value?: string | null }) {
 type NotifPrefs = { low_stock_alerts: boolean; overdue_invoice_alerts: boolean; expiry_alerts: boolean; general_store_alerts: boolean; production_alerts: boolean; expense_alerts: boolean; daily_summary: boolean };
 const DEFAULT_PREFS: NotifPrefs = { low_stock_alerts: true, overdue_invoice_alerts: true, expiry_alerts: true, general_store_alerts: true, production_alerts: true, expense_alerts: true, daily_summary: false };
 
-function PlanCard({ plan, inheritsFrom, action, currentPlan, businessName }: { plan: Plan; inheritsFrom: { name: string; features: string[] } | null; action: PlanChange; currentPlan: string; businessName: string }) {
+function PlanCard({ plan, inheritsFrom, action, currentPlan, businessName, refereeDiscount = 0 }: { plan: Plan; inheritsFrom: { name: string; features: string[] } | null; action: PlanChange; currentPlan: string; businessName: string; refereeDiscount?: number }) {
   const active = plan.key === currentPlan;
   const shownFeatures = inheritsFrom ? featuresBeyond(plan.features || [], inheritsFrom.features) : (plan.features || []);
   const cycles = (plan.prices || [])
@@ -101,7 +101,12 @@ function PlanCard({ plan, inheritsFrom, action, currentPlan, businessName }: { p
   const base = selected ? Number(selected.price_amount) : Number(plan.price_amount);
   const cycleDiscount = selected ? Number(selected.discount_percent) : 0;
   const promoOn = isPromoActive(plan.promo_percent, plan.promo_until);
-  const effective = cyclePrice(base, cycleDiscount, plan.promo_percent, plan.promo_until);
+  const listEffective = cyclePrice(base, cycleDiscount, plan.promo_percent, plan.promo_until);
+  // A referred first-time payer's discount auto-applies to their first payment (upgrades only, paid
+  // plans only). Layered on top of any cycle discount / promo. RPC gates eligibility (valid code +
+  // not yet a paying subscriber), so refereeDiscount is 0 unless it should apply.
+  const refereeOn = refereeDiscount > 0 && base > 0 && action !== "downgrade";
+  const effective = refereeOn ? applyDiscount(listEffective, refereeDiscount) : listEffective;
   const money = (n: number) =>
     n === 0
       ? "Free"
@@ -144,6 +149,9 @@ function PlanCard({ plan, inheritsFrom, action, currentPlan, businessName }: { p
           {promoOn && (
             <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">{plan.promo_label || "Promo"} · {Number(plan.promo_percent)}% off</Badge>
           )}
+          {refereeOn && (
+            <Badge variant="outline" className="text-[10px] bg-brand-light text-brand border-brand/20">Referral · {refereeDiscount}% off first payment</Badge>
+          )}
         </div>
       </div>
 
@@ -172,7 +180,8 @@ function PlanCard({ plan, inheritsFrom, action, currentPlan, businessName }: { p
             className="w-full"
             onClick={() => {
               const priceText = base > 0 ? `${money(effective)}/${CYCLE_PERIOD[cycle]}` : money(effective);
-              const msg = `Hi, I'd like to ${action} ${businessName || "my business"} to the ${plan.name} plan (${CYCLE_LABEL[cycle]}) — ${priceText}.`;
+              const refText = refereeOn ? ` (includes my ${refereeDiscount}% referral discount)` : "";
+              const msg = `Hi, I'd like to ${action} ${businessName || "my business"} to the ${plan.name} plan (${CYCLE_LABEL[cycle]}) — ${priceText}${refText}.`;
               window.open(`https://wa.me/2348137000305?text=${encodeURIComponent(msg)}`, "_blank");
             }}
           >
@@ -247,6 +256,15 @@ export default function Settings() {
   const { user, profile, business, role, subscription, plans, refresh, hasModule } = useAuth();
   const { fmtDate } = useDateFormat();
   const isOwner = role === "owner";
+
+  // Referral: a referred first-time payer's auto-applied first-payment discount (0 = none/already paid).
+  // Validated server-side (valid code + not yet a paying subscriber) by my_referee_discount().
+  const [refereeDiscount, setRefereeDiscount] = useState(0);
+  useEffect(() => {
+    if (!isOwner || !business) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any).rpc("my_referee_discount").then(({ data }: { data: unknown }) => setRefereeDiscount(Number(data) || 0));
+  }, [isOwner, business]);
 
   // Business Profile
   const [bizName, setBizName] = useState("");
@@ -927,7 +945,7 @@ export default function Settings() {
                 const currentSortOrder = plans.find(p => p.key === currentPlan)?.sort_order ?? null;
                 const action = planChangeAction(plan.sort_order, currentSortOrder);
                 return (
-                  <PlanCard key={plan.key} plan={plan} inheritsFrom={inheritsFrom} action={action} currentPlan={currentPlan} businessName={business?.name || ""} />
+                  <PlanCard key={plan.key} plan={plan} inheritsFrom={inheritsFrom} action={action} currentPlan={currentPlan} businessName={business?.name || ""} refereeDiscount={refereeDiscount} />
                 );
               })}
             </div>

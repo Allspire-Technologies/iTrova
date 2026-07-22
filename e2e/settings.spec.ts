@@ -83,12 +83,28 @@ test.describe("Settings", () => {
     await expect(page.getByText(/Launch offer/)).toBeVisible();
   });
 
+  test("a referred first-time payer's discount auto-applies to the plan prices (Billing tab)", async ({ page }) => {
+    await authenticate(page, { role: "owner", businessName: "Sunrise Stores", onRoutes: async (p) => {
+      // Referred by a valid code + never paid → the RPC returns the first-payment discount.
+      await p.route("**/rest/v1/rpc/my_referee_discount**", (r) =>
+        r.fulfill({ status: 200, contentType: "application/json", body: "20" }));
+    }});
+    await stubRows(page, "plans", plans);
+    await page.goto("/settings");
+    await page.getByRole("button", { name: "Billing", exact: true }).click();
+    // Pro monthly: ₦5,000 − 10% launch promo = ₦4,500, then − 20% referral = ₦3,600.
+    await expect(page.getByText("Referral · 20% off first payment").first()).toBeVisible();
+    await expect(page.getByText("₦3,600").first()).toBeVisible();
+    // The upgrade request carries the referral discount to the sales team.
+    await expect(page.getByRole("button", { name: "Request upgrade" }).first()).toBeVisible();
+  });
+
   test("Refer & earn card shows the code, share actions and referral count (Billing tab)", async ({ page }) => {
     await authenticate(page, { role: "owner", businessName: "Sunrise Stores", onRoutes: async (p) => {
       const j = (r: Parameters<Parameters<typeof p.route>[1]>[0], body: unknown) =>
         r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
-      await p.route("**/rest/v1/referral_config**", (r) => j(r, { affiliate_share_percent: 25, referee_discount_percent: 20, business_free_months: 1 }));
-      await p.route("**/rest/v1/rpc/my_referral_stats**", (r) => j(r, [{ referred_count: 4, converted_count: 2 }]));
+      await p.route("**/rest/v1/referral_config**", (r) => j(r, { business_share_percent: 25, referee_discount_percent: 20 }));
+      await p.route("**/rest/v1/rpc/my_referral_earnings**", (r) => j(r, [{ referred_count: 4, converted_count: 2, earned: 45000, credited: 0, accrued: 45000 }]));
       await p.route("**/rest/v1/rpc/ensure_referral_code**", (r) => j(r, "SUNRISESTO0305"));
     }});
     await page.goto("/settings");
@@ -100,5 +116,8 @@ test.describe("Settings", () => {
     await expect(page.getByRole("button", { name: /Share on WhatsApp/ })).toBeVisible();
     await expect(page.getByText("businesses referred")).toBeVisible();
     await expect(page.getByText("now subscribed")).toBeVisible();
+    // Earnings accrue as subscription credit at the business share rate.
+    await expect(page.getByText("credit available")).toBeVisible();
+    await expect(page.getByText("₦45,000").first()).toBeVisible();
   });
 });

@@ -3,6 +3,22 @@
 All notable, user-facing changes to iTrova are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); entries are grouped by ship date, newest first.
 
+## 2026-07-22 — Refer & earn
+
+Invite other businesses to iTrova and earn credit toward your own subscription.
+
+### Added
+- **Refer & earn card** (Settings → Billing) — generate your personal referral code and share your
+  signup link on WhatsApp in one tap.
+- **Referral rewards** — every business that signs up with your link and subscribes earns you a share
+  of their first-year payments as **subscription credit**. The card shows how many businesses you've
+  referred, how many now subscribe, and your **available credit**.
+- **Referral applied** note — a business that signed up through a referral link sees its
+  **first-payment discount**, now **applied automatically to the plan prices** on the Billing tab
+  (only for a first-time payer whose referral code is valid). The discounted amount also carries into
+  the upgrade request sent to the team.
+- Signup now accepts a **referral code** (pre-filled and locked when you arrive via a share link).
+
 ## 2026-07-14 — Profit at a glance in Inventory
 
 See what your stock is worth and what it will earn you, right in the product list.
