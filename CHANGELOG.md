@@ -3,6 +3,13 @@
 All notable, user-facing changes to iTrova are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); entries are grouped by ship date, newest first.
 
+## 2026-07-25 — Deleted businesses sign out cleanly
+
+### Fixed
+- When a business is deleted, its owner and staff are now signed out instead of being stranded in an
+  empty dashboard. A stale session with no account is ended automatically, and signing in again shows
+  the normal "invalid credentials" error — the email is free to register a brand-new business.
+
 ## 2026-07-22 — Refer & earn
 
 Invite other businesses to iTrova and earn credit toward your own subscription.

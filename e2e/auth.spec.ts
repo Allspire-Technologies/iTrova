@@ -63,6 +63,22 @@ test.describe("Auth — login", () => {
     // module nav items now need a resolved role under RBAC, and this stub returns no role rows.)
     await expect(page.getByRole("link", { name: "Dashboard" }).first()).toBeVisible();
   });
+
+  test("a deleted account (no profile row) is signed out, not stranded in an empty shell", async ({ page }) => {
+    // Credentials still authenticate (a stale token), but the profile is gone — the business was
+    // deleted in the CRM, which now purges its users. maybeSingle() then returns null.
+    await stubPasswordLogin(page, { status: 200, body: SESSION_BODY });
+    await page.route("**/auth/v1/logout**", (r) => r.fulfill({ status: 204, contentType: "application/json", body: "" }));
+    await page.route("**/rest/v1/profiles**", (r) => r.fulfill({ status: 200, contentType: "application/json", body: "null" }));
+    await page.route("**/rest/v1/**", (r) => r.fulfill({ status: 200, contentType: "application/json", body: "[]" }));
+    await page.goto("/auth");
+    await page.locator("#le").fill("owner@biz.test");
+    await page.locator("#lp").fill("correct-password");
+    await page.getByRole("button", { name: "Sign in" }).click();
+    // Bounced back to the auth screen rather than landing on the empty dashboard.
+    await expect(page).toHaveURL(/\/auth$/);
+    await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
+  });
 });
 
 test.describe("Auth — signup", () => {

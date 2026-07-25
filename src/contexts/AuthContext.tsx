@@ -183,6 +183,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loadProfile = async (uid: string) => {
     const { data: p, error: pErr } = await supabase.from("profiles").select("*").eq("id", uid).maybeSingle();
     if (pErr) { await hydrateFromCache(); return; } // offline / unreachable
+    // No profile row while online = the account was removed (e.g. the business was deleted in the CRM,
+    // which purges its users). Every signup creates a profile, so this only hits deleted accounts —
+    // don't strand a stale session in an empty shell; sign out and let them log in / register anew.
+    if (!p) { await supabase.auth.signOut(); return; }
     setProfile(p as Profile | null);
     if (p?.business_id) {
       const [{ data: b, error: bErr }, { data: roles, error: rErr }] = await Promise.all([
