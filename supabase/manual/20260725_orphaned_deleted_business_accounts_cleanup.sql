@@ -9,23 +9,24 @@
 -- shell) and their email stays registered (can't re-sign-up). The new delete purges accounts going
 -- forward; this script cleans up the ones left behind.
 --
--- ┌─ SAFETY ─────────────────────────────────────────────────────────────────────────────────────┐
--- │ • This is IRREVERSIBLE — deleting auth.users cascades their profiles, sessions, identities.    │
--- │ • RUN STEP 1 FIRST and eyeball the emails. Only run STEP 2 once you recognise them as users of │
--- │   deleted businesses. If STEP 1 returns 0 rows, there are no orphans — stop, nothing to do.    │
--- │ • The shared project also hosts CRM admin/staff accounts. Those have NO row in public.profiles,│
--- │   so the INNER JOIN on profiles below EXCLUDES them. Do not change that join to a LEFT JOIN.   │
--- │ • Legitimately pending invited staff (signed up, not yet accepted) also have a null business_id;│
--- │   they are excluded via the "no unaccepted invitation" check so they are NOT deleted.          │
--- └───────────────────────────────────────────────────────────────────────────────────────────────┘
+-- SAFETY:
+--   • This is IRREVERSIBLE — deleting auth.users cascades their profiles, sessions, identities.
+--   • RUN STEP 1 FIRST and eyeball the emails. Only run STEP 2 once you recognise them as users of
+--     deleted businesses. If STEP 1 returns 0 rows, there are no orphans — stop, nothing to do.
+--   • The shared project ALSO hosts iTrova-CRM internal staff (platform_admins / cs_staff_role), and
+--     some of them DO have a public.profiles row (so the profiles join alone does NOT exclude them).
+--     They are excluded EXPLICITLY by the two staff checks in the query below — never remove those.
+--   • Legitimately pending invited staff (signed up, not yet accepted) also have a null business_id;
+--     they are excluded via the "no unaccepted invitation" check so they are NOT deleted.
 
 -- The candidate set (reused verbatim by both steps): an iTrova user (has a profile) with no business,
--- no role, and no pending invitation.
---   • has a profiles row                    → an iTrova user, not a CRM-only account
---   • profiles.business_id is null          → not attached to any business
---   • owns no business                      → not a live owner
---   • has no user_roles                     → not a member of any business
---   • has no unaccepted invitation          → not a pending invitee (matched case-insensitively)
+-- no role, no pending invitation, and who is NOT internal CRM staff.
+--   • has a profiles row                     → an iTrova user
+--   • profiles.business_id is null           → not attached to any business
+--   • owns no business                       → not a live owner
+--   • has no user_roles                      → not a member of any business
+--   • has no unaccepted invitation           → not a pending invitee (matched case-insensitively)
+--   • not in platform_admins / cs_staff_role → not iTrova-CRM internal staff (they share this project)
 
 -- ============================================================================ STEP 1 — REVIEW (read-only)
 select u.id, u.email, u.created_at, p.owner_name, p.phone
@@ -38,6 +39,9 @@ where p.business_id is null
     select 1 from public.invitations i
     where lower(i.email) = lower(u.email) and i.accepted_at is null
   )
+  -- Exclude iTrova-CRM internal staff — they live on this same shared project.
+  and not exists (select 1 from public.platform_admins pa where pa.user_id = u.id)
+  and not exists (select 1 from public.cs_staff_role sr where sr.user_id = u.id)
 order by u.created_at;
 
 -- ============================================================================ STEP 2 — DELETE (run only
@@ -56,6 +60,8 @@ order by u.created_at;
 --         select 1 from public.invitations i
 --         where lower(i.email) = lower(u.email) and i.accepted_at is null
 --       )
+--       and not exists (select 1 from public.platform_admins pa where pa.user_id = u.id)
+--       and not exists (select 1 from public.cs_staff_role sr where sr.user_id = u.id)
 --   )
 --   delete from auth.users where id in (select id from orphans);
 -- commit;
