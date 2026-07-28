@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -36,7 +37,8 @@ export default function Suppliers() {
   const [items, setItems] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<Record<string, SupplierStats>>({});
-  const [q, setQ] = useState("");
+  const [searchParams] = useSearchParams();
+  const [q, setQ] = useState(searchParams.get("q") ?? ""); // seed from the global search deep-link
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [form, setForm] = useState<any>(empty);
@@ -211,7 +213,7 @@ export default function Suppliers() {
           {hasModule("csv_import") && <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={atSupplierLimit} title={atSupplierLimit ? limitMessage("suppliers") : undefined}><Upload className="size-4" /> Import CSV</Button>}
           {hasModule("csv_export") && <Button variant="outline" onClick={exportCsv} disabled={items.length === 0}><Download className="size-4" /> Export</Button>}
           {supplierLimit !== null && items.length >= Math.floor(supplierLimit * 0.8) && (
-            <span className={`self-center text-xs font-medium ${atSupplierLimit ? "text-destructive" : "text-amber-600"}`}>
+            <span className={`self-center text-xs font-medium ${atSupplierLimit ? "text-destructive" : "text-amber-600 dark:text-amber-400"}`}>
               {items.length} / {supplierLimit}
             </span>
           )}

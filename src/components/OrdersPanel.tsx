@@ -41,10 +41,10 @@ type Order = {
 const STATUSES = ["pending", "shipped", "delivered", "cancelled"];
 
 const statusMeta: Record<string, { icon: any; cls: string; label: string }> = {
-  pending: { icon: Clock, cls: "bg-amber-100 text-amber-800 border-amber-200", label: "Pending" },
-  shipped: { icon: Truck, cls: "bg-blue-100 text-blue-800 border-blue-200", label: "Shipped" },
+  pending: { icon: Clock, cls: "bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800/60", label: "Pending" },
+  shipped: { icon: Truck, cls: "bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-800/60", label: "Shipped" },
   delivered: { icon: CheckCircle2, cls: "bg-brand-light text-brand-dark border-brand/20", label: "Delivered" },
-  cancelled: { icon: XCircle, cls: "bg-rose-100 text-rose-800 border-rose-200", label: "Cancelled" },
+  cancelled: { icon: XCircle, cls: "bg-rose-100 dark:bg-rose-900/40 text-rose-800 dark:text-rose-300 border-rose-200 dark:border-rose-800/60", label: "Cancelled" },
 };
 
 export default function OrdersPanel({ products, onStockChanged }: { products: Product[]; onStockChanged: () => void }) {

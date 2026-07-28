@@ -32,6 +32,18 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+
+    <!-- Apply the saved theme (or the OS preference on first visit) before first paint, so there's
+         no flash of the wrong theme. Mirrors the logic in src/hooks/useTheme.ts. -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("itrova-theme");
+          var dark = t === "dark" || (!t && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          if (dark) document.documentElement.classList.add("dark");
+        } catch (e) {}
+      })();
+    </script>
   </head>
 
   <body>

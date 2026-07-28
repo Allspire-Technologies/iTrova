@@ -259,7 +259,7 @@ export function OfflineInvoices() {
             <p className="text-xs text-muted-foreground">Record a deposit now; it syncs to the invoice when you{"'"}re back online.</p>
           </div>
           {(queuedInvoices.length > 0 || queuedPayments.length > 0) && (
-            <div className="px-4 py-2 text-xs text-amber-700 bg-amber-50 border-b border-amber-200">
+            <div className="px-4 py-2 text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-800/60">
               {[
                 queuedInvoices.length > 0 ? `${queuedInvoices.length} invoice${queuedInvoices.length === 1 ? "" : "s"}` : null,
                 queuedPayments.length > 0 ? `${queuedPayments.length} deposit${queuedPayments.length === 1 ? "" : "s"}` : null,
@@ -290,9 +290,9 @@ export function OfflineInvoices() {
                         <td className="px-4 py-3 text-right font-display font-semibold text-brand-dark">{fmt(balanceOf(inv))}</td>
                         <td className="px-4 py-3">
                           {inv.status === "partial"
-                            ? <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-700">Partial</Badge>
+                            ? <Badge variant="outline" className="border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300">Partial</Badge>
                             : <Badge variant="outline">Issued</Badge>}
-                          {inv.local && <Badge variant="outline" className="ml-2 border-amber-300 bg-amber-50 text-amber-700">Not synced</Badge>}
+                          {inv.local && <Badge variant="outline" className="ml-2 border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300">Not synced</Badge>}
                           {queued > 0 && <span className="ml-2 text-xs text-muted-foreground">{queued} queued</span>}
                         </td>
                         <td className="px-4 py-3 text-right whitespace-nowrap">
@@ -310,7 +310,7 @@ export function OfflineInvoices() {
               <div className="text-xs uppercase tracking-wider text-muted-foreground">Deposits needing review</div>
               {paymentReviews.map((p) => (
                 <div key={p.paymentId} className="flex items-center justify-between gap-2 text-sm">
-                  <span className="min-w-0"><span className="font-medium">{fmt(p.amount)}</span> · {p.invoiceNumber} · <span className="text-red-600">{p.reviewReason}</span></span>
+                  <span className="min-w-0"><span className="font-medium">{fmt(p.amount)}</span> · {p.invoiceNumber} · <span className="text-red-600 dark:text-red-400">{p.reviewReason}</span></span>
                   {canPay && <Button variant="ghost" size="icon" className="shrink-0" aria-label={`Discard deposit for ${p.invoiceNumber}`} onClick={() => discardPayment(p.paymentId)}><Trash2 className="size-4" /></Button>}
                 </div>
               ))}
@@ -344,8 +344,8 @@ export function OfflineInvoices() {
                     <td className="px-4 py-3 text-right font-display font-semibold text-brand-dark">{fmt(r.total)}</td>
                     <td className="px-4 py-3">
                       {r.__review
-                        ? <Badge variant="outline" className="border-red-300 bg-red-50 text-red-700">Needs review</Badge>
-                        : <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-700">Pending sync</Badge>}
+                        ? <Badge variant="outline" className="border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300">Needs review</Badge>
+                        : <Badge variant="outline" className="border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300">Pending sync</Badge>}
                     </td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">
                       <Button variant="ghost" size="icon" aria-label={`View ${r.invoiceNumber}`} onClick={() => setViewing(r)}><Eye className="size-4" /></Button>

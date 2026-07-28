@@ -621,7 +621,7 @@ export default function Invoices() {
             </Button>
           )}
           {invoiceLimit !== null && items.length >= Math.floor(invoiceLimit * 0.8) && (
-            <span className={`self-center text-xs font-medium ${atInvoiceLimit ? "text-destructive" : "text-amber-600"}`}>
+            <span className={`self-center text-xs font-medium ${atInvoiceLimit ? "text-destructive" : "text-amber-600 dark:text-amber-400"}`}>
               {items.length} / {invoiceLimit}
             </span>
           )}
@@ -630,8 +630,8 @@ export default function Invoices() {
       </div>
 
       {offlinePending > 0 && (
-        <Card className="p-4 border-amber-300 bg-amber-50">
-          <div className="text-sm text-amber-800">
+        <Card className="p-4 border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40">
+          <div className="text-sm text-amber-800 dark:text-amber-300">
             {offlinePending} offline {offlinePending === 1 ? "item is" : "items are"} waiting to sync (invoices and deposits saved on this device). Use <span className="font-medium">Sync now</span> above.
           </div>
         </Card>
@@ -879,7 +879,7 @@ export default function Invoices() {
                   <div className="font-semibold">Total: {fmt(viewing.total)}</div>
                   {Number(viewing.amount_paid) > 0 && (
                     <>
-                      <div className="text-sm text-emerald-600">Paid: {fmt(viewing.amount_paid)}</div>
+                      <div className="text-sm text-emerald-600 dark:text-emerald-400">Paid: {fmt(viewing.amount_paid)}</div>
                       {balanceOf(viewing) > 0 && <div className="text-sm font-medium">Balance: {fmt(balanceOf(viewing))}</div>}
                     </>
                   )}

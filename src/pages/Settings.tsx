@@ -147,7 +147,7 @@ function PlanCard({ plan, inheritsFrom, action, currentPlan, businessName, refer
             <Badge variant="outline" className="text-[10px] bg-brand-light text-brand border-brand/20">Save {Number(selected.discount_percent)}%</Badge>
           )}
           {promoOn && (
-            <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">{plan.promo_label || "Promo"} · {Number(plan.promo_percent)}% off</Badge>
+            <Badge variant="outline" className="text-[10px] bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/60">{plan.promo_label || "Promo"} · {Number(plan.promo_percent)}% off</Badge>
           )}
           {refereeOn && (
             <Badge variant="outline" className="text-[10px] bg-brand-light text-brand border-brand/20">Referral · {refereeDiscount}% off first payment</Badge>

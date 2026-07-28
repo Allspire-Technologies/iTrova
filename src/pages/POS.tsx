@@ -541,12 +541,12 @@ export default function POS() {
               <TabsTrigger value="orders" className="gap-2"><ClipboardList className="size-4" /> Orders</TabsTrigger>
             </TabsList>
             {held.length > 0 && (
-              <Button variant="outline" size="sm" className="border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 hover:text-amber-800" onClick={() => setHeldOpen(true)}>
+              <Button variant="outline" size="sm" className="border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40 hover:text-amber-800 dark:hover:text-amber-300" onClick={() => setHeldOpen(true)}>
                 <ClipboardList className="size-4 mr-1" /> Held sales ({held.length})
               </Button>
             )}
             {pending > 0 && (
-              <Badge variant="outline" className="gap-1 border-amber-300 bg-amber-50 text-amber-700" title="Offline sales waiting to sync">
+              <Badge variant="outline" className="gap-1 border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300" title="Offline sales waiting to sync">
                 <CloudOff className="size-3.5" /> Pending sync ({pending})
               </Badge>
             )}
@@ -559,7 +559,7 @@ export default function POS() {
               <span className="self-center text-xs text-muted-foreground">Last sync {fmtDateTime(new Date(lastSync).toISOString(), { hour: "2-digit", minute: "2-digit" })}</span>
             )}
             {review.length > 0 && can("pos", "review_offline") && (
-              <Button variant="outline" size="sm" className="border-red-300 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800" onClick={() => setReviewOpen(true)}>
+              <Button variant="outline" size="sm" className="border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-800 dark:hover:text-red-300" onClick={() => setReviewOpen(true)}>
                 <AlertTriangle className="size-4 mr-1" /> Needs review ({review.length})
               </Button>
             )}
