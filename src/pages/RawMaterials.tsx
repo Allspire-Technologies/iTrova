@@ -291,7 +291,7 @@ export default function RawMaterials() {
           {hasModule("csv_import") && <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={atRawMatLimit} title={atRawMatLimit ? limitMessage("rawMaterials") : undefined}><Upload className="size-4" /> Import CSV</Button>}
           {hasModule("csv_export") && <Button variant="outline" onClick={exportCsv} disabled={items.length === 0}><Download className="size-4" /> Export</Button>}
           {rawMatLimit !== null && items.length >= Math.floor(rawMatLimit * 0.8) && (
-            <span className={`self-center text-xs font-medium ${atRawMatLimit ? "text-destructive" : "text-amber-600"}`}>
+            <span className={`self-center text-xs font-medium ${atRawMatLimit ? "text-destructive" : "text-amber-600 dark:text-amber-400"}`}>
               {items.length} / {rawMatLimit}
             </span>
           )}

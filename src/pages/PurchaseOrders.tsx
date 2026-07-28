@@ -434,7 +434,7 @@ export default function PurchaseOrders() {
           {hasModule("csv_import") && can("purchase_orders", "csv_import") && <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={atPoLimit} title={atPoLimit ? limitMessage("purchaseOrders") : undefined}><Upload className="size-4" /> Import CSV</Button>}
           {hasModule("csv_export") && <Button variant="outline" onClick={exportCsv} disabled={filtered.length === 0}><Download className="size-4" /> Export CSV</Button>}
           {poLimit !== null && items.length >= Math.floor(poLimit * 0.8) && (
-            <span className={`self-center text-xs font-medium ${atPoLimit ? "text-destructive" : "text-amber-600"}`}>
+            <span className={`self-center text-xs font-medium ${atPoLimit ? "text-destructive" : "text-amber-600 dark:text-amber-400"}`}>
               {items.length} / {poLimit}
             </span>
           )}

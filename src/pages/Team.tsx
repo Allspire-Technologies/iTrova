@@ -289,7 +289,7 @@ export default function Team() {
           {can("team", "invite") && hasModule("csv_import") && can("team", "csv_import") && <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={atStaffLimit} title={atStaffLimit ? limitMessage("staff") : undefined}><Upload className="size-4" /> Import CSV</Button>}
           {can("team", "csv_export") && <Button variant="outline" onClick={exportMembers} disabled={members.length === 0}><Download className="size-4" /> Export</Button>}
           {staffLimit !== null && members.length >= Math.floor(staffLimit * 0.8) && (
-            <span className={`self-center text-xs font-medium ${atStaffLimit ? "text-destructive" : "text-amber-600"}`}>
+            <span className={`self-center text-xs font-medium ${atStaffLimit ? "text-destructive" : "text-amber-600 dark:text-amber-400"}`}>
               {members.length} / {staffLimit} seats
             </span>
           )}

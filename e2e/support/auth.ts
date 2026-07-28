@@ -9,6 +9,8 @@ export type AuthOptions = {
   businessName?: string;
   /** Register extra routes after the defaults but before navigation — these win over the catch-all. */
   onRoutes?: (page: Page) => Promise<void>;
+  /** Let the one-time "What's new" wizard appear (default: pre-marked seen so it stays out of the way). */
+  showWhatsNew?: boolean;
 };
 
 function fulfillJson(route: Route, body: unknown, status = 200) {
@@ -54,6 +56,13 @@ export async function authenticate(page: Page, opts: AuthOptions = {}) {
   await page.route("**/rest/v1/businesses**", (r) => singleOrArray(r, business));
   await page.route("**/rest/v1/user_roles**", (r) => fulfillJson(r, [{ user_id: FAKE_USER.id, role }]));
   if (opts.onRoutes) await opts.onRoutes(page); // registered last -> takes precedence over the catch-all
+
+  // Keep the one-time "What's new" wizard out of the way of unrelated tests unless one opts in.
+  if (!opts.showWhatsNew) {
+    await page.addInitScript(() => {
+      try { localStorage.setItem("itrova-whatsnew-seen", "9999"); } catch { /* ignore */ }
+    });
+  }
 
   await page.goto("/auth");
   await page.locator("#le").fill("owner@biz.test");

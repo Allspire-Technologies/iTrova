@@ -3,6 +3,21 @@
 All notable, user-facing changes to iTrova are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); entries are grouped by ship date, newest first.
 
+## 2026-07-28 — Dark mode, global search & a What's-new tour
+
+Personalise how iTrova looks and find anything in a keystroke.
+
+### Added
+- **Dark / light mode** — a switch in the top bar. It follows your device by default and remembers your
+  choice on every visit. Every screen, chart and badge has been tuned for both themes.
+- **Search anything** — press **Ctrl/⌘ K** (or the magnifier in the top bar) to jump to any page or
+  find a product, supplier, invoice or export invoice instantly. Results respect what your plan and
+  role allow.
+- **What's new** — a one-time tour that introduces new features. You only ever see what's changed since
+  you last looked; it starts with dark mode and search.
+- **Keyboard shortcuts** — press **?** any time (or pick it from search) to see the list. Includes
+  **Ctrl/⌘ K** to search and **Ctrl/⌘ B** to show/hide the sidebar.
+
 ## 2026-07-25 — Deleted businesses sign out cleanly
 
 ### Fixed
