@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search } from "lucide-react";
+import { Search, Keyboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   CommandDialog, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem, CommandShortcut,
@@ -8,6 +8,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { PINNED_ITEMS, NAV_SECTIONS, SETTINGS_ITEM, isNavItemVisible, type NavItem, type NavGrants } from "@/lib/nav";
 import { searchRecords, KIND_LABEL, type SearchHit, type SearchKind } from "@/lib/search";
+import { openShortcuts } from "@/lib/shortcuts";
 
 // Global "search anything" palette — opens from the header button or ⌘K / Ctrl+K. Searches nav pages
 // (client-side) plus products, suppliers, invoices and export invoices (server-side, RLS-scoped).
@@ -45,6 +46,11 @@ export default function GlobalSearch() {
     if (!t) return pages;
     return pages.filter((p) => p.label.toLowerCase().includes(t));
   }, [pages, query]);
+
+  const helpVisible = useMemo(() => {
+    const t = query.trim().toLowerCase();
+    return !t || "keyboard shortcuts".includes(t);
+  }, [query]);
 
   // Debounced record search.
   useEffect(() => {
@@ -106,6 +112,15 @@ export default function GlobalSearch() {
               </CommandGroup>
             );
           })}
+
+          {helpVisible && (
+            <CommandGroup heading="Help">
+              <CommandItem value="help-shortcuts" onSelect={() => { setOpen(false); setQuery(""); openShortcuts(); }}>
+                <Keyboard className="mr-2 size-4 text-muted-foreground" />
+                Keyboard shortcuts
+              </CommandItem>
+            </CommandGroup>
+          )}
 
           <CommandShortcut className="sr-only">Ctrl/⌘ K</CommandShortcut>
         </CommandList>

@@ -14,6 +14,7 @@ import HeaderClock from "@/components/HeaderClock";
 import ThemeToggle from "@/components/ThemeToggle";
 import GlobalSearch from "@/components/GlobalSearch";
 import WhatsNew from "@/components/WhatsNew";
+import KeyboardShortcuts from "@/components/KeyboardShortcuts";
 import IdleTimeout from "@/components/IdleTimeout";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { useOnline } from "@/contexts/OnlineContext";
@@ -187,6 +188,18 @@ export default function AppShell() {
     return next;
   });
 
+  // Ctrl/⌘ B toggles the sidebar (documented in the Keyboard shortcuts dialog).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        toggleCollapsed();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   useEffect(() => {
     if (!loading && !user) navigate("/auth", { replace: true });
   }, [loading, user, navigate]);
@@ -235,6 +248,7 @@ export default function AppShell() {
   return (
     <div className="min-h-[calc(100vh-var(--titlebar-h))] flex bg-gradient-soft">
       <WhatsNew />
+      <KeyboardShortcuts />
       {/* Desktop Sidebar */}
       <aside className={`hidden lg:flex flex-col bg-sidebar text-sidebar-foreground sticky top-[var(--titlebar-h)] h-[calc(100vh-var(--titlebar-h))] transition-all duration-200 ${collapsed ? "w-16" : "w-64"}`}>
         {/* Brand + collapse toggle */}

@@ -34,6 +34,22 @@ test.describe("App shell — theme, search, what's new", () => {
     await expect(page).toHaveURL(/\/settings$/);
   });
 
+  test("keyboard shortcuts dialog opens via '?' and from the search palette", async ({ page }) => {
+    await authenticate(page);
+
+    // "?" opens the reference.
+    await page.keyboard.press("Shift+Slash");
+    await expect(page.getByRole("dialog").getByRole("heading", { name: "Keyboard shortcuts" })).toBeVisible();
+    await expect(page.getByText("Open search")).toBeVisible();
+    await expect(page.getByText("Show / hide the sidebar")).toBeVisible();
+    await page.keyboard.press("Escape");
+
+    // Also discoverable from the search palette's Help entry.
+    await page.getByRole("button", { name: "Search", exact: true }).click();
+    await page.getByRole("option", { name: "Keyboard shortcuts" }).click();
+    await expect(page.getByRole("dialog").getByRole("heading", { name: "Keyboard shortcuts" })).toBeVisible();
+  });
+
   test("one-time What's new wizard steps through features and dismisses", async ({ page }) => {
     await authenticate(page, { showWhatsNew: true });
 

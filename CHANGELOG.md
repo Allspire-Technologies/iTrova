@@ -15,6 +15,8 @@ Personalise how iTrova looks and find anything in a keystroke.
   role allow.
 - **What's new** — a one-time tour that introduces new features. You only ever see what's changed since
   you last looked; it starts with dark mode and search.
+- **Keyboard shortcuts** — press **?** any time (or pick it from search) to see the list. Includes
+  **Ctrl/⌘ K** to search and **Ctrl/⌘ B** to show/hide the sidebar.
 
 ## 2026-07-25 — Deleted businesses sign out cleanly
 
