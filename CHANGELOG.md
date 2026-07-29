@@ -14,8 +14,9 @@ Invoices can now sell what's in your inventory, not just free-text lines — and
 - **Edits reconcile stock** — changing a quantity, adding, removing or swapping a line adjusts stock by
   the difference. Voiding or deleting an invoice returns its stock. This now also applies when you edit
   a POS invoice's quantities.
-- **Inventory invoices count as sales** — their revenue and cost-of-goods flow into **Reports** and the
-  **Dashboard** (revenue is recognised when the invoice is **issued**).
+- **Invoices count as sales** — every issued invoice's revenue now flows into **Reports** and the
+  **Dashboard** (recognised when **issued**, matching your accounting ledger), with cost-of-goods added
+  for inventory lines. This also brings older invoices into the sales figures.
 - **Collected & Money owed** — new figures on the Dashboard and Reports: **Collected** (cash actually
   received, including invoice deposits and part-payments) and **Money owed** (unpaid invoice balances),
   so sales, cash and receivables all reconcile.

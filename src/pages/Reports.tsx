@@ -136,16 +136,16 @@ export default function Reports() {
       const allSaleItems = (pr.data as SaleItem[]) || [];
       const saleIds = new Set(salesData.map(x => x.id));
 
-      // Manual inventory invoices → synthetic sales/sale-items so all metrics count them. An invoice
-      // counts only if it has ≥1 inventory line; its full total is revenue, its inventory lines drive
-      // COGS + top products. issue_date splits current vs previous period.
+      // Manual invoices → synthetic sales so all metrics count them (matching the accounting ledger,
+      // which books every issued invoice as Sales). EVERY issued/non-void invoice's full total is
+      // revenue (inventory, service, or legacy); its inventory lines (product_id set) additionally
+      // drive COGS + top products. issue_date splits current vs previous period.
       const invRows = (invRes.data as unknown as { id: string; total: number; tax: number; issue_date: string; created_by: string | null }[]) || [];
       const invItemRows = (invItemsRes.data as unknown as { invoice_id: string; product_id: string; quantity: number; unit_price: number; invoices: { issue_date: string } }[]) || [];
-      const invWithInventory = new Set(invItemRows.map(r => r.invoice_id));
       const invToSale = (i: typeof invRows[number]): Sale => ({ id: `inv-${i.id}`, total_amount: Number(i.total), created_at: new Date(i.issue_date + "T12:00:00").toISOString(), staff_id: i.created_by, tax_amount: Number(i.tax || 0) });
       const invToItem = (r: typeof invItemRows[number]): SaleItem => ({ sale_id: `inv-${r.invoice_id}`, product_id: r.product_id, quantity: Number(r.quantity), unit_price: Number(r.unit_price) });
-      const invSalesCur = invRows.filter(i => invWithInventory.has(i.id) && i.issue_date >= from).map(invToSale);
-      const invSalesPrev = invRows.filter(i => invWithInventory.has(i.id) && i.issue_date < from).map(invToSale);
+      const invSalesCur = invRows.filter(i => i.issue_date >= from).map(invToSale);
+      const invSalesPrev = invRows.filter(i => i.issue_date < from).map(invToSale);
       const invItemsCur = invItemRows.filter(r => r.invoices.issue_date >= from).map(invToItem);
       const invItemsPrev = invItemRows.filter(r => r.invoices.issue_date < from).map(invToItem);
 

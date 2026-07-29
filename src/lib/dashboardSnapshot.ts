@@ -61,13 +61,12 @@ export async function fetchDashboardSnapshot(): Promise<DashSnap> {
   const moneyOwed = ((invOwedRaw as { total: number; amount_paid: number }[] | null) ?? [])
     .reduce((a, i) => a + Math.max(0, Number(i.total) - Number(i.amount_paid || 0)), 0);
 
-  // Fold manual inventory invoices into the sales/sale-items sets as synthetic rows, so every metric
-  // below (today's sales, 7-day trend, top products) counts them without special-casing.
+  // Fold manual invoices into the sales/sale-items sets as synthetic rows, so every metric below
+  // (today's sales, 7-day trend, top products) counts them — every issued/non-void invoice counts as
+  // Sales (matching the ledger); its inventory lines additionally feed top products.
   const invRows = (invRowsRaw as { id: string; total: number; issue_date: string }[] | null) ?? [];
   const invItems = (invItemsRaw as unknown as { invoice_id: string; product_id: string; quantity: number; unit_price: number; products: { name: string } | null }[] | null) ?? [];
-  const invWithInventory = new Set(invItems.map(r => r.invoice_id));
   const invSales: Sale[] = invRows
-    .filter(i => invWithInventory.has(i.id))
     .map(i => ({ id: `inv-${i.id}`, total_amount: Number(i.total), created_at: new Date(i.issue_date + "T12:00:00").toISOString() }));
   const invSaleItems = invItems.map(r => ({ sale_id: `inv-${r.invoice_id}`, product_id: r.product_id, quantity: r.quantity, unit_price: r.unit_price, products: r.products }));
   const allSales: Sale[] = [...((sales as Sale[] | null) ?? []), ...invSales];
