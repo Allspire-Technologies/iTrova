@@ -7,7 +7,8 @@ import DatePicker from "@/components/DatePicker";
 import { Label } from "@/components/ui/label";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useDateFormat } from "@/hooks/useDateFormat";
-import { Download, TrendingUp, ShoppingCart, Package, AlertTriangle, Truck, Users, ArrowUpRight, ArrowDownRight, ChevronLeft, ChevronRight, Wallet, Receipt } from "lucide-react";
+import { Download, TrendingUp, ShoppingCart, Package, AlertTriangle, Truck, Users, ArrowUpRight, ArrowDownRight, ChevronLeft, ChevronRight, Wallet, Receipt, Info } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, AreaChart, Area, CartesianGrid, PieChart, Pie, Cell } from "recharts";
 import { paymentLabel } from "@/lib/receipt";
 import { toast } from "sonner";
@@ -454,10 +455,14 @@ export default function Reports() {
       {!loading && (
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Metric label="Revenue" value={fmt(totals.revenue)} icon={TrendingUp} accent="brand" sub={`${totals.txns} sales`} change={pct(totals.revenue, prevTotals.revenue)} />
-            <Metric label="Collected" value={fmt(collectedTotal)} icon={Wallet} accent="dark" sub="Cash received" />
-            <Metric label="Money owed" value={fmt(owedTotal)} icon={Receipt} accent={owedTotal ? "warning" : "muted"} sub="Unpaid invoices" />
-            <Metric label="Gross profit" value={fmt(totals.grossProfit)} icon={ShoppingCart} accent="dark" sub={`COGS ${fmt(totals.cogs)}`} change={pct(totals.grossProfit, prevTotals.grossProfit)} />
+            <Metric label="Revenue" value={fmt(totals.revenue)} icon={TrendingUp} accent="brand" sub={`${totals.txns} sales`} change={pct(totals.revenue, prevTotals.revenue)}
+              info="Sales recognised in this period: POS sales plus invoices, counted in full on the date they're issued — regardless of whether they've been paid yet (accrual)." />
+            <Metric label="Collected" value={fmt(collectedTotal)} icon={Wallet} accent="dark" sub="Cash received"
+              info="Cash actually received in this period: POS sales plus invoice deposits and balance payments. Payments here may settle invoices issued in an earlier period, so this won't equal Revenue." />
+            <Metric label="Money owed" value={fmt(owedTotal)} icon={Receipt} accent={owedTotal ? "warning" : "muted"} sub="Unpaid invoices"
+              info="Unpaid balance across all issued invoices as of now (your receivables) — a running total, not limited to this period. Equals the Accounts Receivable balance in your ledger." />
+            <Metric label="Gross profit" value={fmt(totals.grossProfit)} icon={ShoppingCart} accent="dark" sub={`COGS ${fmt(totals.cogs)}`} change={pct(totals.grossProfit, prevTotals.grossProfit)}
+              info="Revenue minus the cost of goods sold (COGS) for the products sold this period. Excludes operating expenses." />
             <Metric label="Units sold" value={totals.units.toLocaleString()} icon={Package} accent="muted" sub={`Avg sale ${fmt(totals.avg)}`} change={pct(totals.units, prevTotals.units)} />
             <Metric label="Supplier spend" value={fmt(totals.supplierSpend)} icon={Truck} accent={totals.supplierSpend ? "warning" : "muted"} sub={`${supplierSpendRows.length} suppliers`} />
             {showExpenses && <Metric label="Expenses" value={fmt(totals.expenses)} icon={Wallet} accent={totals.expenses ? "warning" : "muted"} sub="This period" change={pct(totals.expenses, prevExpensesTotal)} />}
@@ -722,7 +727,23 @@ function CardPager({ page, pageCount, onPage }: { page: number; pageCount: numbe
   );
 }
 
-function Metric({ label, value, icon: Icon, sub, accent, change }: { label: string; value: string; icon: any; sub?: string; accent: "brand" | "dark" | "warning" | "muted" | "danger"; change?: number | null }) {
+// A small info affordance for a metric whose meaning could be misread (e.g. accrual vs cash).
+function InfoDot({ text, label }: { text: string; label: string }) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button type="button" className="text-muted-foreground/70 hover:text-foreground transition-colors" aria-label={`What is ${label}?`}>
+          <Info className="size-3.5" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-64 text-left text-sm normal-case tracking-normal font-normal text-muted-foreground">
+        {text}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function Metric({ label, value, icon: Icon, sub, accent, change, info }: { label: string; value: string; icon: any; sub?: string; accent: "brand" | "dark" | "warning" | "muted" | "danger"; change?: number | null; info?: string }) {
   const accents = {
     brand: "bg-brand-light text-brand",
     dark: "bg-brand-dark/10 text-brand-dark",
@@ -735,7 +756,10 @@ function Metric({ label, value, icon: Icon, sub, accent, change }: { label: stri
       <CardContent className="p-5">
         <div className="flex items-start justify-between">
           <div>
-            <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium">{label}</div>
+            <div className="flex items-center gap-1 text-xs uppercase tracking-wider text-muted-foreground font-medium">
+              {label}
+              {info && <InfoDot text={info} label={label} />}
+            </div>
             <div className="font-display text-2xl lg:text-3xl font-bold mt-2 text-brand-dark">{value}</div>
             {sub && <div className="text-xs text-muted-foreground mt-1">{sub}</div>}
             {change != null && (

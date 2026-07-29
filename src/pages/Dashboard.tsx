@@ -4,7 +4,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useDateFormat } from "@/hooks/useDateFormat";
-import { TrendingUp, Package, AlertTriangle, ShoppingBag, Sparkles, FileText, Clock, ArrowUpRight, ArrowDownRight, Receipt, Wallet } from "lucide-react";
+import { TrendingUp, Package, AlertTriangle, ShoppingBag, Sparkles, FileText, Clock, ArrowUpRight, ArrowDownRight, Receipt, Wallet, Info } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DashboardSkeleton } from "@/components/Skeletons";
 import { ResponsiveContainer, AreaChart, Area, XAxis, Tooltip, BarChart, Bar, Cell, YAxis, PieChart, Pie } from "recharts";
 import { Link } from "react-router-dom";
@@ -147,9 +148,12 @@ export default function Dashboard() {
 
       {/* Metrics — 2-up on phones so the KPIs stay scannable without a long scroll */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        <MetricCard label="Today's Sales" value={fmt(todaySales)} icon={TrendingUp} accent="brand" sub={`${salesCount} transaction${salesCount === 1 ? "" : "s"}`} />
-        <MetricCard label="Collected Today" value={fmt(collectedToday)} icon={Wallet} accent="dark" sub="cash received" />
-        <MetricCard label="Money Owed" value={fmt(moneyOwed)} icon={Clock} accent={moneyOwed ? "warning" : "muted"} sub="unpaid invoices" />
+        <MetricCard label="Today's Sales" value={fmt(todaySales)} icon={TrendingUp} accent="brand" sub={`${salesCount} transaction${salesCount === 1 ? "" : "s"}`}
+          info="Revenue from sales and invoices dated today, counted in full when issued — whether or not the money has been received yet." />
+        <MetricCard label="Collected Today" value={fmt(collectedToday)} icon={Wallet} accent="dark" sub="cash received"
+          info="Actual cash received today: POS sales plus any invoice deposits or balance payments taken today (which may be for invoices issued on an earlier day)." />
+        <MetricCard label="Money Owed" value={fmt(moneyOwed)} icon={Clock} accent={moneyOwed ? "warning" : "muted"} sub="unpaid invoices"
+          info="Total unpaid balance across all issued invoices right now (your receivables) — a running total, not just today's. It won't add up with Sales and Collected, which cover a single day." />
         <MetricCard label="Products in Stock" value={products.length.toString()} icon={Package} accent="dark" sub={`${totalStockUnits} units total`} />
         <MetricCard label="Stock Alerts" value={(outOfStock.length + lowStock.length).toString()} icon={AlertTriangle} accent={outOfStock.length ? "warning" : lowStock.length ? "warning" : "muted"} sub={outOfStock.length ? `${outOfStock.length} out of stock` : lowStock.length ? "Low stock items" : "All healthy"} />
         <MetricCard label="Open Invoices" value={openInvoices.toString()} icon={FileText} accent="muted" sub="draft & issued" />
@@ -416,7 +420,23 @@ export default function Dashboard() {
   );
 }
 
-function MetricCard({ label, value, icon: Icon, sub, accent }: { label: string; value: string; icon: any; sub?: string; accent: "brand" | "dark" | "warning" | "muted" }) {
+// A small info affordance for a metric whose meaning could be misread (e.g. accrual vs cash).
+function InfoDot({ text, label }: { text: string; label: string }) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button type="button" className="text-muted-foreground/70 hover:text-foreground transition-colors" aria-label={`What is ${label}?`}>
+          <Info className="size-3.5" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-64 text-left text-sm normal-case tracking-normal font-normal text-muted-foreground">
+        {text}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function MetricCard({ label, value, icon: Icon, sub, accent, info }: { label: string; value: string; icon: any; sub?: string; accent: "brand" | "dark" | "warning" | "muted"; info?: string }) {
   const accents = {
     brand: "bg-brand-light text-brand",
     dark: "bg-brand-dark/10 text-brand-dark",
@@ -428,7 +448,10 @@ function MetricCard({ label, value, icon: Icon, sub, accent }: { label: string; 
       <CardContent className="p-4 sm:p-5">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium">{label}</div>
+            <div className="flex items-center gap-1 text-xs uppercase tracking-wider text-muted-foreground font-medium">
+              {label}
+              {info && <InfoDot text={info} label={label} />}
+            </div>
             <div className="font-display text-xl sm:text-2xl lg:text-3xl font-bold mt-2 text-brand-dark break-words">{value}</div>
             {sub && <div className="text-xs text-muted-foreground mt-1">{sub}</div>}
           </div>
