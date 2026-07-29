@@ -1,10 +1,12 @@
 import type { LucideIcon } from "lucide-react";
-import { Moon, Search } from "lucide-react";
+import { Moon, Search, FileText } from "lucide-react";
 
 // One-time "What's new" wizard content. Append a new entry (with a higher id) whenever a feature
 // ships; users only see entries newer than the last one they dismissed, tracked in localStorage.
+// CONVENTION: every new feature gets an entry here, and when it lives on a specific page, set `route`
+// (+ optional `cta`) so the wizard can take the user straight to that page to try it.
 
-export type WhatsNewEntry = { id: number; title: string; body: string; icon: LucideIcon };
+export type WhatsNewEntry = { id: number; title: string; body: string; icon: LucideIcon; route?: string; cta?: string };
 
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
@@ -18,6 +20,14 @@ export const WHATS_NEW: WhatsNewEntry[] = [
     icon: Search,
     title: "Search anything",
     body: "Press Ctrl/⌘ K — or the magnifier in the top bar — to jump to any page or find a product, supplier or invoice instantly.",
+  },
+  {
+    id: 3,
+    icon: FileText,
+    title: "Invoice your inventory",
+    body: "New invoices can bill inventory products — stock is deducted automatically — alongside custom items. Your dashboard and reports now track sales, cash collected and money owed.",
+    route: "/invoices",
+    cta: "Open Invoices",
   },
 ];
 

@@ -113,7 +113,8 @@ test.describe("Tax v1 — input VAT on procurement", () => {
       sale_id: "sale-1", created_by: null, created_at: "2026-06-23T00:00:00Z", amount_paid: 25000,
     };
     await stubRows(page, "invoices", [invoice]);
-    await stubRows(page, "invoice_items", [{ id: "it1", invoice_id: "inv-1", description: "Garri 50kg", quantity: 2, unit_price: 12500, line_total: 25000 }]);
+    // POS invoices (sale_id set) load their lines from the sale, so stub sale_items.
+    await stubRows(page, "sale_items", [{ id: "si-1", product_id: "p1", quantity: 2, unit_price: 12500, products: { name: "Garri 50kg" } }]);
 
     await page.goto("/invoices");
     await page.locator("table").getByRole("button", { name: "More actions" }).click();
