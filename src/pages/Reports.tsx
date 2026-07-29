@@ -29,7 +29,7 @@ import { netProfit, fetchExpensesForReport } from "@/lib/expenditure";
 
 type Sale = { id: string; total_amount: number; created_at: string; staff_id?: string | null; tax_amount?: number };
 type SaleItem = { sale_id: string; product_id: string | null; quantity: number; unit_price: number };
-type Product = { id: string; name: string; stock_quantity: number; reorder_level: number; cost_price: number | null; selling_price: number; tax_id?: string | null };
+type Product = { id: string; name: string; stock_quantity: number; reorder_level: number; cost_price: number | null; selling_price: number; tax_id?: string | null; archived_at?: string | null };
 type MatPurchase = { supplier_id: string | null; total_cost: number; created_at: string; tax_amount?: number };
 type Supplier = { id: string; name: string };
 
@@ -86,7 +86,9 @@ export default function Reports() {
       const prevFromDate = prevFromIso.slice(0, 10);
       const [s, p, pr, mp, sup, prevS, prof, po, exp, sp, adj, mpi, invRes, invItemsRes, invPayRes, invOwedRes] = await Promise.all([
         supabase.from("sales").select("id,total_amount,created_at,staff_id,tax_amount").eq("business_id", business.id).eq("voided", false).gte("created_at", fromIso).lte("created_at", toIso),
-        supabase.from("products").select("id,name,stock_quantity,reorder_level,cost_price,selling_price,tax_id").eq("business_id", business.id),
+        // Keep ARCHIVED products here: their cost/name are needed for historical COGS + Top products.
+        // Active-inventory views (out/low stock) filter archived out client-side below.
+        supabase.from("products").select("id,name,stock_quantity,reorder_level,cost_price,selling_price,tax_id,archived_at").eq("business_id", business.id),
         // Only the items whose sale falls in the report window (previous period start → current
         // period end — the two ranges are adjacent). The !inner join makes the sales filters
         // restrictive server-side; before this, every sale_item ever was downloaded and filtered
@@ -232,20 +234,23 @@ export default function Reports() {
 
   const supplierSpendRows = useMemo(() => supplierSpendRowsOf(purchases, suppliers), [purchases, suppliers]);
 
+  // Active-inventory views exclude archived products (COGS/Top-products above still use the full list).
+  const activeProducts = useMemo(() => products.filter(p => !p.archived_at), [products]);
+
   const outOfStock = useMemo(
-    () => outOfStockProducts(products).sort((a, b) => a.name.localeCompare(b.name)),
-    [products]
+    () => outOfStockProducts(activeProducts).sort((a, b) => a.name.localeCompare(b.name)),
+    [activeProducts]
   );
 
   const lowStock = useMemo(
-    () => lowStockProducts(products).sort((a, b) => Number(a.stock_quantity) - Number(b.stock_quantity)),
-    [products]
+    () => lowStockProducts(activeProducts).sort((a, b) => Number(a.stock_quantity) - Number(b.stock_quantity)),
+    [activeProducts]
   );
 
   const byStaff = useMemo(() => staffRevenue(sales, staffProfiles), [sales, staffProfiles]);
   const payMethods = useMemo(() => paymentMethodBreakdown(paymentLines), [paymentLines]);
 
-  const turnover = useMemo(() => productTurnover(saleItems, products), [saleItems, products]);
+  const turnover = useMemo(() => productTurnover(saleItems, activeProducts), [saleItems, activeProducts]);
 
   const prevTotals = useMemo(() => {
     const base = salesSummary(prevSales, prevSaleItems, products);

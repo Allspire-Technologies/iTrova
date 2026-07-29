@@ -63,9 +63,12 @@ test.describe("App shell — theme, search, what's new", () => {
     await dialog.getByRole("button", { name: "Next" }).click();
     await expect(dialog.getByText("Invoice your inventory")).toBeVisible();
 
+    await dialog.getByRole("button", { name: "Next" }).click();
+    await expect(dialog.getByText("Delete or archive products")).toBeVisible();
+
     // The last entry lives on a page, so its button takes you there and dismisses.
-    await dialog.getByRole("button", { name: "Open Invoices" }).click();
+    await dialog.getByRole("button", { name: "Open Inventory" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    await expect(page).toHaveURL(/\/invoices/);
+    await expect(page).toHaveURL(/\/inventory/);
   });
 });

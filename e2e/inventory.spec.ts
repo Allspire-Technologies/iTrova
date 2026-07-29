@@ -171,4 +171,44 @@ test.describe("Inventory", () => {
     // …then it finishes and hands off to the results summary.
     await expect(page.getByText(/3 rows imported/)).toBeVisible();
   });
+
+});
+
+test.describe("Inventory — delete & archive", () => {
+  test("owner deletes a product; a used one is archived (via delete_product RPC)", async ({ page }) => {
+    await authenticate(page, { role: "owner" });
+    await stubRows(page, "products", [product]);
+    // delete_product returns 'archived' for a product with history.
+    await page.route("**/rest/v1/rpc/delete_product**", (r) =>
+      r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify("archived") }));
+    await page.goto("/inventory");
+    const row = page.locator("table tbody tr").first();
+    await row.getByRole("button", { name: "Delete" }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByText(/Delete Garri 50kg\?/)).toBeVisible();
+    await dialog.getByRole("button", { name: "Delete" }).click();
+    await expect(page.getByText(/Garri 50kg archived/i)).toBeVisible();
+  });
+
+  test("archived products appear under 'Show archived' and can be restored", async ({ page }) => {
+    await authenticate(page, { role: "owner" });
+    await stubRows(page, "products", [product, { ...product, id: "prod-2", name: "Old Rice", archived_at: "2026-07-01T00:00:00Z" }]);
+    await page.route("**/rest/v1/rpc/restore_product**", (r) => r.fulfill({ status: 200, contentType: "application/json", body: "null" }));
+    await page.goto("/inventory");
+    // Active view hides the archived product.
+    await expect(page.locator("table").getByText("Old Rice")).toHaveCount(0);
+    await page.getByRole("button", { name: /Show archived/ }).click();
+    await expect(page.locator("table").getByText("Old Rice")).toBeVisible();
+    await page.locator("table tbody tr").first().getByRole("button", { name: "Restore" }).click();
+    await expect(page.getByText(/restored/i)).toBeVisible();
+  });
+
+  test("a manager (no inventory-delete permission) sees no Delete action", async ({ page }) => {
+    await authenticate(page, { role: "manager" });
+    await stubRows(page, "products", [product]);
+    await page.goto("/inventory");
+    const row = page.locator("table tbody tr").first();
+    await expect(row.getByRole("button", { name: "Edit" })).toBeVisible(); // manager can still edit
+    await expect(row.getByRole("button", { name: "Delete" })).toHaveCount(0);
+  });
 });

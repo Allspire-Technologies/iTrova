@@ -122,7 +122,7 @@ export default function POS() {
       return;
     }
     if (taxEnabled) listTaxes().then(t => { setTaxes(t); void cacheTaxes(business.id, t); }).catch(() => {});
-    const { data, error } = await supabase.from("products").select("id,name,sku,selling_price,stock_quantity,reorder_level,category,tax_id").gt("stock_quantity", 0).order("name");
+    const { data, error } = await supabase.from("products").select("id,name,sku,selling_price,stock_quantity,reorder_level,category,tax_id").is("archived_at", null).gt("stock_quantity", 0).order("name");
     if (error) {
       // Don't render an empty grid as if the shop had no stock — tell the cashier and fall back to
       // the last cached catalogue so they can keep selling.

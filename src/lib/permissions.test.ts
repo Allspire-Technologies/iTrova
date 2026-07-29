@@ -143,8 +143,9 @@ describe("editor helpers", () => {
     expect(on.reports).toEqual(["view", "export"]);
     expect(toggleModule(on, "reports").reports).toBeUndefined();
   });
-  it("manager defaults contain every inventory action (sanity vs registry drift)", () => {
+  it("manager defaults contain every inventory action except owner-only delete (sanity vs registry drift)", () => {
     const inv = MODULE_ACTIONS.find((m) => m.key === "inventory")!;
-    expect(DEFAULT_ROLE_PERMISSIONS.manager.inventory).toEqual(inv.actions.map((x) => x.key));
+    // Deleting products is owner-only by default (grantable per member), so it's excluded here.
+    expect(DEFAULT_ROLE_PERMISSIONS.manager.inventory).toEqual(inv.actions.map((x) => x.key).filter((k) => k !== "delete"));
   });
 });
