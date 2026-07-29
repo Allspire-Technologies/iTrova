@@ -3,6 +3,29 @@
 All notable, user-facing changes to iTrova are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); entries are grouped by ship date, newest first.
 
+## 2026-07-29 — Invoice inventory items, with stock & accounts kept in sync
+
+Invoices can now sell what's in your inventory, not just free-text lines — and the numbers stay right everywhere.
+
+### Added
+- **Inventory line items on invoices** — pick a product per line (price pre-fills, stock shows) or add a
+  **custom item / service** as before. Invoicing a product **reduces its stock**, exactly like a POS
+  sale; you can't invoice more than you have (the line is blocked).
+- **Edits reconcile stock** — changing a quantity, adding, removing or swapping a line adjusts stock by
+  the difference. Voiding or deleting an invoice returns its stock. This now also applies when you edit
+  a POS invoice's quantities.
+- **Inventory invoices count as sales** — their revenue and cost-of-goods flow into **Reports** and the
+  **Dashboard** (revenue is recognised when the invoice is **issued**).
+- **Collected & Money owed** — new figures on the Dashboard and Reports: **Collected** (cash actually
+  received, including invoice deposits and part-payments) and **Money owed** (unpaid invoice balances),
+  so sales, cash and receivables all reconcile.
+
+### Notes
+- One migration on the shared iTrova project adds the product link + a `save_invoice` RPC (atomic stock
+  reconciliation), the cost-of-goods ledger legs for inventory invoices, and stock return on void/delete.
+- Accounting stays balanced: issuing posts Dr Accounts Receivable / Cr Sales / Cr VAT (+ Dr COGS /
+  Cr Inventory); payments post Dr Cash / Cr Accounts Receivable — so the ledger's A/R equals "Money owed".
+
 ## 2026-07-28 — Dark mode, global search & a What's-new tour
 
 Personalise how iTrova looks and find anything in a keystroke.

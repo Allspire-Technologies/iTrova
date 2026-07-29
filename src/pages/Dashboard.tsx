@@ -30,6 +30,8 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [todaySales, setTodaySales] = useState(0);
   const [salesCount, setSalesCount] = useState(0);
+  const [collectedToday, setCollectedToday] = useState(0);
+  const [moneyOwed, setMoneyOwed] = useState(0);
   const [products, setProducts] = useState<Product[]>([]);
   const [openInvoices, setOpenInvoices] = useState(0);
   const [trend, setTrend] = useState<{ day: string; total: number }[]>([]);
@@ -55,7 +57,7 @@ export default function Dashboard() {
       // Offline: render the last-synced snapshot (read-only).
       const snap = (await readCachedDashboard(business.id)) as DashSnap | null;
       if (snap) {
-        setTodaySales(snap.todaySales); setSalesCount(snap.salesCount); setProducts(snap.products);
+        setTodaySales(snap.todaySales); setSalesCount(snap.salesCount); setCollectedToday(snap.collectedToday ?? 0); setMoneyOwed(snap.moneyOwed ?? 0); setProducts(snap.products);
         setOpenInvoices(snap.openInvoices); setTrend(snap.trend); setTopProducts(snap.topProducts); setActivity(snap.activity);
         setVatThisMonth(snap.vatThisMonth ?? 0);
         setPayments(snap.payments ?? []);
@@ -65,7 +67,7 @@ export default function Dashboard() {
     }
     {
       const snap = await fetchDashboardSnapshot();
-      setTodaySales(snap.todaySales); setSalesCount(snap.salesCount); setProducts(snap.products);
+      setTodaySales(snap.todaySales); setSalesCount(snap.salesCount); setCollectedToday(snap.collectedToday); setMoneyOwed(snap.moneyOwed); setProducts(snap.products);
       setOpenInvoices(snap.openInvoices); setTrend(snap.trend); setTopProducts(snap.topProducts); setActivity(snap.activity);
       setVatThisMonth(snap.vatThisMonth);
       setPayments(snap.payments);
@@ -146,6 +148,8 @@ export default function Dashboard() {
       {/* Metrics — 2-up on phones so the KPIs stay scannable without a long scroll */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <MetricCard label="Today's Sales" value={fmt(todaySales)} icon={TrendingUp} accent="brand" sub={`${salesCount} transaction${salesCount === 1 ? "" : "s"}`} />
+        <MetricCard label="Collected Today" value={fmt(collectedToday)} icon={Wallet} accent="dark" sub="cash received" />
+        <MetricCard label="Money Owed" value={fmt(moneyOwed)} icon={Clock} accent={moneyOwed ? "warning" : "muted"} sub="unpaid invoices" />
         <MetricCard label="Products in Stock" value={products.length.toString()} icon={Package} accent="dark" sub={`${totalStockUnits} units total`} />
         <MetricCard label="Stock Alerts" value={(outOfStock.length + lowStock.length).toString()} icon={AlertTriangle} accent={outOfStock.length ? "warning" : lowStock.length ? "warning" : "muted"} sub={outOfStock.length ? `${outOfStock.length} out of stock` : lowStock.length ? "Low stock items" : "All healthy"} />
         <MetricCard label="Open Invoices" value={openInvoices.toString()} icon={FileText} accent="muted" sub="draft & issued" />
