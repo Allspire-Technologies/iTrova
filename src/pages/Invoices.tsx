@@ -140,7 +140,7 @@ export default function Invoices() {
   // Products for the line-item picker (inventory invoicing). Stock drives the oversell guard.
   useEffect(() => {
     if (!business || !online) return;
-    supabase.from("products").select("id,name,selling_price,cost_price,stock_quantity").order("name")
+    supabase.from("products").select("id,name,selling_price,cost_price,stock_quantity").is("archived_at", null).order("name")
       .then(({ data }) => setProducts((data as Product[]) || []));
   }, [business, online]);
 

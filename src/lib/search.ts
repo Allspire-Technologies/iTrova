@@ -38,7 +38,7 @@ async function run<T>(builder: PromiseLike<{ data: T[] | null }>): Promise<T[]> 
 
 async function products(t: string): Promise<SearchHit[]> {
   const rows = await run<Record<string, unknown>>(
-    supabase.from("products").select("id,name,sku,category")
+    supabase.from("products").select("id,name,sku,category").is("archived_at", null)
       .or(`name.ilike.*${t}*,sku.ilike.*${t}*,category.ilike.*${t}*`).limit(6),
   );
   return rows.map((p) => ({

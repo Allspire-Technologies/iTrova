@@ -45,7 +45,7 @@ export default function RecipeEditorDialog({
     setLabour("");
     (async () => {
       const [p, m] = await Promise.all([
-        supabase.from("products").select("id,name,unit,cost_price").order("name"),
+        supabase.from("products").select("id,name,unit,cost_price").is("archived_at", null).order("name"),
         supabase.from("raw_materials").select("id,name,unit,cost_per_unit").order("name"),
       ]);
       setProducts((p.data as ProductOpt[]) ?? []);

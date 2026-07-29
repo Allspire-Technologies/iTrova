@@ -70,7 +70,7 @@ export default function Production() {
       const [req, rn, mat, prod] = await Promise.all([
         listRequisitions(), listRuns(),
         supabase.from("raw_materials").select("id,name,unit,stock_quantity,cost_per_unit").order("name"),
-        supabase.from("products").select("id,name,unit,cost_price,selling_price").order("name"),
+        supabase.from("products").select("id,name,unit,cost_price,selling_price").is("archived_at", null).order("name"),
       ]);
       setRequisitions(req); setRuns(rn);
       setMaterials((mat.data as MaterialRow[]) ?? []);

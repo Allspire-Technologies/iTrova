@@ -38,7 +38,7 @@ export async function fetchDashboardSnapshot(): Promise<DashSnap> {
     { data: invOwedRaw },
   ] = await Promise.all([
     supabase.from("sales").select("id,total_amount,created_at").eq("voided", false).gte("created_at", since.toISOString()),
-    supabase.from("products").select("id,name,stock_quantity,reorder_level,selling_price").order("created_at", { ascending: false }),
+    supabase.from("products").select("id,name,stock_quantity,reorder_level,selling_price").is("archived_at", null).order("created_at", { ascending: false }),
     supabase.from("invoices").select("id", { count: "exact", head: true }).in("status", ["draft", "issued"]),
     supabase.from("sale_items").select("sale_id, product_id, quantity, unit_price, products(name)"),
     supabase.from("stock_adjustments").select("id,created_at,delta,reason,notes,user_id,product_id,raw_material_id,products(name),raw_materials(name)").order("created_at", { ascending: false }).limit(50),

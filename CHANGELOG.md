@@ -3,6 +3,23 @@
 All notable, user-facing changes to iTrova are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); entries are grouped by ship date, newest first.
 
+## 2026-07-30 — Delete (or archive) inventory products
+
+Remove products you no longer stock — without ever losing your sales history.
+
+### Added
+- **Delete a product** from Inventory (owner-only by default; grantable to other roles from Permissions).
+  A product that was **never used** is deleted outright; one with any **history** (sales, invoices,
+  orders, production, POs) is **archived** instead — hidden from Inventory, the till and all product
+  pickers, but kept so sales, invoices, cost-of-goods and reports stay accurate.
+- **Show archived** toggle on Inventory to review archived products and **Restore** them anytime.
+
+### Notes
+- One migration on the shared iTrova project adds `products.archived_at`, a `delete_product` RPC (hard
+  delete vs archive), a `restore_product` RPC, and a new `inventory.delete` permission.
+- Reports keep archived products in cost-of-goods and Top Products (so past periods stay correct); only
+  active-inventory views (stock alerts, turnover) exclude them.
+
 ## 2026-07-29 — Invoice inventory items, with stock & accounts kept in sync
 
 Invoices can now sell what's in your inventory, not just free-text lines — and the numbers stay right everywhere.

@@ -15,7 +15,8 @@ type Task = { key: string; label: string; run: (businessId: string) => Promise<v
 async function warmProducts(businessId: string): Promise<void> {
   const { data, error } = await supabase
     .from("products")
-    .select("id,name,sku,selling_price,stock_quantity,reorder_level,category,tax_id");
+    .select("id,name,sku,selling_price,stock_quantity,reorder_level,category,tax_id")
+    .is("archived_at", null);
   if (error) throw new Error(error.message);
   await cacheProducts(businessId, (data as unknown as ProductRow[] ?? []).map((r) => ({
     id: r.id, business_id: businessId, name: r.name, sku: r.sku,

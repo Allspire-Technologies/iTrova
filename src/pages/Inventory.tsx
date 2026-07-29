@@ -10,7 +10,8 @@ import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { ImportProgressDialog, ImportResultDialog, type FailedImportRow, type ImportOutcome, type ImportProgress } from "@/components/ImportDialogs";
-import { Plus, Search, Package, Pencil, Upload, Download, SlidersHorizontal, Info } from "lucide-react";
+import { Plus, Search, Package, Pencil, Upload, Download, SlidersHorizontal, Info, Trash2, RotateCcw } from "lucide-react";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import SearchableSelect from "@/components/SearchableSelect";
 import { toast } from "sonner";
@@ -40,6 +41,7 @@ type Product = {
   expiry_date?: string | null;
   tax_id?: string | null;
   weight?: number | null;
+  archived_at?: string | null;
 };
 
 const empty = { name: "", category: "", sku: "", unit: "pcs", selling_price: "", cost_price: "", stock_quantity: "", reorder_level: 5, expiry_date: "", tax_id: "", weight: "", stocked_date: "" };
@@ -71,8 +73,9 @@ function ProfitInfo() {
 }
 
 export default function Inventory() {
-  const { business, hasModule, user } = useAuth();
+  const { business, hasModule, user, can } = useAuth();
   const { online } = useOnline();
+  const canDelete = can("inventory", "delete");
   const { fmt, symbol } = useCurrency();
   const { fmtDate, timezone } = useDateFormat();
   const [searchParams] = useSearchParams();
@@ -87,6 +90,8 @@ export default function Inventory() {
   const [form, setForm] = useState<any>(empty);
   const [busy, setBusy] = useState(false);
   const [adjustTarget, setAdjustTarget] = useState<Product | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<Product | null>(null);
   const [importResult, setImportResult] = useState<ImportOutcome | null>(null);
   const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -104,7 +109,7 @@ export default function Inventory() {
       return;
     }
     const { data, error } = await supabase.from("products")
-      .select("id,name,category,sku,unit,selling_price,cost_price,stock_quantity,reorder_level,expiry_date,tax_id,weight")
+      .select("id,name,category,sku,unit,selling_price,cost_price,stock_quantity,reorder_level,expiry_date,tax_id,weight,archived_at")
       .order("created_at", { ascending: false });
     if (error) return toast.error(error.message);
     const rows = (data as unknown as Product[]) || []; // tax_id/weight postdate generated types
@@ -121,6 +126,26 @@ export default function Inventory() {
 
   const openAdd = () => { setEditing(null); setForm({ ...empty, tax_id: taxEnabled ? defaultTaxId : "", stocked_date: todayStr() }); setOpen(true); };
   const openEdit = (p: Product) => { setEditing(p); setForm(p); setOpen(true); };
+
+  // Delete a product: the RPC hard-deletes it if it was never used, else archives it (hidden but kept
+  // so sales/invoices/reports stay intact) and tells us which happened.
+  const confirmDelete = async () => {
+    const p = pendingDelete;
+    if (!p) return;
+    const { data, error } = await supabase.rpc("delete_product" as any, { _product_id: p.id });
+    setPendingDelete(null);
+    if (error) return toast.error(error.message);
+    toast.success(data === "archived"
+      ? `${p.name} archived — it has history, so it's hidden but kept. Restore it anytime from "Show archived".`
+      : `${p.name} deleted`);
+    load();
+  };
+  const restore = async (p: Product) => {
+    const { error } = await supabase.rpc("restore_product" as any, { _product_id: p.id });
+    if (error) return toast.error(error.message);
+    toast.success(`${p.name} restored`);
+    load();
+  };
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -277,7 +302,10 @@ export default function Inventory() {
   const categories = [...new Set(items.map(i => i.category).filter(Boolean) as string[])].sort();
   const todayInTz = new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(new Date());
 
+  const archivedCount = items.filter(i => i.archived_at).length;
   const filtered = items.filter(i => {
+    // Default view = active products; the "Show archived" toggle switches to the archived bin.
+    if (showArchived ? !i.archived_at : !!i.archived_at) return false;
     if (q && !i.name.toLowerCase().includes(q.toLowerCase()) && !i.sku?.toLowerCase().includes(q.toLowerCase())) return false;
     if (categoryFilter !== "all" && i.category !== categoryFilter) return false;
     if (statusFilter !== "all") {
@@ -462,7 +490,12 @@ export default function Inventory() {
               { value: "none", label: "No expiry date" },
             ]}
           />
-          <div className="text-sm text-muted-foreground ml-auto">{filtered.length} of {items.length}</div>
+          {canDelete && archivedCount > 0 && (
+            <Button variant={showArchived ? "secondary" : "outline"} size="sm" onClick={() => setShowArchived(v => !v)}>
+              {showArchived ? "Active products" : `Show archived (${archivedCount})`}
+            </Button>
+          )}
+          <div className="text-sm text-muted-foreground ml-auto">{filtered.length} shown</div>
         </div>
 
         {filtered.length === 0 ? (
@@ -509,8 +542,15 @@ export default function Inventory() {
                     </div>
                     {online && (
                       <div className="flex gap-1 shrink-0">
-                        <Button variant="ghost" size="sm" onClick={() => setAdjustTarget(p)}><SlidersHorizontal className="size-4" /> Adjust</Button>
-                        <Button variant="ghost" size="sm" onClick={() => openEdit(p)}><Pencil className="size-4" /> Edit</Button>
+                        {p.archived_at ? (
+                          canDelete && <Button variant="ghost" size="sm" onClick={() => restore(p)}><RotateCcw className="size-4" /> Restore</Button>
+                        ) : (
+                          <>
+                            <Button variant="ghost" size="sm" onClick={() => setAdjustTarget(p)}><SlidersHorizontal className="size-4" /> Adjust</Button>
+                            <Button variant="ghost" size="sm" onClick={() => openEdit(p)}><Pencil className="size-4" /> Edit</Button>
+                            {canDelete && <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => setPendingDelete(p)}><Trash2 className="size-4" /> Delete</Button>}
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
@@ -576,10 +616,15 @@ export default function Inventory() {
                       <td className="px-4 py-3"><Badge variant="outline" className={s.className}>{s.label}</Badge></td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
                         {online ? (
-                          <>
-                            <Button variant="ghost" size="sm" onClick={() => setAdjustTarget(p)}><SlidersHorizontal className="size-4" /> Adjust</Button>
-                            <Button variant="ghost" size="sm" onClick={() => openEdit(p)}><Pencil className="size-4" /> Edit</Button>
-                          </>
+                          p.archived_at ? (
+                            canDelete && <Button variant="ghost" size="sm" onClick={() => restore(p)}><RotateCcw className="size-4" /> Restore</Button>
+                          ) : (
+                            <>
+                              <Button variant="ghost" size="sm" onClick={() => setAdjustTarget(p)}><SlidersHorizontal className="size-4" /> Adjust</Button>
+                              <Button variant="ghost" size="sm" onClick={() => openEdit(p)}><Pencil className="size-4" /> Edit</Button>
+                              {canDelete && <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => setPendingDelete(p)}><Trash2 className="size-4" /> Delete</Button>}
+                            </>
+                          )
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
@@ -604,6 +649,16 @@ export default function Inventory() {
 
       <ImportProgressDialog progress={importProgress} noun="products" />
       <ImportResultDialog result={importResult} onClose={() => setImportResult(null)} onDownloadFailed={downloadFailedRows} />
+
+      <ConfirmDialog
+        open={!!pendingDelete}
+        onOpenChange={(v) => !v && setPendingDelete(null)}
+        title={pendingDelete ? `Delete ${pendingDelete.name}?` : ""}
+        description="If this product has never been sold or used, it's permanently deleted. If it has any history (sales, invoices, orders…), it's archived instead — hidden from lists and the till, but kept so your reports stay accurate. You can restore an archived product anytime."
+        confirmLabel="Delete"
+        variant="destructive"
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }

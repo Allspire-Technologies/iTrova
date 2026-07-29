@@ -19,7 +19,8 @@ const a = (key: string, label: string): ActionDef => ({ key, label });
 export const MODULE_ACTIONS: ModuleDef[] = [
   { key: "inventory", label: "Inventory", actions: [
     a("view", "View"), a("create", "Add products"), a("edit", "Edit products"),
-    a("adjust_stock", "Adjust stock"), a("csv_import", "Import CSV"), a("csv_export", "Export CSV"),
+    a("adjust_stock", "Adjust stock"), a("delete", "Delete products"),
+    a("csv_import", "Import CSV"), a("csv_export", "Export CSV"),
   ]},
   { key: "pos", label: "Point of Sale", actions: [
     a("view", "Sell (checkout)"), a("orders_manage", "Manage orders"), a("orders_delete", "Delete orders"),
@@ -85,7 +86,8 @@ const allActions = (key: string): string[] => MODULE_ACTIONS.find((m) => m.key =
  *  view/create. These apply whenever a business hasn't edited its defaults. */
 export const DEFAULT_ROLE_PERMISSIONS: Record<"manager" | "cashier", PermissionMap> = {
   manager: {
-    inventory: allActions("inventory"),
+    // Deleting products is owner-only by default (it can archive sales history) — grantable per-member.
+    inventory: ["view", "create", "edit", "adjust_stock", "csv_import", "csv_export"],
     pos: allActions("pos"),
     suppliers: allActions("suppliers"),
     raw_materials: allActions("raw_materials"),

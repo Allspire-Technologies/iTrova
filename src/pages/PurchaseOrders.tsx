@@ -85,7 +85,7 @@ export default function PurchaseOrders() {
         .order("created_at", { ascending: false }),
       supabase.from("suppliers").select("id, name, phone, email, address"),
       supabase.from("raw_materials").select("id, name, unit, cost_per_unit, weight"),
-      supabase.from("products").select("id, name, unit, cost_price, weight").order("name"),
+      supabase.from("products").select("id, name, unit, cost_price, weight").is("archived_at", null).order("name"),
     ]);
     setItems((pos as unknown as PO[]) || []); // tax_amount/landed_costs postdate the generated types
     setSuppliers((sup as Supplier[]) || []);

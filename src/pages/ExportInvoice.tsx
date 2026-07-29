@@ -55,7 +55,7 @@ export default function ExportInvoice() {
 
   useEffect(() => {
     if (!business) return;
-    supabase.from("products").select("id,name,stock_quantity,unit,selling_price").order("name").then(({ data }) => {
+    supabase.from("products").select("id,name,stock_quantity,unit,selling_price").is("archived_at", null).order("name").then(({ data }) => {
       if (data) setProducts(data as Product[]);
     });
 
