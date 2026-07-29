@@ -100,32 +100,82 @@ test.describe("Invoices", () => {
   test("an owner/manager can edit the discount on a POS invoice", async ({ page }) => {
     await authenticate(page, { role: "owner" });
     await stubRows(page, "invoices", [paidInvoice]); // paidInvoice has a sale_id (POS-originated)
-    await stubRows(page, "invoice_items", [
-      { id: "ii-1", invoice_id: "inv-1", description: "Garri 50kg", quantity: 1, unit_price: 25000, line_total: 25000 },
+    // POS invoices load their lines from the sale (locked product + price; quantity/discount editable).
+    await stubRows(page, "sale_items", [
+      { id: "si-1", product_id: "p1", quantity: 1, unit_price: 25000, products: { name: "Garri 50kg" } },
     ]);
     await page.goto("/invoices");
     // Paid invoice → Print holds the visible slot; Edit lives in the More-actions menu.
     await page.getByRole("button", { name: "More actions" }).click();
     await page.getByRole("menuitem", { name: "Edit" }).click();
     const dialog = page.getByRole("dialog");
-    // Discount is editable even though the POS line items are locked.
+    // The product line is locked to its sale-time name; the discount is still editable.
+    await expect(dialog.getByText("Garri 50kg")).toBeVisible();
     await expect(dialog.locator("#inv-discount")).toBeEnabled();
-    await expect(dialog.getByPlaceholder("Description")).toBeDisabled();
     await dialog.locator("#inv-discount").fill("5000");
     await expect(dialog.getByText(/Total:\s*\D*20,000/)).toBeVisible();
   });
 
-  test("a discount on a new invoice nets off the total", async ({ page }) => {
+  test("a discount on a new custom-line invoice nets off the total", async ({ page }) => {
     await authenticate(page, { role: "owner" });
     await page.goto("/invoices");
     await page.getByRole("button", { name: "New invoice" }).first().click();
     const dialog = page.getByRole("dialog");
-    await dialog.getByPlaceholder("Description").fill("Consulting");
+    // A fresh line is a product picker; switch it to a free-text custom item.
+    await dialog.getByRole("combobox").first().click();
+    await page.getByRole("option", { name: /Custom item/ }).click();
+    await dialog.getByPlaceholder("Custom item / service").fill("Consulting");
     await dialog.getByPlaceholder("Qty").fill("2");
     await dialog.getByPlaceholder("Unit price").fill("10000"); // subtotal 20,000
     await dialog.locator("#inv-discount").fill("5000");
     await expect(dialog.getByText(/Subtotal:\s*\D*20,000/)).toBeVisible();
     await expect(dialog.getByText(/Discount:\s*-\D*5,000/)).toBeVisible();
     await expect(dialog.getByText(/Total:\s*\D*15,000/)).toBeVisible();
+  });
+
+  test("invoicing an inventory product saves via save_invoice with the product + quantity", async ({ page }) => {
+    await authenticate(page, { role: "owner" });
+    await stubRows(page, "products", [
+      { id: "p1", name: "Bag of rice", selling_price: 5000, cost_price: 3000, stock_quantity: 10 },
+    ]);
+    let saveBody: { _payload?: { items?: { product_id: string | null; quantity: number }[] } } | null = null;
+    await page.route("**/rest/v1/rpc/save_invoice**", (r) => {
+      saveBody = r.request().postDataJSON();
+      return r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ invoice_id: "inv-x", invoice_number: "INV-009" }) });
+    });
+    await page.goto("/invoices");
+    await page.getByRole("button", { name: "New invoice" }).first().click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("textbox").first().fill("Ada"); // customer name
+    await dialog.getByRole("combobox").first().click();
+    await page.getByRole("option", { name: /Bag of rice/ }).click();
+    // Price auto-fills from the product's selling price; set a quantity within stock.
+    await dialog.getByPlaceholder("Qty").fill("3");
+    await expect(dialog.getByText("10 in stock", { exact: true })).toBeVisible();
+    await dialog.getByRole("button", { name: "Create invoice" }).click();
+    await expect(page.getByText(/INV-009 created/)).toBeVisible();
+    expect(saveBody?._payload?.items?.[0]).toMatchObject({ product_id: "p1", quantity: 3 });
+  });
+
+  test("overselling an inventory line is blocked (save_invoice never called)", async ({ page }) => {
+    await authenticate(page, { role: "owner" });
+    await stubRows(page, "products", [
+      { id: "p1", name: "Bag of rice", selling_price: 5000, cost_price: 3000, stock_quantity: 2 },
+    ]);
+    let called = false;
+    await page.route("**/rest/v1/rpc/save_invoice**", (r) => {
+      called = true;
+      return r.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+    });
+    await page.goto("/invoices");
+    await page.getByRole("button", { name: "New invoice" }).first().click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("textbox").first().fill("Ada");
+    await dialog.getByRole("combobox").first().click();
+    await page.getByRole("option", { name: /Bag of rice/ }).click();
+    await dialog.getByPlaceholder("Qty").fill("5"); // only 2 in stock
+    await expect(dialog.getByText(/Only 2 in stock/)).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Create invoice" })).toBeDisabled();
+    expect(called).toBe(false);
   });
 });

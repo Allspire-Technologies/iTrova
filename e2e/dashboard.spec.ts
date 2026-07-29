@@ -13,6 +13,23 @@ test.describe("Dashboard", () => {
     await expect(page.getByText("Open Invoices")).toBeVisible();
   });
 
+  test("shows money owed and cash collected for a part-paid invoice", async ({ page }) => {
+    const today = new Date().toISOString();
+    await authenticate(page, { ownerName: "Ada Obi", onRoutes: async (p) => {
+      // A ₦100k invoice with a ₦40k deposit: ₦60k is owed, ₦40k was collected today.
+      await p.route("**/rest/v1/invoices**", (r) =>
+        r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([
+          { id: "inv-1", total: 100000, amount_paid: 40000, status: "issued", issue_date: today.slice(0, 10) },
+        ]) }));
+      await p.route("**/rest/v1/invoice_payments**", (r) =>
+        r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([{ amount: 40000, created_at: today }]) }));
+    }});
+    await expect(page.getByText("Money Owed")).toBeVisible();
+    await expect(page.getByText("₦60,000")).toBeVisible(); // 100k total − 40k paid
+    await expect(page.getByText("Collected Today")).toBeVisible();
+    await expect(page.getByText("₦40,000")).toBeVisible(); // the deposit
+  });
+
   test.describe("on a mobile viewport", () => {
     test.use({ viewport: { width: 390, height: 844 } });
 

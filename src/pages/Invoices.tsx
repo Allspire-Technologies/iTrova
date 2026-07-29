@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -26,6 +26,7 @@ import WhatsAppShareDialog from "@/components/WhatsAppShareDialog";
 import Paginator, { usePagination } from "@/components/Paginator";
 import { TablePageSkeleton } from "@/components/Skeletons";
 import { getLimit, isAtLimit, limitMessage } from "@/lib/planLimits";
+import { CUSTOM, qtyByProduct, availableFor as availableForStock, stockShortfalls } from "@/lib/invoiceStock";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { INVOICE_STATUS_FILTERS as STATUS_FILTERS, statusOptionsFor, isOverdue, overdueDays } from "@/lib/invoiceStatus";
@@ -43,7 +44,13 @@ type Invoice = {
   created_by: string | null;
 };
 type Item = { id?: string; description: string; quantity: number; unit_price: number; line_total: number };
+// A form line: an inventory product (productKey = product id) or a free-text custom item
+// (productKey = CUSTOM). sale_item_id is set when editing a POS invoice (reconciled via the sale).
+type Line = { id?: string; productKey: string; description: string; quantity: number; unit_price: number; line_total: number; sale_item_id?: string };
+type Product = { id: string; name: string; selling_price: number; cost_price: number; stock_quantity: number };
 type Payment = { id: string; amount: number; method: string; note: string | null; created_at: string; created_by: string | null };
+
+const EMPTY_LINE: Line = { productKey: "", description: "", quantity: 0, unit_price: 0, line_total: 0 };
 
 const PAYMENT_METHODS = ["cash", "bank transfer", "card", "mobile money", "other"];
 
@@ -79,7 +86,9 @@ export default function Invoices() {
   const [waShare, setWaShare] = useState<{ message: string } | null>(null);
   const [form, setForm] = useState({ customer_name: "", customer_phone: "", customer_email: "", due_date: "", notes: "" });
   const [discount, setDiscount] = useState(0);
-  const [lines, setLines] = useState<Item[]>([{ description: "", quantity: 0, unit_price: 0, line_total: 0 }]);
+  const [lines, setLines] = useState<Line[]>([{ ...EMPTY_LINE }]);
+  const [origLines, setOrigLines] = useState<Line[]>([]); // committed lines at edit-open (for stock delta)
+  const [products, setProducts] = useState<Product[]>([]);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<Invoice | null>(null);
   const [pending, setPending] = useState<{ title: string; description: string; confirmLabel?: string; variant?: "destructive" | "default"; onConfirm: () => void } | null>(null);
@@ -128,6 +137,24 @@ export default function Invoices() {
   };
   useEffect(() => { if (business && online) load(); }, [business, online]);
 
+  // Products for the line-item picker (inventory invoicing). Stock drives the oversell guard.
+  useEffect(() => {
+    if (!business || !online) return;
+    supabase.from("products").select("id,name,selling_price,cost_price,stock_quantity").order("name")
+      .then(({ data }) => setProducts((data as Product[]) || []));
+  }, [business, online]);
+
+  const productOptions = useMemo(() => [
+    { value: CUSTOM, label: "✏️  Custom item / service" },
+    ...products.map(p => ({ value: p.id, label: `${p.name} — ${Number(p.stock_quantity)} in stock` })),
+  ], [products]);
+
+  // Desired vs already-committed quantity per product → the same delta the server reconciles. Editing an
+  // invoice, the stock it already holds is "available" to it, so only the net increase is checked.
+  const committedByProduct = useMemo(() => qtyByProduct(origLines), [origLines]);
+  const availableFor = (productKey: string) => availableForStock(productKey, products, committedByProduct);
+  const stockErrors = useMemo(() => stockShortfalls(lines, products, committedByProduct), [lines, products, committedByProduct]);
+
   // Sync offline-created invoices first, then the deposits that reference them.
   const syncOfflineWork = async () => {
     if (!business) return;
@@ -149,7 +176,8 @@ export default function Invoices() {
     setEditing(null);
     setForm({ customer_name: "", customer_phone: "", customer_email: "", due_date: "", notes: "" });
     setDiscount(0);
-    setLines([{ description: "", quantity: 0, unit_price: 0, line_total: 0 }]);
+    setLines([{ ...EMPTY_LINE }]);
+    setOrigLines([]);
     setOpen(true);
   };
 
@@ -163,9 +191,31 @@ export default function Invoices() {
       notes: inv.notes || "",
     });
     setDiscount(Number(inv.discount_amount) || 0);
-    const { data, error } = await supabase.from("invoice_items").select("*").eq("invoice_id", inv.id);
-    if (error) toast.error("Couldn't load this invoice's items.");
-    setLines((data as Item[]) || [{ description: "", quantity: 0, unit_price: 0, line_total: 0 }]);
+    let loaded: Line[];
+    if (inv.sale_id) {
+      // POS invoice: the sale's items are the source of truth. Product + price are locked; quantity
+      // edits reconcile stock and the sale on save (matched by sale_item id).
+      const { data, error } = await supabase.from("sale_items")
+        .select("id,product_id,quantity,unit_price,products(name)").eq("sale_id", inv.sale_id);
+      if (error) toast.error("Couldn't load this invoice's items.");
+      loaded = ((data as unknown as { id: string; product_id: string | null; quantity: number; unit_price: number; products: { name: string } | null }[]) || []).map(si => ({
+        sale_item_id: si.id, productKey: si.product_id || CUSTOM,
+        description: si.products?.name || "Item",
+        quantity: Number(si.quantity), unit_price: Number(si.unit_price),
+        line_total: Number(si.quantity) * Number(si.unit_price),
+      }));
+    } else {
+      const { data, error } = await supabase.from("invoice_items").select("*").eq("invoice_id", inv.id);
+      if (error) toast.error("Couldn't load this invoice's items.");
+      loaded = ((data as unknown as { id: string; product_id: string | null; description: string; quantity: number; unit_price: number; line_total: number }[]) || []).map(it => ({
+        id: it.id, productKey: it.product_id || CUSTOM,
+        description: it.description, quantity: Number(it.quantity), unit_price: Number(it.unit_price),
+        line_total: Number(it.line_total),
+      }));
+    }
+    if (loaded.length === 0) loaded = [{ ...EMPTY_LINE }];
+    setLines(loaded);
+    setOrigLines(loaded);
     setOpen(true);
   };
 
@@ -205,7 +255,7 @@ export default function Invoices() {
     setPage(1);
   };
 
-  const updateLine = (idx: number, patch: Partial<Item>) => {
+  const updateLine = (idx: number, patch: Partial<Line>) => {
     setLines(prev => prev.map((l, i) => {
       if (i !== idx) return l;
       const merged = { ...l, ...patch };
@@ -213,7 +263,17 @@ export default function Invoices() {
       return merged;
     }));
   };
-  const addLine = () => setLines(prev => [...prev, { description: "", quantity: 0, unit_price: 0, line_total: 0 }]);
+  // Pick a product (fills description + selling price) or switch the line to a custom free-text item.
+  const chooseProduct = (idx: number, key: string) => {
+    setLines(prev => prev.map((l, i) => {
+      if (i !== idx) return l;
+      if (key === CUSTOM) return { ...l, productKey: CUSTOM, description: l.productKey === CUSTOM ? l.description : "" };
+      const p = products.find(x => x.id === key);
+      if (!p) return { ...l, productKey: key };
+      return { ...l, productKey: key, description: p.name, unit_price: Number(p.selling_price), line_total: Number(l.quantity) * Number(p.selling_price) };
+    }));
+  };
+  const addLine = () => setLines(prev => [...prev, { ...EMPTY_LINE }]);
   const removeLine = (idx: number) => setLines(prev => prev.length === 1 ? prev : prev.filter((_, i) => i !== idx));
 
   const subtotal = lines.reduce((s, l) => s + (l.line_total || 0), 0);
@@ -232,57 +292,52 @@ export default function Invoices() {
       return;
     }
     if (!form.customer_name.trim()) return toast.error("Customer name is required");
-    if (lines.some(l => !l.description.trim())) return toast.error("Every line needs a description");
+    if (lines.some(l => !l.productKey)) return toast.error("Pick a product or choose Custom item for every line");
+    if (lines.some(l => l.productKey === CUSTOM && !l.description.trim())) return toast.error("Every custom line needs a description");
     if (lines.some(l => Number(l.quantity) <= 0)) return toast.error("Every line needs a quantity");
+    if (stockErrors.length) return toast.error(stockErrors[0]);
     setBusy(true);
 
-    const itemPayload = (invId: string) => lines.map(l => ({
-      invoice_id: invId, description: l.description,
-      quantity: l.quantity, unit_price: l.unit_price, line_total: l.line_total,
-    }));
-
-    if (editing) {
-      const { error } = await supabase.from("invoices").update({
-        customer_name: form.customer_name,
-        customer_phone: form.customer_phone || null,
-        customer_email: form.customer_email || null,
-        due_date: form.due_date || null,
-        notes: form.notes || null,
-        subtotal, discount_amount: discountApplied, total: invoiceTotal, tax: invoiceVat,
-      }).eq("id", editing.id);
-      if (error) { setBusy(false); return toast.error(error.message); }
-      await supabase.from("invoice_items").delete().eq("invoice_id", editing.id);
-      const { error: e2 } = await supabase.from("invoice_items").insert(itemPayload(editing.id));
-      setBusy(false);
-      if (e2) return toast.error(e2.message);
-      const { error: logErr } = await supabase.rpc("log_invoice_edit" as any, { _invoice_id: editing.id, _summary: `Invoice ${editing.invoice_number} edited` });
-      if (logErr) console.error("log_invoice_edit failed:", logErr);
-      toast.success(`Invoice ${editing.invoice_number} updated`);
-    } else {
-      const { data: numData } = await supabase.rpc("next_invoice_number" as any, { _business_id: business.id });
-      const invoice_number: string = (numData as string) || invoiceFallbackNumber();
-      const { data: inv, error } = await supabase.from("invoices").insert({
-        business_id: business.id, invoice_number,
-        customer_name: form.customer_name,
-        customer_phone: form.customer_phone || null,
-        customer_email: form.customer_email || null,
-        due_date: form.due_date || null,
-        notes: form.notes || null,
-        subtotal, discount_amount: discountApplied, total: invoiceTotal, status: "issued",
-        created_by: user?.id ?? null,
-      }).select().single();
-      if (error) { setBusy(false); return toast.error(error.message); }
-      const { error: e2 } = await supabase.from("invoice_items").insert(itemPayload(inv!.id));
-      setBusy(false);
-      if (e2) return toast.error(e2.message);
-      toast.success(`Invoice ${invoice_number} created`);
+    // One atomic RPC: reconciles stock (per-product delta, oversell-guarded), writes the invoice + items,
+    // and for a POS invoice mirrors the change onto the sale + re-posts its ledger entry.
+    const payload = {
+      invoice_id: editing?.id ?? null,
+      business_id: business.id,
+      sale_id: editing?.sale_id ?? null,
+      customer_name: form.customer_name,
+      customer_phone: form.customer_phone || null,
+      customer_email: form.customer_email || null,
+      due_date: form.due_date || null,
+      notes: form.notes || null,
+      subtotal, discount: discountApplied, tax: invoiceVat, total: invoiceTotal,
+      created_by: editing ? null : (user?.id ?? null),
+      items: lines.map(l => ({
+        product_id: l.productKey === CUSTOM ? null : l.productKey,
+        description: l.description, quantity: l.quantity, unit_price: l.unit_price,
+      })),
+    };
+    const { data, error } = await supabase.rpc("save_invoice" as any, { _payload: payload });
+    setBusy(false);
+    if (error) {
+      if (error.message?.includes("INSUFFICIENT_STOCK")) {
+        const name = error.message.split("INSUFFICIENT_STOCK:")[1]?.trim() || "an item";
+        return toast.error(`Not enough stock for ${name} — reduce the quantity`);
+      }
+      return toast.error(error.message);
     }
+    const num = (data as { invoice_number?: string } | null)?.invoice_number || editing?.invoice_number || invoiceFallbackNumber();
+    if (editing) {
+      const { error: logErr } = await supabase.rpc("log_invoice_edit" as any, { _invoice_id: editing.id, _summary: `Invoice ${num} edited` });
+      if (logErr) console.error("log_invoice_edit failed:", logErr);
+    }
+    toast.success(editing ? `Invoice ${num} updated` : `Invoice ${num} created`);
 
     setOpen(false);
     setEditing(null);
     setForm({ customer_name: "", customer_phone: "", customer_email: "", due_date: "", notes: "" });
     setDiscount(0);
-    setLines([{ description: "", quantity: 0, unit_price: 0, line_total: 0 }]);
+    setLines([{ ...EMPTY_LINE }]);
+    setOrigLines([]);
     load();
   };
 
@@ -782,23 +837,50 @@ export default function Invoices() {
             </div>
             <div className="space-y-2">
               <Label>Line items</Label>
-              {editing?.sale_id && (
+              {editing?.sale_id ? (
                 <p className="text-xs text-muted-foreground -mt-1">
-                  This invoice came from a POS sale — description and unit price are locked to the price at sale time. Quantity and the discount can still be adjusted.
+                  This invoice came from a POS sale — description and unit price are locked to the price at sale time. Quantity and the discount can still be adjusted; changing a quantity adjusts stock.
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground -mt-1">
+                  Pick an inventory product (its stock is reduced when you save) or add a custom item / service.
                 </p>
               )}
               {lines.map((l, idx) => {
                 const posLocked = !!editing?.sale_id;
+                const isCustom = l.productKey === CUSTOM;
+                const isInventory = !!l.productKey && !isCustom;
+                const over = isInventory && Number(l.quantity) > availableFor(l.productKey) + 1e-9;
                 return (
-                  // Phones: Description full-width, then Qty/Unit price/Remove in one row.
+                  // Phones: item picker full-width, then Qty/Unit price/Remove in one row.
                   // sm+: the wrapper dissolves (sm:contents) back into the original 12-col row.
                   <div key={idx} className="rounded-lg border border-border/60 p-2 space-y-2 sm:border-0 sm:p-0 sm:space-y-0 sm:grid sm:grid-cols-12 sm:gap-2 sm:items-center">
-                    <Input className="sm:col-span-6" placeholder="Description" value={l.description} disabled={posLocked} onChange={e => updateLine(idx, { description: e.target.value })} />
+                    {posLocked ? (
+                      <div className="sm:col-span-6 text-sm rounded-md border bg-muted/30 px-3 py-2 line-clamp-1" title={l.description}>{l.description}</div>
+                    ) : isCustom ? (
+                      <Input className="sm:col-span-6" placeholder="Custom item / service" value={l.description} onChange={e => updateLine(idx, { description: e.target.value })} />
+                    ) : (
+                      <div className="sm:col-span-6">
+                        <SearchableSelect
+                          value={l.productKey}
+                          onValueChange={(v) => chooseProduct(idx, v)}
+                          options={productOptions}
+                          placeholder="Select a product or custom item"
+                          searchPlaceholder="Search products…"
+                          className="w-full"
+                        />
+                      </div>
+                    )}
                     <div className="flex gap-2 sm:contents">
                       <Input className="flex-1 sm:col-span-2" type="number" min={0} placeholder="Qty" value={l.quantity || ""} onChange={e => updateLine(idx, { quantity: Number(e.target.value) })} />
                       <Input className="flex-1 sm:col-span-3" type="number" min={0} placeholder="Unit price" value={l.unit_price || ""} disabled={posLocked} onChange={e => updateLine(idx, { unit_price: Number(e.target.value) })} />
                       <Button variant="ghost" size="icon" className="shrink-0 sm:col-span-1" aria-label="Remove line" disabled={posLocked} onClick={() => removeLine(idx)}><Trash2 className="size-4" /></Button>
                     </div>
+                    {isInventory && (
+                      <div className={`sm:col-span-12 text-xs ${over ? "text-destructive" : "text-muted-foreground"}`}>
+                        {over ? `Only ${availableFor(l.productKey)} in stock` : `${availableFor(l.productKey)} in stock`}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -832,7 +914,7 @@ export default function Invoices() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={save} disabled={busy}>{busy ? "Saving…" : (editing ? "Save changes" : "Create invoice")}</Button>
+            <Button onClick={save} disabled={busy || stockErrors.length > 0} title={stockErrors[0]}>{busy ? "Saving…" : (editing ? "Save changes" : "Create invoice")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

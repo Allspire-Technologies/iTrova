@@ -7,7 +7,8 @@ import DatePicker from "@/components/DatePicker";
 import { Label } from "@/components/ui/label";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useDateFormat } from "@/hooks/useDateFormat";
-import { Download, TrendingUp, ShoppingCart, Package, AlertTriangle, Truck, Users, ArrowUpRight, ArrowDownRight, ChevronLeft, ChevronRight, Wallet, Receipt } from "lucide-react";
+import { Download, TrendingUp, ShoppingCart, Package, AlertTriangle, Truck, Users, ArrowUpRight, ArrowDownRight, ChevronLeft, ChevronRight, Wallet, Receipt, Info } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, AreaChart, Area, CartesianGrid, PieChart, Pie, Cell } from "recharts";
 import { paymentLabel } from "@/lib/receipt";
 import { toast } from "sonner";
@@ -59,6 +60,8 @@ export default function Reports() {
   const [prevSales, setPrevSales] = useState<Sale[]>([]);
   const [prevSaleItems, setPrevSaleItems] = useState<SaleItem[]>([]);
   const [expensesTotal, setExpensesTotal] = useState(0);
+  const [collectedTotal, setCollectedTotal] = useState(0); // cash actually received this period (POS + invoice payments)
+  const [owedTotal, setOwedTotal] = useState(0); // outstanding receivables (unpaid invoice balances)
   const [prevExpensesTotal, setPrevExpensesTotal] = useState(0);
   const [inputVatTotal, setInputVatTotal] = useState(0);
   const [procurementVatTotal, setProcurementVatTotal] = useState(0); // input VAT from material purchases + received POs
@@ -80,7 +83,8 @@ export default function Reports() {
       const prevToIso = new Date(new Date(fromIso).getTime() - 1).toISOString();
       const prevFromIso = new Date(new Date(prevToIso).getTime() - periodMs).toISOString();
 
-      const [s, p, pr, mp, sup, prevS, prof, po, exp, sp, adj, mpi] = await Promise.all([
+      const prevFromDate = prevFromIso.slice(0, 10);
+      const [s, p, pr, mp, sup, prevS, prof, po, exp, sp, adj, mpi, invRes, invItemsRes, invPayRes, invOwedRes] = await Promise.all([
         supabase.from("sales").select("id,total_amount,created_at,staff_id,tax_amount").eq("business_id", business.id).eq("voided", false).gte("created_at", fromIso).lte("created_at", toIso),
         supabase.from("products").select("id,name,stock_quantity,reorder_level,cost_price,selling_price,tax_id").eq("business_id", business.id),
         // Only the items whose sale falls in the report window (previous period start → current
@@ -110,6 +114,20 @@ export default function Reports() {
         // postdates the generated types — read via the loosely-typed rows below.)
         supabase.from("stock_adjustments").select("delta,reason,created_at,stocked_date,products(name),raw_materials(name)").eq("business_id", business.id).gt("delta", 0).gte("created_at", fromIso).lte("created_at", toIso).order("created_at", { ascending: false }).limit(200),
         supabase.from("material_purchases").select("quantity,created_at,stocked_date,raw_materials(name)").eq("business_id", business.id).gte("created_at", fromIso).lte("created_at", toIso).order("created_at", { ascending: false }).limit(200),
+        // Manual invoices that sell inventory count as sales (revenue + COGS + top products), on top of
+        // POS sales. sale_id null excludes POS invoices (already counted via `sales`); void/draft excluded.
+        // Fetched across both periods (by issue_date), split in memory like sale_items above.
+        supabase.from("invoices").select("id,total,tax,issue_date,created_by")
+          .eq("business_id", business.id).is("sale_id", null).not("status", "in", "(void,draft)")
+          .gte("issue_date", prevFromDate).lte("issue_date", to),
+        supabase.from("invoice_items").select("invoice_id,product_id,quantity,unit_price,invoices!inner(issue_date)")
+          .eq("invoices.business_id", business.id).is("invoices.sale_id", null).not("invoices.status", "in", "(void,draft)")
+          .not("product_id", "is", null)
+          .gte("invoices.issue_date", prevFromDate).lte("invoices.issue_date", to),
+        // Invoice payments received in the window — for the "Collected" figure (cash actually in).
+        supabase.from("invoice_payments").select("amount").gte("created_at", fromIso).lte("created_at", toIso),
+        // Outstanding receivables (money owed): unpaid balance on issued/part-paid invoices = A/R balance.
+        supabase.from("invoices").select("total,amount_paid").eq("business_id", business.id).in("status", ["issued", "partial"]),
       ]);
 
       if (s.error) { toast.error("Failed to load sales data"); setLoading(false); return; }
@@ -117,9 +135,30 @@ export default function Reports() {
       const salesData = (s.data as unknown as Sale[]) || []; // tax_amount postdates generated types
       const allSaleItems = (pr.data as SaleItem[]) || [];
       const saleIds = new Set(salesData.map(x => x.id));
-      setSales(salesData);
+
+      // Manual invoices → synthetic sales so all metrics count them (matching the accounting ledger,
+      // which books every issued invoice as Sales). EVERY issued/non-void invoice's full total is
+      // revenue (inventory, service, or legacy); its inventory lines (product_id set) additionally
+      // drive COGS + top products. issue_date splits current vs previous period.
+      const invRows = (invRes.data as unknown as { id: string; total: number; tax: number; issue_date: string; created_by: string | null }[]) || [];
+      const invItemRows = (invItemsRes.data as unknown as { invoice_id: string; product_id: string; quantity: number; unit_price: number; invoices: { issue_date: string } }[]) || [];
+      const invToSale = (i: typeof invRows[number]): Sale => ({ id: `inv-${i.id}`, total_amount: Number(i.total), created_at: new Date(i.issue_date + "T12:00:00").toISOString(), staff_id: i.created_by, tax_amount: Number(i.tax || 0) });
+      const invToItem = (r: typeof invItemRows[number]): SaleItem => ({ sale_id: `inv-${r.invoice_id}`, product_id: r.product_id, quantity: Number(r.quantity), unit_price: Number(r.unit_price) });
+      const invSalesCur = invRows.filter(i => i.issue_date >= from).map(invToSale);
+      const invSalesPrev = invRows.filter(i => i.issue_date < from).map(invToSale);
+      const invItemsCur = invItemRows.filter(r => r.invoices.issue_date >= from).map(invToItem);
+      const invItemsPrev = invItemRows.filter(r => r.invoices.issue_date < from).map(invToItem);
+
+      setSales([...salesData, ...invSalesCur]);
+      // Collected = POS sales (paid at the till) + invoice payments received in the window. Distinct
+      // from Revenue (accrual): a part-paid invoice's full value is Revenue, but only its payments here.
+      const posRevenue = salesData.reduce((a, x) => a + Number(x.total_amount), 0);
+      const invPaid = ((invPayRes.data as { amount: number }[] | null) ?? []).reduce((a, r) => a + Number(r.amount), 0);
+      setCollectedTotal(posRevenue + invPaid);
+      setOwedTotal(((invOwedRes.data as { total: number; amount_paid: number }[] | null) ?? [])
+        .reduce((a, i) => a + Math.max(0, Number(i.total) - Number(i.amount_paid || 0)), 0));
       setProducts((p.data as unknown as Product[]) || []); // tax_id postdates generated types
-      setSaleItems(allSaleItems.filter(si => saleIds.has(si.sale_id)));
+      setSaleItems([...allSaleItems.filter(si => saleIds.has(si.sale_id)), ...invItemsCur]);
       setPurchases((mp.data as unknown as MatPurchase[]) || []); // tax_amount postdates generated types
       setSuppliers((sup.data as Supplier[]) || []);
 
@@ -131,8 +170,8 @@ export default function Reports() {
 
       const prevSalesData = (prevS.data as Sale[]) || [];
       const prevSaleIds = new Set(prevSalesData.map(x => x.id));
-      setPrevSales(prevSalesData);
-      setPrevSaleItems(allSaleItems.filter(si => prevSaleIds.has(si.sale_id)));
+      setPrevSales([...prevSalesData, ...invSalesPrev]);
+      setPrevSaleItems([...allSaleItems.filter(si => prevSaleIds.has(si.sale_id)), ...invItemsPrev]);
 
       // Split expenses into current (expense_date >= from) vs previous period.
       const expRows = exp as { expense_date: string; amount: number; tax_amount: number }[];
@@ -416,8 +455,14 @@ export default function Reports() {
       {!loading && (
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Metric label="Revenue" value={fmt(totals.revenue)} icon={TrendingUp} accent="brand" sub={`${totals.txns} sales`} change={pct(totals.revenue, prevTotals.revenue)} />
-            <Metric label="Gross profit" value={fmt(totals.grossProfit)} icon={ShoppingCart} accent="dark" sub={`COGS ${fmt(totals.cogs)}`} change={pct(totals.grossProfit, prevTotals.grossProfit)} />
+            <Metric label="Revenue" value={fmt(totals.revenue)} icon={TrendingUp} accent="brand" sub={`${totals.txns} sales`} change={pct(totals.revenue, prevTotals.revenue)}
+              info="Sales recognised in this period: POS sales plus invoices, counted in full on the date they're issued — regardless of whether they've been paid yet (accrual)." />
+            <Metric label="Collected" value={fmt(collectedTotal)} icon={Wallet} accent="dark" sub="Cash received"
+              info="Cash actually received in this period: POS sales plus invoice deposits and balance payments. Payments here may settle invoices issued in an earlier period, so this won't equal Revenue." />
+            <Metric label="Money owed" value={fmt(owedTotal)} icon={Receipt} accent={owedTotal ? "warning" : "muted"} sub="Unpaid invoices"
+              info="Unpaid balance across all issued invoices as of now (your receivables) — a running total, not limited to this period. Equals the Accounts Receivable balance in your ledger." />
+            <Metric label="Gross profit" value={fmt(totals.grossProfit)} icon={ShoppingCart} accent="dark" sub={`COGS ${fmt(totals.cogs)}`} change={pct(totals.grossProfit, prevTotals.grossProfit)}
+              info="Revenue minus the cost of goods sold (COGS) for the products sold this period. Excludes operating expenses." />
             <Metric label="Units sold" value={totals.units.toLocaleString()} icon={Package} accent="muted" sub={`Avg sale ${fmt(totals.avg)}`} change={pct(totals.units, prevTotals.units)} />
             <Metric label="Supplier spend" value={fmt(totals.supplierSpend)} icon={Truck} accent={totals.supplierSpend ? "warning" : "muted"} sub={`${supplierSpendRows.length} suppliers`} />
             {showExpenses && <Metric label="Expenses" value={fmt(totals.expenses)} icon={Wallet} accent={totals.expenses ? "warning" : "muted"} sub="This period" change={pct(totals.expenses, prevExpensesTotal)} />}
@@ -682,7 +727,23 @@ function CardPager({ page, pageCount, onPage }: { page: number; pageCount: numbe
   );
 }
 
-function Metric({ label, value, icon: Icon, sub, accent, change }: { label: string; value: string; icon: any; sub?: string; accent: "brand" | "dark" | "warning" | "muted" | "danger"; change?: number | null }) {
+// A small info affordance for a metric whose meaning could be misread (e.g. accrual vs cash).
+function InfoDot({ text, label }: { text: string; label: string }) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button type="button" className="text-muted-foreground/70 hover:text-foreground transition-colors" aria-label={`What is ${label}?`}>
+          <Info className="size-3.5" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-64 text-left text-sm normal-case tracking-normal font-normal text-muted-foreground">
+        {text}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function Metric({ label, value, icon: Icon, sub, accent, change, info }: { label: string; value: string; icon: any; sub?: string; accent: "brand" | "dark" | "warning" | "muted" | "danger"; change?: number | null; info?: string }) {
   const accents = {
     brand: "bg-brand-light text-brand",
     dark: "bg-brand-dark/10 text-brand-dark",
@@ -695,7 +756,10 @@ function Metric({ label, value, icon: Icon, sub, accent, change }: { label: stri
       <CardContent className="p-5">
         <div className="flex items-start justify-between">
           <div>
-            <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium">{label}</div>
+            <div className="flex items-center gap-1 text-xs uppercase tracking-wider text-muted-foreground font-medium">
+              {label}
+              {info && <InfoDot text={info} label={label} />}
+            </div>
             <div className="font-display text-2xl lg:text-3xl font-bold mt-2 text-brand-dark">{value}</div>
             {sub && <div className="text-xs text-muted-foreground mt-1">{sub}</div>}
             {change != null && (
