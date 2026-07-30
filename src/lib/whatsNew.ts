@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Moon, Search, FileText, Trash2 } from "lucide-react";
+import { Moon, Search, FileText, Trash2, BarChart3 } from "lucide-react";
 
 // One-time "What's new" wizard content. Append a new entry (with a higher id) whenever a feature
 // ships; users only see entries newer than the last one they dismissed, tracked in localStorage.
@@ -36,6 +36,14 @@ export const WHATS_NEW: WhatsNewEntry[] = [
     body: "You can now remove a product from Inventory. If it was never sold it's deleted outright; if it has history it's safely archived — hidden from your lists and till, but kept so your reports stay accurate, and restorable anytime.",
     route: "/inventory",
     cta: "Open Inventory",
+  },
+  {
+    id: 5,
+    icon: BarChart3,
+    title: "Reports for every role",
+    body: "Reports now match what each person is allowed to see. Cashiers get a personal sales report, production staff see runs and materials, and money metrics show only to those granted \"View financials\" — owners and managers by default.",
+    route: "/reports",
+    cta: "Open Reports",
   },
 ];
 

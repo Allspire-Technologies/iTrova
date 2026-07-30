@@ -69,7 +69,7 @@ export const MODULE_ACTIONS: ModuleDef[] = [
     a("delete", "Delete expenses"), a("export", "Download PDF"),
     a("csv_import", "Import CSV"), a("csv_export", "Export CSV"),
   ]},
-  { key: "reports", label: "Reports", actions: [a("view", "View"), a("export", "Export")] },
+  { key: "reports", label: "Reports", actions: [a("view", "View"), a("export", "Export"), a("view_financials", "View financials")] },
   { key: "accounting", label: "Accounting", actions: [a("view", "View"), a("export", "Export"), a("manage", "Post journals & manage accounts")] },
   { key: "assets", label: "Assets", actions: [a("view", "View"), a("create", "Add assets"), a("edit", "Edit assets"), a("delete", "Delete assets"), a("depreciate", "Run depreciation")] },
   { key: "team", label: "Team", actions: [
@@ -97,13 +97,14 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<"manager" | "cashier", PermissionM
     general_store: ["view", "item_manage", "staff_manage", "checkout", "return", "csv_import"],
     production: allActions("production"),
     expenditure: allActions("expenditure"),
-    reports: ["view", "export"],
+    reports: ["view", "export", "view_financials"],
     accounting: ["view", "export", "manage"],
     assets: allActions("assets"),
   },
   cashier: {
     pos: ["view", "orders_manage"],
     invoices: ["view", "create", "print"], // cashiers print receipts every sale
+    reports: ["view"], // scoped: without view_financials they see only their own sales
   },
 };
 

@@ -31,7 +31,7 @@ describe("resolvePermissions — defaults pin today's behavior", () => {
     expect(r.can("general_store", "item_delete")).toBe(false);
     expect(r.can("general_store", "item_manage")).toBe(true);
   });
-  it("cashier: pos sell/orders + invoices view/create only", () => {
+  it("cashier: pos sell/orders + invoices view/create + own-sales report", () => {
     const r = resolve({ appRole: "cashier" });
     expect(r.can("pos", "view")).toBe(true);
     expect(r.can("pos", "orders_manage")).toBe(true);
@@ -39,7 +39,9 @@ describe("resolvePermissions — defaults pin today's behavior", () => {
     expect(r.can("invoices", "create")).toBe(true);
     expect(r.can("invoices", "edit")).toBe(false);
     expect(r.can("inventory", "view")).toBe(false);
-    expect(r.modules).toEqual(["pos", "invoices"]);
+    expect(r.can("reports", "view")).toBe(true);
+    expect(r.can("reports", "view_financials")).toBe(false);
+    expect(r.modules).toEqual(["pos", "invoices", "reports"]);
   });
   it("null role denies everything", () => {
     const r = resolve({ appRole: null });
@@ -82,8 +84,8 @@ describe("server/client defaults drift guard", () => {
   it("the SQL default_role_permissions JSON matches DEFAULT_ROLE_PERMISSIONS exactly", () => {
     // Server-side enforcement (has_permission) embeds the same defaults in SQL. This test parses the
     // LATEST migration that re-declares default_role_permissions so the two can never drift silently.
-    // (Superseded declarations: 20260704150000 → 20260707110000 → 20260707150000 → 20260707190000 → 20260708110000 → 20260715110000 → 20260717110000.)
-    const sql = readFileSync(resolvePath(__dirname, "../../supabase/migrations/20260721110000_assets_module.sql"), "utf8");
+    // (Superseded declarations: 20260704150000 → 20260707110000 → 20260707150000 → 20260707190000 → 20260708110000 → 20260715110000 → 20260717110000 → 20260721110000.)
+    const sql = readFileSync(resolvePath(__dirname, "../../supabase/migrations/20260730140000_reports_view_financials.sql"), "utf8");
     const block = sql.split("RBAC_DEFAULTS_JSON_START")[1]?.split("RBAC_DEFAULTS_JSON_END")[0] ?? "";
     const grab = (role: string) => {
       const m = block.match(new RegExp(`when '${role}' then '([\\s\\S]*?)'::jsonb`));
@@ -140,7 +142,7 @@ describe("editor helpers", () => {
   });
   it("toggleModule flips between all actions and none", () => {
     const on = toggleModule({}, "reports");
-    expect(on.reports).toEqual(["view", "export"]);
+    expect(on.reports).toEqual(["view", "export", "view_financials"]);
     expect(toggleModule(on, "reports").reports).toBeUndefined();
   });
   it("manager defaults contain every inventory action except owner-only delete (sanity vs registry drift)", () => {
