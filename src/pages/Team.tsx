@@ -21,7 +21,7 @@ import { getLimit, isAtLimit, limitMessage } from "@/lib/planLimits";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useDateFormat } from "@/hooks/useDateFormat";
 
-type Member = { user_id: string; role: AppRole; owner_name: string | null; last_seen: string | null; email: string | null };
+type Member = { user_id: string; role: AppRole; team_role_id: string | null; owner_name: string | null; last_seen: string | null; email: string | null };
 type Invitation = {
   id: string; email: string; role: AppRole; token: string;
   expires_at: string; accepted_at: string | null; created_at: string;
@@ -73,17 +73,21 @@ export default function Team() {
   const load = async () => {
     if (!business) return;
     setLoading(true);
-    const [{ data: roles }, { data: invs }, { data: salesData }, { data: emailData }, { data: teamRoles }] = await Promise.all([
+    const [{ data: roles }, { data: invs }, { data: salesData }, { data: emailData }, { data: teamRoles }, { data: accessRows }] = await Promise.all([
       supabase.from("user_roles").select("user_id, role").eq("business_id", business.id),
       supabase.from("invitations")
         .select("id,email,role,token,expires_at,accepted_at,created_at,team_role_id")
         .eq("business_id", business.id).order("created_at", { ascending: false }),
       supabase.from("sales").select("staff_id, total_amount").eq("business_id", business.id).eq("voided", false),
       supabase.rpc("get_member_emails", { p_business_id: business.id }),
-       
+
       supabase.from("team_roles").select("id,name").eq("business_id", business.id).is("system_key", null).order("name"),
+      supabase.from("member_access").select("user_id,team_role_id").eq("business_id", business.id),
     ]);
     setCustomRoles(((teamRoles ?? []) as CustomRole[]));
+    const accessMap: Record<string, string | null> = Object.fromEntries(
+      ((accessRows ?? []) as { user_id: string; team_role_id: string | null }[]).map(a => [a.user_id, a.team_role_id])
+    );
     const userIds = Array.from(new Set((roles || []).map(r => r.user_id)));
     let profiles: Record<string, string> = {};
     let lastSeenMap: Record<string, string | null> = {};
@@ -104,7 +108,8 @@ export default function Team() {
     }
     setSalesByStaff(salesMap);
     setMembers(((roles as { user_id: string; role: AppRole }[]) || []).map(r => ({
-      user_id: r.user_id, role: r.role, owner_name: profiles[r.user_id] || null,
+      user_id: r.user_id, role: r.role, team_role_id: accessMap[r.user_id] ?? null,
+      owner_name: profiles[r.user_id] || null,
       last_seen: lastSeenMap[r.user_id] ?? null,
       email: emailMap[r.user_id] || null,
     })));
@@ -158,17 +163,22 @@ export default function Team() {
     });
   };
 
-  const changeRole = async (m: Member, next: AppRole) => {
+  // Custom-role members show the custom role's name; system-role members the base label.
+  const roleLabel = (m: Member) =>
+    (m.team_role_id && customRoles.find(r => r.id === m.team_role_id)?.name) || ROLE_LABEL[m.role];
+
+  const changeRole = async (m: Member, next: string) => {
     if (!business) return;
     if (m.user_id === user?.id) { toast.error("You can't change your own role"); return; }
-    const { error: delErr } = await supabase.from("user_roles")
-      .delete().eq("user_id", m.user_id).eq("business_id", business.id);
-    if (delErr) { toast.error(delErr.message); return; }
-    const { error } = await supabase.from("user_roles").insert({
-      user_id: m.user_id, business_id: business.id, role: next,
+    const custom = customRoles.find(r => r.id === next) ?? null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase.rpc as any)("set_member_role", {
+      _user_id: m.user_id,
+      _role: custom ? "cashier" : next,
+      _team_role_id: custom?.id ?? null,
     });
     if (error) { toast.error(error.message); return; }
-    toast.success(`Role updated to ${ROLE_LABEL[next]}`); load();
+    toast.success(`Role updated to ${custom?.name ?? ROLE_LABEL[next as AppRole]}`); load();
   };
 
   const deactivateMember = (m: Member) => {
@@ -188,7 +198,8 @@ export default function Team() {
   };
 
   const filteredMembers = members.filter(m =>
-    (roleFilter === "all" || m.role === roleFilter) &&
+    (roleFilter === "all" ||
+      (customRoles.some(r => r.id === roleFilter) ? m.team_role_id === roleFilter : m.role === roleFilter && !m.team_role_id)) &&
     (!q || (m.owner_name || "").toLowerCase().includes(q.toLowerCase()))
   );
   const { paged: pagedMembers, page: memPage, setPage: setMemPage, pageSize: memPageSize,
@@ -206,7 +217,7 @@ export default function Team() {
     const rows = members.map(m => ({
       name: m.owner_name || "",
       email: m.email || "",
-      role: m.role,
+      role: roleLabel(m),
       total_sales: salesByStaff[m.user_id]?.total || 0,
       sale_count: salesByStaff[m.user_id]?.count || 0,
       last_seen: m.last_seen ? fmtDate(m.last_seen) : "Never",
@@ -347,6 +358,7 @@ export default function Team() {
             { value: "owner", label: "Owner" },
             { value: "manager", label: "Manager" },
             { value: "cashier", label: "Cashier" },
+            ...customRoles.map(r => ({ value: r.id, label: r.name })),
           ]}
         />
         <div className="text-sm text-muted-foreground self-center">{filteredMembers.length} of {members.length}</div>
@@ -371,7 +383,7 @@ export default function Team() {
                 </div>
                 {m.email && <div className="text-xs text-muted-foreground truncate">{m.email}</div>}
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
-                  <Badge variant="secondary">{ROLE_LABEL[m.role]}</Badge>
+                  <Badge variant="secondary">{roleLabel(m)}</Badge>
                   {stats ? (
                     <span className="flex items-center gap-1 text-xs text-muted-foreground">
                       <TrendingUp className="size-3 text-brand" />
@@ -389,12 +401,13 @@ export default function Team() {
                   <>
                     {can("team", "role_change") && (
                     <SearchableSelect
-                      value={m.role}
-                      onValueChange={(v) => changeRole(m, v as AppRole)}
+                      value={m.team_role_id ?? m.role}
+                      onValueChange={(v) => changeRole(m, v)}
                       className="w-36"
                       options={[
                         { value: "manager", label: "Manager" },
                         { value: "cashier", label: "Cashier" },
+                        ...customRoles.map(r => ({ value: r.id, label: r.name })),
                       ]}
                     />
                     )}
