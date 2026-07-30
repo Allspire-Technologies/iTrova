@@ -3,6 +3,20 @@
 All notable, user-facing changes to iTrova are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); entries are grouped by ship date, newest first.
 
+## 2026-07-30 — One role per member & custom-role names
+
+### Changed
+- A team member now holds exactly **one role** per business — enforced in the database, with any
+  historical duplicates resolved to the member's highest role.
+- Changing a role is now a single atomic operation (no more brief no-role gap), and switching
+  someone off a custom role clears their old custom permissions so the new role is what they get.
+- **Custom role names show everywhere** — the Team list, role pickers, filters and CSV export now say
+  "Production Manager" instead of the underlying base role.
+- The Team page can now assign **custom roles** directly (previously only at invite time).
+
+### Fixed
+- Reports' **Export PDF** button now respects the "Reports → Export" permission.
+
 ## 2026-07-30 — Delete (or archive) inventory products
 
 Remove products you no longer stock — without ever losing your sales history.

@@ -43,7 +43,7 @@ type StockInRow = { date: string; item: string; qty: number; source: string };
 const PAY_COLORS = ["hsl(var(--brand))", "hsl(var(--brand) / 0.6)", "hsl(var(--brand) / 0.35)", "hsl(var(--muted-foreground) / 0.55)"];
 
 export default function Reports() {
-  const { business, hasModule } = useAuth();
+  const { business, hasModule, can } = useAuth();
   const { fmt } = useCurrency();
   const { fmtDate } = useDateFormat();
   const showExpenses = hasModule("expenditure");
@@ -431,7 +431,7 @@ export default function Reports() {
           <h1 className="font-display text-3xl lg:text-4xl font-bold text-brand-dark">Reports</h1>
           <p className="text-muted-foreground mt-1">Track revenue, top products, supplier spend and stock health.</p>
         </div>
-        <Button onClick={exportPdf} variant="hero" disabled={loading}><Download className="size-4" /> Export PDF</Button>
+        {can("reports", "export") && <Button onClick={exportPdf} variant="hero" disabled={loading}><Download className="size-4" /> Export PDF</Button>}
       </div>
 
       {/* Date range filter — always visible */}
