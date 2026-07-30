@@ -7,7 +7,7 @@ import DatePicker from "@/components/DatePicker";
 import { Label } from "@/components/ui/label";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useDateFormat } from "@/hooks/useDateFormat";
-import { Download, TrendingUp, ShoppingCart, Package, AlertTriangle, Truck, Users, ArrowUpRight, ArrowDownRight, ChevronLeft, ChevronRight, Wallet, Receipt, Info } from "lucide-react";
+import { Download, TrendingUp, ShoppingCart, Package, AlertTriangle, Truck, Users, ArrowUpRight, ArrowDownRight, ChevronLeft, ChevronRight, Wallet, Receipt, Info, Factory, Boxes } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, AreaChart, Area, CartesianGrid, PieChart, Pie, Cell } from "recharts";
 import { paymentLabel } from "@/lib/receipt";
@@ -38,15 +38,27 @@ function isoDate(d: Date) { return d.toISOString().slice(0, 10); }
 // A dated stock-in for the Stocking history section (manual adds, opening stock, PO receipts →
 // stock_adjustments with delta > 0; raw-material purchases → material_purchases).
 type StockInRow = { date: string; item: string; qty: number; source: string };
+type ProdRun = {
+  id: string; created_at: string;
+  production_run_outputs: { quantity: number; products: { name: string } | null }[];
+  production_run_materials: { quantity_used: number; raw_materials: { name: string } | null }[];
+};
 
 // Donut slice colours for the payment-methods breakdown — brand shades, cycled.
 const PAY_COLORS = ["hsl(var(--brand))", "hsl(var(--brand) / 0.6)", "hsl(var(--brand) / 0.35)", "hsl(var(--muted-foreground) / 0.55)"];
 
 export default function Reports() {
-  const { business, hasModule, can } = useAuth();
+  const { business, hasModule, can, user } = useAuth();
   const { fmt } = useCurrency();
   const { fmtDate } = useDateFormat();
   const showExpenses = hasModule("expenditure");
+  // The report is composed from the viewer's permissions: money metrics need reports.view_financials;
+  // stock sections need inventory.view; production sections production.view. Without view_financials
+  // the viewer gets a "My sales" report scoped to their own transactions.
+  const seesFinancials = can("reports", "view_financials");
+  const seesInventory = can("inventory", "view");
+  const seesProduction = can("production", "view");
+  const seesMaterials = can("raw_materials", "view");
   const [from, setFrom] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 29); return isoDate(d); });
   const [to, setTo] = useState(() => isoDate(new Date()));
 
@@ -65,7 +77,10 @@ export default function Reports() {
   const [prevExpensesTotal, setPrevExpensesTotal] = useState(0);
   const [inputVatTotal, setInputVatTotal] = useState(0);
   const [procurementVatTotal, setProcurementVatTotal] = useState(0); // input VAT from material purchases + received POs
-  const [paymentLines, setPaymentLines] = useState<{ method: string; amount: number }[]>([]); // per-method legs (sale_payments) in the window
+  const [paymentLines, setPaymentLines] = useState<{ method: string; amount: number; staff: string }[]>([]); // per-method legs (sale_payments) in the window
+  const [prodRuns, setProdRuns] = useState<ProdRun[]>([]);
+  const [prodReqs, setProdReqs] = useState<{ status: string }[]>([]);
+  const [rawMats, setRawMats] = useState<{ id: string; name: string; stock_quantity: number; reorder_level: number }[]>([]);
   const [stockIns, setStockIns] = useState<StockInRow[]>([]); // dated stock-ins (adjustments + raw purchases) in the window
   const [stockInPage, setStockInPage] = useState(1);
   const [outOfStockPage, setOutOfStockPage] = useState(1);
@@ -84,7 +99,7 @@ export default function Reports() {
       const prevFromIso = new Date(new Date(prevToIso).getTime() - periodMs).toISOString();
 
       const prevFromDate = prevFromIso.slice(0, 10);
-      const [s, p, pr, mp, sup, prevS, prof, po, exp, sp, adj, mpi, invRes, invItemsRes, invPayRes, invOwedRes] = await Promise.all([
+      const [s, p, pr, mp, sup, prevS, prof, po, exp, sp, adj, mpi, invRes, invItemsRes, invPayRes, invOwedRes, prodRes, reqRes, rmRes] = await Promise.all([
         supabase.from("sales").select("id,total_amount,created_at,staff_id,tax_amount").eq("business_id", business.id).eq("voided", false).gte("created_at", fromIso).lte("created_at", toIso),
         // Keep ARCHIVED products here: their cost/name are needed for historical COGS + Top products.
         // Active-inventory views (out/low stock) filter archived out client-side below.
@@ -110,7 +125,7 @@ export default function Reports() {
         // Payment legs for sales in the window (one row per method) — powers the payment-methods card.
         // sale_payments postdates the generated types, so cast the client.
          
-        supabase.from("sale_payments").select("method,amount,sales!inner(id)").eq("sales.business_id", business.id).eq("sales.voided", false).gte("sales.created_at", fromIso).lte("sales.created_at", toIso),
+        supabase.from("sale_payments").select("method,amount,sales!inner(id,staff_id)").eq("sales.business_id", business.id).eq("sales.voided", false).gte("sales.created_at", fromIso).lte("sales.created_at", toIso),
         // Stocking history: stock-ins in the window. delta>0 covers manual adds, opening stock and
         // PO product receipts; raw-material purchases come from material_purchases. (stocked_date
         // postdates the generated types — read via the loosely-typed rows below.)
@@ -130,6 +145,16 @@ export default function Reports() {
         supabase.from("invoice_payments").select("amount").gte("created_at", fromIso).lte("created_at", toIso),
         // Outstanding receivables (money owed): unpaid balance on issued/part-paid invoices = A/R balance.
         supabase.from("invoices").select("total,amount_paid").eq("business_id", business.id).in("status", ["issued", "partial"]),
+        // Production activity in the window (only when the viewer can see production).
+        seesProduction
+          ? supabase.from("production_runs").select("id,created_at,production_run_outputs(quantity,products(name)),production_run_materials(quantity_used,raw_materials(name))").eq("business_id", business.id).gte("created_at", fromIso).lte("created_at", toIso)
+          : Promise.resolve({ data: [] }),
+        seesProduction
+          ? supabase.from("production_requisitions").select("status").eq("business_id", business.id).gte("created_at", fromIso).lte("created_at", toIso)
+          : Promise.resolve({ data: [] }),
+        seesMaterials
+          ? supabase.from("raw_materials").select("id,name,stock_quantity,reorder_level").eq("business_id", business.id)
+          : Promise.resolve({ data: [] }),
       ]);
 
       if (s.error) { toast.error("Failed to load sales data"); setLoading(false); return; }
@@ -187,7 +212,13 @@ export default function Reports() {
       const poVat = ((po.data as unknown as { tax_amount: number }[]) || []).reduce((t, o) => t + Number(o.tax_amount || 0), 0);
       setProcurementVatTotal(matVat + poVat);
 
-      setPaymentLines((((sp as { data?: unknown }).data ?? []) as Record<string, unknown>[]).map(r => ({ method: String(r.method), amount: Number(r.amount) })));
+      setPaymentLines((((sp as { data?: unknown }).data ?? []) as Record<string, unknown>[]).map(r => ({
+        method: String(r.method), amount: Number(r.amount),
+        staff: String((r.sales as { staff_id?: string } | null)?.staff_id ?? ""),
+      })));
+      setProdRuns(((prodRes as { data?: unknown }).data ?? []) as ProdRun[]);
+      setProdReqs(((reqRes as { data?: unknown }).data ?? []) as { status: string }[]);
+      setRawMats(((rmRes as { data?: unknown }).data ?? []) as { id: string; name: string; stock_quantity: number; reorder_level: number }[]);
 
       // Stocking history — merge both sources, effective date = stocked_date or created_at.
       const eff = (r: Record<string, unknown>) => String((r.stocked_date as string) || (r.created_at as string)).slice(0, 10);
@@ -210,7 +241,8 @@ export default function Reports() {
 
       setLoading(false);
     })();
-  }, [business, from, to]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [business, from, to, seesProduction, seesMaterials]);
 
   const totals = useMemo(() => {
     const base = salesSummary(sales, saleItems, products);
@@ -250,6 +282,54 @@ export default function Reports() {
   const byStaff = useMemo(() => staffRevenue(sales, staffProfiles), [sales, staffProfiles]);
   const payMethods = useMemo(() => paymentMethodBreakdown(paymentLines), [paymentLines]);
 
+  // "My sales" — the viewer's own transactions (shown when they lack view_financials).
+  const mySales = useMemo(() => sales.filter(s => s.staff_id === user?.id), [sales, user?.id]);
+  const myTotals = useMemo(() => {
+    const ids = new Set(mySales.map(s => s.id));
+    return salesSummary(mySales, saleItems.filter(i => ids.has(i.sale_id)), products);
+  }, [mySales, saleItems, products]);
+  const myPayMethods = useMemo(
+    () => paymentMethodBreakdown(paymentLines.filter(l => l.staff === user?.id)),
+    [paymentLines, user?.id]
+  );
+  const myTrend = useMemo(() => {
+    const map = new Map<string, number>();
+    const start = new Date(from); const end = new Date(to);
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) map.set(isoDate(d), 0);
+    mySales.forEach(s => { const k = s.created_at.slice(0, 10); map.set(k, (map.get(k) || 0) + Number(s.total_amount)); });
+    return Array.from(map.entries()).map(([day, total]) => ({ day: day.slice(5), total }));
+  }, [mySales, from, to]);
+
+  // Production activity (shown to production.view holders).
+  const prodStats = useMemo(() => {
+    let units = 0, materialsUsed = 0;
+    const byProduct = new Map<string, number>();
+    const byMaterial = new Map<string, number>();
+    for (const run of prodRuns) {
+      for (const o of run.production_run_outputs ?? []) {
+        units += Number(o.quantity);
+        const name = o.products?.name || "Product";
+        byProduct.set(name, (byProduct.get(name) || 0) + Number(o.quantity));
+      }
+      for (const m of run.production_run_materials ?? []) {
+        materialsUsed += Number(m.quantity_used);
+        const name = m.raw_materials?.name || "Material";
+        byMaterial.set(name, (byMaterial.get(name) || 0) + Number(m.quantity_used));
+      }
+    }
+    const top = (m: Map<string, number>) => Array.from(m.entries()).map(([name, qty]) => ({ name, qty })).sort((a, b) => b.qty - a.qty).slice(0, 8);
+    return {
+      runs: prodRuns.length, units, materialsUsed,
+      topProduced: top(byProduct), topMaterials: top(byMaterial),
+      pendingReqs: prodReqs.filter(r => r.status === "pending").length,
+      totalReqs: prodReqs.length,
+    };
+  }, [prodRuns, prodReqs]);
+  const lowRawMats = useMemo(
+    () => rawMats.filter(m => Number(m.stock_quantity) <= Number(m.reorder_level)).sort((a, b) => Number(a.stock_quantity) - Number(b.stock_quantity)),
+    [rawMats]
+  );
+
   const turnover = useMemo(() => productTurnover(saleItems, activeProducts), [saleItems, activeProducts]);
 
   const prevTotals = useMemo(() => {
@@ -287,10 +367,18 @@ export default function Reports() {
     doc.text(`${business?.name || ""}`, w - M, 56, { align: "right" });
     doc.text(`Period: ${from} → ${to}`, M, 74);
 
+    const tableStyle = {
+      styles: { fontSize: 10, cellPadding: 6 },
+      headStyles: { fillColor: [30, 41, 59] as [number, number, number], textColor: 255 },
+      margin: { left: M, right: M },
+    };
+    const right = (...cols: number[]) => Object.fromEntries(cols.map(c => [c, { halign: "right" as const }]));
+
+    // The PDF mirrors the on-screen composition: only sections the viewer can see are included.
     autoTable(doc, {
       startY: 96,
       head: [["Metric", "Value"]],
-      body: [
+      body: seesFinancials ? [
         ["Revenue", fmt(totals.revenue)],
         ["Transactions", String(totals.txns)],
         ["Average sale", fmt(totals.avg)],
@@ -306,107 +394,52 @@ export default function Reports() {
           ["Input VAT", fmt(vat.input)],
           ["Net VAT payable", fmt(vat.net)],
         ] : []),
+      ] : [
+        ["My sales", fmt(myTotals.revenue)],
+        ["Transactions", String(myTotals.txns)],
+        ["Average sale", fmt(myTotals.avg)],
+        ["Units sold", String(myTotals.units)],
       ],
-      styles: { fontSize: 10, cellPadding: 6 },
-      headStyles: { fillColor: [30, 41, 59], textColor: 255 },
-      margin: { left: M, right: M },
+      ...tableStyle,
     });
 
     // @ts-expect-error lastAutoTable
     let y = doc.lastAutoTable.finalY + 20;
-    doc.setFont("helvetica", "bold").setFontSize(12).text("Top products", M, y);
-    autoTable(doc, {
-      startY: y + 8,
-      head: [["Product", "Qty", "Revenue"]],
-      body: topProducts.map(p => [p.name, String(p.qty), fmt(p.revenue)]),
-      styles: { fontSize: 10, cellPadding: 6 },
-      headStyles: { fillColor: [30, 41, 59], textColor: 255 },
-      columnStyles: { 1: { halign: "right" }, 2: { halign: "right" } },
-      margin: { left: M, right: M },
-    });
-
-    // @ts-expect-error lastAutoTable
-    y = doc.lastAutoTable.finalY + 20;
-    doc.setFont("helvetica", "bold").setFontSize(12).text("Supplier spend", M, y);
-    autoTable(doc, {
-      startY: y + 8,
-      head: [["Supplier", "Total"]],
-      body: supplierSpendRows.map(r => [r.name, fmt(r.total)]),
-      styles: { fontSize: 10, cellPadding: 6 },
-      headStyles: { fillColor: [30, 41, 59], textColor: 255 },
-      columnStyles: { 1: { halign: "right" } },
-      margin: { left: M, right: M },
-    });
-
-    // @ts-expect-error lastAutoTable
-    y = doc.lastAutoTable.finalY + 20;
-    doc.setFont("helvetica", "bold").setFontSize(12).text("Out of stock", M, y);
-    autoTable(doc, {
-      startY: y + 8,
-      head: [["Product", "Reorder at"]],
-      body: outOfStock.length > 0 ? outOfStock.map(p => [p.name, String(p.reorder_level)]) : [["None", ""]],
-      styles: { fontSize: 10, cellPadding: 6 },
-      headStyles: { fillColor: [30, 41, 59], textColor: 255 },
-      columnStyles: { 1: { halign: "right" } },
-      margin: { left: M, right: M },
-    });
-
-    // @ts-expect-error lastAutoTable
-    y = doc.lastAutoTable.finalY + 20;
-    doc.setFont("helvetica", "bold").setFontSize(12).text("Low stock", M, y);
-    autoTable(doc, {
-      startY: y + 8,
-      head: [["Product", "On hand", "Reorder at"]],
-      body: lowStock.length > 0 ? lowStock.map(p => [p.name, String(p.stock_quantity), String(p.reorder_level)]) : [["None", "", ""]],
-      styles: { fontSize: 10, cellPadding: 6 },
-      headStyles: { fillColor: [30, 41, 59], textColor: 255 },
-      columnStyles: { 1: { halign: "right" }, 2: { halign: "right" } },
-      margin: { left: M, right: M },
-    });
-
-    if (byStaff.length > 0) {
+    const section = (title: string, head: string[], body: (string | number)[][], rightCols: number[]) => {
+      doc.setFont("helvetica", "bold").setFontSize(12).text(title, M, y);
+      autoTable(doc, { startY: y + 8, head: [head], body, columnStyles: right(...rightCols), ...tableStyle });
       // @ts-expect-error lastAutoTable
       y = doc.lastAutoTable.finalY + 20;
-      doc.setFont("helvetica", "bold").setFontSize(12).text("Sales by staff", M, y);
-      autoTable(doc, {
-        startY: y + 8,
-        head: [["Staff member", "Revenue"]],
-        body: byStaff.map(r => [r.name, fmt(r.revenue)]),
-        styles: { fontSize: 10, cellPadding: 6 },
-        headStyles: { fillColor: [30, 41, 59], textColor: 255 },
-        columnStyles: { 1: { halign: "right" } },
-        margin: { left: M, right: M },
-      });
+    };
+
+    if (seesFinancials) {
+      section("Top products", ["Product", "Qty", "Revenue"], topProducts.map(p => [p.name, String(p.qty), fmt(p.revenue)]), [1, 2]);
+      section("Supplier spend", ["Supplier", "Total"], supplierSpendRows.map(r => [r.name, fmt(r.total)]), [1]);
     }
-
-    if (payMethods.length > 0) {
-      // @ts-expect-error lastAutoTable
-      y = doc.lastAutoTable.finalY + 20;
-      doc.setFont("helvetica", "bold").setFontSize(12).text("Payment methods", M, y);
-      autoTable(doc, {
-        startY: y + 8,
-        head: [["Method", "Amount", "Share"]],
-        body: payMethods.map(r => [paymentLabel(r.method), fmt(r.total), `${r.pct}%`]),
-        styles: { fontSize: 10, cellPadding: 6 },
-        headStyles: { fillColor: [30, 41, 59], textColor: 255 },
-        columnStyles: { 1: { halign: "right" }, 2: { halign: "right" } },
-        margin: { left: M, right: M },
-      });
+    if (seesInventory) {
+      section("Out of stock", ["Product", "Reorder at"], outOfStock.length > 0 ? outOfStock.map(p => [p.name, String(p.reorder_level)]) : [["None", ""]], [1]);
+      section("Low stock", ["Product", "On hand", "Reorder at"], lowStock.length > 0 ? lowStock.map(p => [p.name, String(p.stock_quantity), String(p.reorder_level)]) : [["None", "", ""]], [1, 2]);
     }
-
-    if (turnover.length > 0) {
-      // @ts-expect-error lastAutoTable
-      y = doc.lastAutoTable.finalY + 20;
-      doc.setFont("helvetica", "bold").setFontSize(12).text("Inventory turnover", M, y);
-      autoTable(doc, {
-        startY: y + 8,
-        head: [["Product", "Sold", "On hand", "Ratio"]],
-        body: turnover.map(r => [r.name, String(r.sold), String(r.stock), r.rate != null ? r.rate.toFixed(2) + "×" : "∞"]),
-        styles: { fontSize: 10, cellPadding: 6 },
-        headStyles: { fillColor: [30, 41, 59], textColor: 255 },
-        columnStyles: { 1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "right" } },
-        margin: { left: M, right: M },
-      });
+    if (seesFinancials && byStaff.length > 0) {
+      section("Sales by staff", ["Staff member", "Revenue"], byStaff.map(r => [r.name, fmt(r.revenue)]), [1]);
+    }
+    const pdfPayMethods = seesFinancials ? payMethods : myPayMethods;
+    if (pdfPayMethods.length > 0) {
+      section(seesFinancials ? "Payment methods" : "My payment methods", ["Method", "Amount", "Share"], pdfPayMethods.map(r => [paymentLabel(r.method), fmt(r.total), `${r.pct}%`]), [1, 2]);
+    }
+    if (seesInventory && turnover.length > 0) {
+      section("Inventory turnover", ["Product", "Sold", "On hand", "Ratio"], turnover.map(r => [r.name, String(r.sold), String(r.stock), r.rate != null ? r.rate.toFixed(2) + "×" : "∞"]), [1, 2, 3]);
+    }
+    if (seesProduction) {
+      section("Production", ["Metric", "Value"], [
+        ["Runs", String(prodStats.runs)],
+        ["Units produced", String(prodStats.units)],
+        ["Materials consumed", String(prodStats.materialsUsed)],
+        ["Material requests", `${prodStats.totalReqs} (${prodStats.pendingReqs} pending)`],
+      ], [1]);
+      if (prodStats.topProduced.length > 0) {
+        section("Top produced products", ["Product", "Qty"], prodStats.topProduced.map(r => [r.name, String(r.qty)]), [1]);
+      }
     }
 
     doc.save(`report_${from}_to_${to}.pdf`);
@@ -429,7 +462,11 @@ export default function Reports() {
       <div className="flex items-end justify-between flex-wrap gap-4">
         <div>
           <h1 className="font-display text-3xl lg:text-4xl font-bold text-brand-dark">Reports</h1>
-          <p className="text-muted-foreground mt-1">Track revenue, top products, supplier spend and stock health.</p>
+          <p className="text-muted-foreground mt-1">
+            {seesFinancials ? "Track revenue, top products, supplier spend and stock health."
+              : seesProduction ? "Track your sales and production activity."
+              : "Track your own sales performance."}
+          </p>
         </div>
         {can("reports", "export") && <Button onClick={exportPdf} variant="hero" disabled={loading}><Download className="size-4" /> Export PDF</Button>}
       </div>
@@ -459,6 +496,60 @@ export default function Reports() {
       {/* All data sections — hidden while loading */}
       {!loading && (
         <>
+          {/* My sales — the scoped report for viewers without view_financials (e.g. cashiers). */}
+          {!seesFinancials && (
+            <>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <Metric label="My sales" value={fmt(myTotals.revenue)} icon={TrendingUp} accent="brand" sub={`${myTotals.txns} sales`}
+                  info="The value of sales you rang up in this period (POS sales and invoices you created)." />
+                <Metric label="Transactions" value={myTotals.txns.toLocaleString()} icon={Receipt} accent="dark" sub="This period" />
+                <Metric label="Units sold" value={myTotals.units.toLocaleString()} icon={Package} accent="muted" sub="Items across your sales" />
+                <Metric label="Average sale" value={fmt(myTotals.avg)} icon={Wallet} accent="dark" sub="Per transaction" />
+              </div>
+
+              <Card className="shadow-card border-border/60">
+                <CardHeader><CardTitle className="font-display text-lg">My sales trend</CardTitle></CardHeader>
+                <CardContent>
+                  <div className="h-64" role="img" aria-label="Area chart of your daily sales across the selected period">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={myTrend}>
+                        <defs>
+                          <linearGradient id="mr" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="hsl(var(--brand))" stopOpacity={0.4}/>
+                            <stop offset="100%" stopColor="hsl(var(--brand))" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                        <XAxis dataKey="day" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
+                        <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
+                        <Tooltip
+                          contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 12, fontSize: 12 }}
+                          formatter={(v: number) => fmt(v)}
+                        />
+                        <Area type="monotone" dataKey="total" stroke="hsl(var(--brand))" strokeWidth={2.5} fill="url(#mr)" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {myPayMethods.length > 0 && (
+                <Card className="shadow-card border-border/60">
+                  <CardHeader><CardTitle className="font-display text-lg flex items-center gap-2"><Wallet className="size-4 text-brand" /> My payment methods</CardTitle></CardHeader>
+                  <CardContent className="space-y-2">
+                    {myPayMethods.map((r) => (
+                      <div key={r.method} className="flex items-center justify-between gap-2 text-sm">
+                        <span className="truncate">{paymentLabel(r.method)}</span>
+                        <span className="shrink-0 tabular-nums"><span className="font-medium">{fmt(r.total)}</span> <span className="text-muted-foreground">· {r.pct}%</span></span>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+            </>
+          )}
+
+          {seesFinancials && (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Metric label="Revenue" value={fmt(totals.revenue)} icon={TrendingUp} accent="brand" sub={`${totals.txns} sales`} change={pct(totals.revenue, prevTotals.revenue)}
               info="Sales recognised in this period: POS sales plus invoices, counted in full on the date they're issued — regardless of whether they've been paid yet (accrual)." />
@@ -473,8 +564,9 @@ export default function Reports() {
             {showExpenses && <Metric label="Expenses" value={fmt(totals.expenses)} icon={Wallet} accent={totals.expenses ? "warning" : "muted"} sub="This period" change={pct(totals.expenses, prevExpensesTotal)} />}
             {showExpenses && <Metric label="Net profit" value={fmt(totals.netProfit)} icon={TrendingUp} accent={totals.netProfit >= 0 ? "brand" : "danger"} sub="After expenses" change={pct(totals.netProfit, prevTotals.netProfit)} />}
           </div>
+          )}
 
-          {taxEnabled && (
+          {seesFinancials && taxEnabled && (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <Metric label="Output VAT" value={fmt(vat.output)} icon={Receipt} accent="brand" sub={`Taxable sales ${fmt(vat.taxableSales)}`} />
               <Metric label="Input VAT" value={fmt(vat.input)} icon={Wallet} accent={vat.input ? "warning" : "muted"} sub="Bills & purchases" />
@@ -483,6 +575,7 @@ export default function Reports() {
             </div>
           )}
 
+          {seesFinancials && (
           <Card className="shadow-card border-border/60">
             <CardHeader><CardTitle className="font-display text-lg">Revenue trend</CardTitle></CardHeader>
             <CardContent>
@@ -508,7 +601,9 @@ export default function Reports() {
               </div>
             </CardContent>
           </Card>
+          )}
 
+          {seesInventory && (
           <div className="grid gap-4 lg:grid-cols-2">
             <Card className="shadow-card border-border/60">
               <CardHeader><CardTitle className="font-display text-lg flex items-center gap-2"><AlertTriangle className="size-4 text-destructive" /> Out of stock</CardTitle></CardHeader>
@@ -542,7 +637,9 @@ export default function Reports() {
               </CardContent>
             </Card>
           </div>
+          )}
 
+          {seesFinancials && (
           <div className="grid gap-4 lg:grid-cols-2">
             <Card className="shadow-card border-border/60">
               <CardHeader><CardTitle className="font-display text-lg">Top products by revenue</CardTitle></CardHeader>
@@ -581,8 +678,10 @@ export default function Reports() {
               </CardContent>
             </Card>
           </div>
+          )}
 
           <div className="grid gap-4 lg:grid-cols-2">
+            {seesFinancials && (
             <Card className="shadow-card border-border/60">
               <CardHeader><CardTitle className="font-display text-lg flex items-center gap-2"><Users className="size-4 text-brand" /> Sales by staff</CardTitle></CardHeader>
               <CardContent>
@@ -606,7 +705,9 @@ export default function Reports() {
                 )}
               </CardContent>
             </Card>
+            )}
 
+            {seesInventory && (
             <Card className="shadow-card border-border/60">
               <CardHeader><CardTitle className="font-display text-lg flex items-center gap-2"><Package className="size-4 text-brand" /> Inventory turnover</CardTitle></CardHeader>
               <CardContent>
@@ -639,8 +740,10 @@ export default function Reports() {
                 )}
               </CardContent>
             </Card>
+            )}
           </div>
 
+          {seesFinancials && (
           <div className="grid gap-4 lg:grid-cols-2">
             <Card className="shadow-card border-border/60">
               <CardHeader><CardTitle className="font-display text-lg flex items-center gap-2"><Wallet className="size-4 text-brand" /> Payment methods</CardTitle></CardHeader>
@@ -678,8 +781,64 @@ export default function Reports() {
               </CardContent>
             </Card>
           </div>
+          )}
+
+          {/* Production activity — for production.view holders (e.g. a Production Manager role). */}
+          {seesProduction && (
+            <>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <Metric label="Production runs" value={prodStats.runs.toLocaleString()} icon={Factory} accent="brand" sub="This period" />
+                <Metric label="Units produced" value={prodStats.units.toLocaleString()} icon={Package} accent="dark" sub="Across all runs" />
+                <Metric label="Materials consumed" value={prodStats.materialsUsed.toLocaleString()} icon={Boxes} accent="muted" sub="Total quantity used" />
+                <Metric label="Material requests" value={prodStats.totalReqs.toLocaleString()} icon={Receipt} accent={prodStats.pendingReqs ? "warning" : "muted"} sub={`${prodStats.pendingReqs} pending`} />
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <Card className="shadow-card border-border/60">
+                  <CardHeader><CardTitle className="font-display text-lg flex items-center gap-2"><Factory className="size-4 text-brand" /> Top produced products</CardTitle></CardHeader>
+                  <CardContent className="space-y-2">
+                    {prodStats.topProduced.length === 0 && <p className="text-sm text-muted-foreground">No production runs in this period.</p>}
+                    {prodStats.topProduced.map((r) => (
+                      <div key={r.name} className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
+                        <div className="text-sm font-medium truncate">{r.name}</div>
+                        <div className="font-display font-bold text-sm">{r.qty.toLocaleString()}</div>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+
+                <Card className="shadow-card border-border/60">
+                  <CardHeader><CardTitle className="font-display text-lg flex items-center gap-2"><Boxes className="size-4 text-brand" /> Materials consumed</CardTitle></CardHeader>
+                  <CardContent className="space-y-2">
+                    {prodStats.topMaterials.length === 0 && <p className="text-sm text-muted-foreground">No materials were consumed in this period.</p>}
+                    {prodStats.topMaterials.map((r) => (
+                      <div key={r.name} className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
+                        <div className="text-sm font-medium truncate">{r.name}</div>
+                        <div className="font-display font-bold text-sm">{r.qty.toLocaleString()}</div>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              </div>
+
+              {seesMaterials && lowRawMats.length > 0 && (
+                <Card className="shadow-card border-border/60">
+                  <CardHeader><CardTitle className="font-display text-lg flex items-center gap-2"><AlertTriangle className="size-4 text-warning" /> Low raw materials</CardTitle></CardHeader>
+                  <CardContent className="space-y-2">
+                    {lowRawMats.slice(0, 8).map((m) => (
+                      <div key={m.id} className="flex items-center justify-between p-2 rounded-lg bg-warning/10 border border-warning/20">
+                        <div className="text-sm font-medium truncate">{m.name}</div>
+                        <div className="text-warning font-display font-bold text-sm">{m.stock_quantity} / {m.reorder_level}</div>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+            </>
+          )}
 
           {/* Stocking history — dated stock-ins (adds, opening stock, PO receipts, raw purchases). */}
+          {seesInventory && (
           <Card className="shadow-card border-border/60">
             <CardHeader><CardTitle className="font-display text-lg flex items-center gap-2"><Package className="size-4 text-brand" /> Stocking history</CardTitle></CardHeader>
             <CardContent>
@@ -703,6 +862,7 @@ export default function Reports() {
               )}
             </CardContent>
           </Card>
+          )}
         </>
       )}
     </div>

@@ -3,6 +3,25 @@
 All notable, user-facing changes to iTrova are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); entries are grouped by ship date, newest first.
 
+## 2026-07-30 — Reports for every role
+
+What each person sees in Reports now follows their permissions.
+
+### Added
+- **My sales report** — team members without financial access (cashiers by default) now get Reports
+  showing their own performance: sales value, transactions, units, average sale, a daily trend and
+  their payment-method split. Business-wide figures stay hidden.
+- **Production activity in Reports** — production runs, units produced, materials consumed, material
+  requests, top produced products and low raw materials — shown to anyone with Production access
+  (e.g. a custom "Production Manager" role).
+- **"View financials" permission** (Reports) — controls all money metrics: revenue, profit, VAT,
+  supplier spend, sales by staff and payment methods. Owners and managers have it by default; grant
+  it to anyone else per member.
+
+### Changed
+- Stock-health sections (out of stock, low stock, turnover, stocking history) now require Inventory
+  access; the PDF export contains only the sections its viewer can see.
+
 ## 2026-07-30 — One role per member & custom-role names
 
 ### Changed
