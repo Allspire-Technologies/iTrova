@@ -147,4 +147,30 @@
     font-family: 'Syne', system-ui, sans-serif;
     @apply tracking-tight;
   }
+
+  /* Slim, theme-aware scrollbars. The gutter keeps its width so nothing shifts, and the thumb
+     only fades in while its area is hovered — scrollable regions read as clean until you reach
+     for them. Firefox gets the same effect via scrollbar-color (it has no thumb pseudo-element). */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+  *:hover {
+    scrollbar-color: hsl(var(--muted-foreground) / 0.4) transparent;
+  }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background-color: transparent;
+    border-radius: 9999px;
+    transition: background-color 0.2s ease;
+  }
+  :hover::-webkit-scrollbar-thumb { background-color: hsl(var(--muted-foreground) / 0.4); }
+  ::-webkit-scrollbar-thumb:hover { background-color: hsl(var(--muted-foreground) / 0.65); }
+
+  /* The sidebar is dark in both themes — tint its thumb off the sidebar palette instead. */
+  .bg-sidebar *:hover { scrollbar-color: hsl(var(--sidebar-foreground) / 0.35) transparent; }
+  .bg-sidebar :hover::-webkit-scrollbar-thumb { background-color: hsl(var(--sidebar-foreground) / 0.35); }
+  .bg-sidebar ::-webkit-scrollbar-thumb:hover { background-color: hsl(var(--sidebar-foreground) / 0.6); }
 }

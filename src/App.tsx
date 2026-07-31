@@ -53,7 +53,8 @@ const PageLoader = () => (
 
 const App = () => (
   <ErrorBoundary>
-  <TooltipProvider>
+  {/* Short delay: these replace native title= hints, which users expect to appear promptly. */}
+  <TooltipProvider delayDuration={300} skipDelayDuration={150}>
     <Toaster />
     <Sonner />
     <BrowserRouter>

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import Hint from "@/components/Hint";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { ArrowLeft, Plus, Trash2, FileDown, Loader2 } from "lucide-react";
@@ -248,7 +249,7 @@ export default function ExportInvoice() {
                 <div className="space-y-1"><span className="text-xs text-muted-foreground md:hidden">Boxes</span>
                   <Input type="number" min={0} value={it.boxes || ""} onChange={(e) => patchItem(i, { boxes: Number(e.target.value) || 0 })} placeholder="0" aria-label={`Boxes ${i + 1}`} /></div>
                 <div className="space-y-1"><span className="text-xs text-muted-foreground md:hidden">Unit price</span>
-                  <Input type="number" min={0} value={it.unit_price || ""} onChange={(e) => patchItem(i, { unit_price: Number(e.target.value) || 0 })} placeholder="0.00" aria-label={`Unit price ${i + 1}`} disabled={!isOwner} className="disabled:opacity-70" title={!isOwner ? "Only the owner can change the price" : undefined} /></div>
+                  <Hint label={!isOwner ? "Only the owner can change the price" : undefined} wrap><Input type="number" min={0} value={it.unit_price || ""} onChange={(e) => patchItem(i, { unit_price: Number(e.target.value) || 0 })} placeholder="0.00" aria-label={`Unit price ${i + 1}`} disabled={!isOwner} className="disabled:opacity-70" /></Hint></div>
                 <div className="space-y-1"><span className="text-xs text-muted-foreground md:hidden">Total</span>
                   <Input readOnly value={money(lineTotal(it))} className="bg-muted/40" tabIndex={-1} aria-label={`Line total ${i + 1}`} /></div>
                 <Button variant="ghost" size="icon" className="self-end" onClick={() => removeRow(i)} disabled={items.length === 1} aria-label={`Remove row ${i + 1}`}><Trash2 className="size-4 text-danger" /></Button>

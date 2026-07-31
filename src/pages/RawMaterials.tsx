@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import Hint from "@/components/Hint";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -288,14 +289,14 @@ export default function RawMaterials() {
         <div className="flex gap-2 flex-wrap">
           <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => e.target.files?.[0] && importCsv(e.target.files[0])} />
           <Button variant="outline" onClick={downloadTemplate}><Download className="size-4" /> CSV Template</Button>
-          {hasModule("csv_import") && <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={atRawMatLimit} title={atRawMatLimit ? limitMessage("rawMaterials") : undefined}><Upload className="size-4" /> Import CSV</Button>}
+          {hasModule("csv_import") && <Hint label={atRawMatLimit ? limitMessage("rawMaterials") : undefined} wrap><Button variant="outline" onClick={() => fileRef.current?.click()} disabled={atRawMatLimit}><Upload className="size-4" /> Import CSV</Button></Hint>}
           {hasModule("csv_export") && <Button variant="outline" onClick={exportCsv} disabled={items.length === 0}><Download className="size-4" /> Export</Button>}
           {rawMatLimit !== null && items.length >= Math.floor(rawMatLimit * 0.8) && (
             <span className={`self-center text-xs font-medium ${atRawMatLimit ? "text-destructive" : "text-amber-600 dark:text-amber-400"}`}>
               {items.length} / {rawMatLimit}
             </span>
           )}
-          <Button variant="hero" onClick={openAdd} disabled={atRawMatLimit} title={atRawMatLimit ? limitMessage("rawMaterials") : undefined}><Plus className="size-4" /> Add material</Button>
+          <Hint label={atRawMatLimit ? limitMessage("rawMaterials") : undefined} wrap><Button variant="hero" onClick={openAdd} disabled={atRawMatLimit}><Plus className="size-4" /> Add material</Button></Hint>
         </div>
       </div>
 

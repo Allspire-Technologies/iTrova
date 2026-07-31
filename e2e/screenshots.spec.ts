@@ -62,7 +62,7 @@ test.describe("Guide desktop", () => {
 
   test("dashboard", async ({ page }) => {
     await go(page, "/");
-    await expect(page.getByRole("heading", { name: /Good day/ })).toBeVisible({ timeout: 20000 });
+    await expect(page.getByRole("heading", { name: /Good (morning|afternoon|evening)/ })).toBeVisible({ timeout: 20000 });
     await settle(page, 1000);
     await snap(page, "02-dashboard");
   });
@@ -252,7 +252,7 @@ test.describe("Guide mobile", () => {
 
   test("dashboard mobile", async ({ page }) => {
     await go(page,"/");
-    await expect(page.getByRole("heading", { name: /Good day/ })).toBeVisible({ timeout: 20000 });
+    await expect(page.getByRole("heading", { name: /Good (morning|afternoon|evening)/ })).toBeVisible({ timeout: 20000 });
     await settle(page, 1000);
     await snap(page, "02-dashboard-mobile");
   });
@@ -311,7 +311,7 @@ test.describe("Guide showcase", () => {
 
   test("showcase", async ({ page }) => {
     await go(page, "/");
-    await expect(page.getByRole("heading", { name: /Good day/ })).toBeVisible({ timeout: 20000 });
+    await expect(page.getByRole("heading", { name: /Good (morning|afternoon|evening)/ })).toBeVisible({ timeout: 20000 });
     await settle(page, 1000);
     await snapPath(page, `${SHOW}/itrova-dashboard.png`);
 

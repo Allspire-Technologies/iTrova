@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import Hint from "@/components/Hint";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -358,7 +359,7 @@ export default function Inventory() {
         <div className="flex gap-2 flex-wrap">
           <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => e.target.files?.[0] && importCsv(e.target.files[0])} />
           <Button variant="outline" onClick={downloadTemplate}><Download className="size-4" /> CSV Template</Button>
-          {online && hasModule("csv_import") && <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={atProductLimit} title={atProductLimit ? limitMessage("products") : undefined}><Upload className="size-4" /> Import CSV</Button>}
+          {online && hasModule("csv_import") && <Hint label={atProductLimit ? limitMessage("products") : undefined} wrap><Button variant="outline" onClick={() => fileRef.current?.click()} disabled={atProductLimit}><Upload className="size-4" /> Import CSV</Button></Hint>}
           {hasModule("csv_export") && <Button variant="outline" onClick={exportCsv} disabled={items.length === 0}><Download className="size-4" /> Export</Button>}
           {productLimit !== null && items.length >= Math.floor(productLimit * 0.8) && (
             <span className={`self-center text-xs font-medium ${atProductLimit ? "text-destructive" : "text-amber-600 dark:text-amber-400"}`}>
@@ -367,9 +368,13 @@ export default function Inventory() {
           )}
           {online && (
           <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <Button variant="hero" onClick={openAdd} disabled={atProductLimit} title={atProductLimit ? limitMessage("products") : undefined}><Plus className="size-4" /> Add product</Button>
-            </DialogTrigger>
+            {/* Hint wraps the TRIGGER, not the Button: asChild must hand its props straight to the
+                Button, or the dialog stops opening. */}
+            <Hint label={atProductLimit ? limitMessage("products") : undefined} wrap>
+              <DialogTrigger asChild>
+                <Button variant="hero" onClick={openAdd} disabled={atProductLimit}><Plus className="size-4" /> Add product</Button>
+              </DialogTrigger>
+            </Hint>
             <DialogContent variant="wide">
               <DialogHeader>
                 <DialogTitle className="font-display">{editing ? "Edit product" : "Add a new product"}</DialogTitle>

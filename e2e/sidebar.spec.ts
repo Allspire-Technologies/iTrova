@@ -73,7 +73,47 @@ test.describe("Sidebar grouping", () => {
     const side = page.locator("aside");
     await side.getByRole("button", { name: "Collapse sidebar" }).click();
     await expect(side.getByRole("button", { name: "Sales" })).toHaveCount(0); // no section chrome
-    await expect(side.getByRole("link", { name: "Point of Sale" })).toBeVisible(); // icons still there (title)
+    await expect(side.getByRole("link", { name: "Point of Sale" })).toBeVisible(); // icons keep an aria-label
     await expect(side.getByRole("link", { name: "Settings" })).toBeVisible();
+  });
+
+  test("every sidebar row shares one geometry, and the icon rail stays centred while scrolling", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 520 }); // short enough to overflow the nav
+    await authenticate(page, { role: "owner" });
+    await stubRows(page, "plans", [planWith(ALL_MODULES)]);
+    await page.goto("/");
+    const aside = page.locator("aside").first();
+    const nav = aside.locator("nav").first();
+
+    for (const collapse of [false, true]) {
+      if (collapse) await aside.getByRole("button", { name: "Collapse sidebar" }).click();
+      expect(await nav.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+      // A nav row and the pinned Settings row must line up exactly — same left edge, same width.
+      const row = (await nav.locator("a").first().boundingBox())!;
+      const settings = (await aside.locator("a[href='/settings']").last().boundingBox())!;
+      expect(settings.x).toBeCloseTo(row.x, 0);
+      expect(settings.width).toBeCloseTo(row.width, 0);
+      if (collapse) {
+        const box = (await aside.boundingBox())!;
+        const icon = (await nav.locator("a svg").first().boundingBox())!;
+        expect(icon.x + icon.width / 2).toBeCloseTo(box.x + box.width / 2, 0); // optically centred
+      }
+    }
+  });
+
+  test("the collapse tooltip floats above the header instead of clipping under it", async ({ page }) => {
+    await authenticate(page, { role: "owner" });
+    await stubRows(page, "plans", [planWith(ALL_MODULES)]);
+    await page.goto("/");
+    await page.getByRole("button", { name: "Collapse sidebar" }).hover();
+    const tip = page.getByRole("tooltip").filter({ hasText: "Collapse sidebar" });
+    await expect(tip).toBeVisible();
+    // Portalled out of the sidebar, so no neighbouring bar can paint over it.
+    expect(await tip.evaluate((el) => el.closest("aside") === null)).toBe(true);
+    const topmost = await tip.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.textContent ?? "";
+    });
+    expect(topmost).toContain("Collapse sidebar");
   });
 });
