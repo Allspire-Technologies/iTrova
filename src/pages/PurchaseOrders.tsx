@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import Hint from "@/components/Hint";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -431,14 +432,14 @@ export default function PurchaseOrders() {
         <div className="flex gap-2 flex-wrap">
           <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => e.target.files?.[0] && importCsv(e.target.files[0])} />
           <Button variant="outline" onClick={downloadTemplate}><Download className="size-4" /> CSV Template</Button>
-          {hasModule("csv_import") && can("purchase_orders", "csv_import") && <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={atPoLimit} title={atPoLimit ? limitMessage("purchaseOrders") : undefined}><Upload className="size-4" /> Import CSV</Button>}
+          {hasModule("csv_import") && can("purchase_orders", "csv_import") && <Hint label={atPoLimit ? limitMessage("purchaseOrders") : undefined} wrap><Button variant="outline" onClick={() => fileRef.current?.click()} disabled={atPoLimit}><Upload className="size-4" /> Import CSV</Button></Hint>}
           {hasModule("csv_export") && <Button variant="outline" onClick={exportCsv} disabled={filtered.length === 0}><Download className="size-4" /> Export CSV</Button>}
           {poLimit !== null && items.length >= Math.floor(poLimit * 0.8) && (
             <span className={`self-center text-xs font-medium ${atPoLimit ? "text-destructive" : "text-amber-600 dark:text-amber-400"}`}>
               {items.length} / {poLimit}
             </span>
           )}
-          <Button onClick={() => { if (atPoLimit) { toast.error(limitMessage("purchaseOrders")); return; } setOpen(true); }} disabled={atPoLimit} title={atPoLimit ? limitMessage("purchaseOrders") : undefined}><Plus className="size-4 mr-1" /> New PO</Button>
+          <Hint label={atPoLimit ? limitMessage("purchaseOrders") : undefined} wrap><Button onClick={() => { if (atPoLimit) { toast.error(limitMessage("purchaseOrders")); return; } setOpen(true); }} disabled={atPoLimit}><Plus className="size-4 mr-1" /> New PO</Button></Hint>
         </div>
       </div>
 

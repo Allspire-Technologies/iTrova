@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Moon, Search, FileText, Trash2, BarChart3 } from "lucide-react";
+import { Moon, Search, FileText, Trash2, BarChart3, Sparkles } from "lucide-react";
 
 // One-time "What's new" wizard content. Append a new entry (with a higher id) whenever a feature
 // ships; users only see entries newer than the last one they dismissed, tracked in localStorage.
@@ -44,6 +44,14 @@ export const WHATS_NEW: WhatsNewEntry[] = [
     body: "Reports now match what each person is allowed to see. Cashiers get a personal sales report, production staff see runs and materials, and money metrics show only to those granted \"View financials\" — owners and managers by default.",
     route: "/reports",
     cta: "Open Reports",
+  },
+  {
+    id: 6,
+    icon: Sparkles,
+    title: "A tidier, friendlier app",
+    body: "iTrova now greets you by the time of day, scrollbars are slim and stay out of the way, the sidebar lines up neatly whether it's open or collapsed, and every hover hint is styled to match the app instead of your browser.",
+    route: "/",
+    cta: "Take a look",
   },
 ];
 

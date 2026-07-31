@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import Hint from "@/components/Hint";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -680,7 +681,7 @@ export default function Invoices() {
               {items.length} / {invoiceLimit}
             </span>
           )}
-          <Button onClick={openAdd} disabled={atInvoiceLimit} title={atInvoiceLimit ? limitMessage("invoices") : undefined}><Plus className="size-4 mr-1" /> New invoice</Button>
+          <Hint label={atInvoiceLimit ? limitMessage("invoices") : undefined} wrap><Button onClick={openAdd} disabled={atInvoiceLimit}><Plus className="size-4 mr-1" /> New invoice</Button></Hint>
         </div>
       </div>
 
@@ -726,7 +727,7 @@ export default function Invoices() {
             <h3 className="font-display text-lg font-semibold text-brand-dark">No invoices yet</h3>
             <p className="text-muted-foreground text-sm mt-1 mb-4">Sales recorded at the Point of Sale appear here automatically — or create a manual invoice for a customer.</p>
             {can("invoices", "create") && (
-              <Button variant="brand" onClick={openAdd} disabled={atInvoiceLimit} title={atInvoiceLimit ? limitMessage("invoices") : undefined}><Plus className="size-4" /> New invoice</Button>
+              <Hint label={atInvoiceLimit ? limitMessage("invoices") : undefined} wrap><Button variant="brand" onClick={openAdd} disabled={atInvoiceLimit}><Plus className="size-4" /> New invoice</Button></Hint>
             )}
           </div>
         ) : (
@@ -856,7 +857,7 @@ export default function Invoices() {
                   // sm+: the wrapper dissolves (sm:contents) back into the original 12-col row.
                   <div key={idx} className="rounded-lg border border-border/60 p-2 space-y-2 sm:border-0 sm:p-0 sm:space-y-0 sm:grid sm:grid-cols-12 sm:gap-2 sm:items-center">
                     {posLocked ? (
-                      <div className="sm:col-span-6 text-sm rounded-md border bg-muted/30 px-3 py-2 line-clamp-1" title={l.description}>{l.description}</div>
+                      <Hint label={l.description}><div className="sm:col-span-6 text-sm rounded-md border bg-muted/30 px-3 py-2 line-clamp-1">{l.description}</div></Hint>
                     ) : isCustom ? (
                       <Input className="sm:col-span-6" placeholder="Custom item / service" value={l.description} onChange={e => updateLine(idx, { description: e.target.value })} />
                     ) : (
@@ -914,7 +915,7 @@ export default function Invoices() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={save} disabled={busy || stockErrors.length > 0} title={stockErrors[0]}>{busy ? "Saving…" : (editing ? "Save changes" : "Create invoice")}</Button>
+            <Hint label={stockErrors[0]} wrap><Button onClick={save} disabled={busy || stockErrors.length > 0}>{busy ? "Saving…" : (editing ? "Save changes" : "Create invoice")}</Button></Hint>
           </DialogFooter>
         </DialogContent>
       </Dialog>

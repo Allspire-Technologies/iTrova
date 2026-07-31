@@ -25,38 +25,48 @@ import { drainQueue, drainInvoicing } from "@/lib/offlineSync";
 import { toast } from "sonner";
 
 import type { AppRole } from "@/contexts/AuthContext";
+import Hint from "@/components/Hint";
 
 // Modules usable with no internet (POS + the read-only cached views). Everything else is dimmed
 // and non-navigable while offline.
 const OFFLINE_OK = new Set(["/", "/pos", "/inventory", "/invoices"]);
 
+/** One row geometry for every sidebar row (nav items, Settings, Sign out) so icons line up in a
+ *  single column and the vertical rhythm stays even in both the expanded and collapsed states. */
+const NAV_ROW = "group flex items-center gap-3 h-10 px-3 rounded-lg text-sm font-medium transition-colors";
+
 /** A single sidebar link (used for pinned items, section items, the icon rail and bottom Settings). */
 function NavItemLink({ item, collapsed = false, online = true, onNavigate }: { item: NavItem; collapsed?: boolean; online?: boolean; onNavigate?: () => void }) {
   const offlineBlocked = !online && !OFFLINE_OK.has(item.to);
   const disabled = item.soon || offlineBlocked;
+  // Collapsed to icons, the label IS the tooltip; expanded, only explain why an item is blocked.
+  const hint = collapsed ? (offlineBlocked ? `${item.label} — unavailable offline` : item.label) : offlineBlocked ? "Unavailable offline" : undefined;
+  // wrap: NavLink's className is a function — Radix asChild would stringify it (see Hint).
   return (
-    <NavLink
-      to={item.to}
-      end={item.end}
-      title={collapsed ? item.label : offlineBlocked ? "Unavailable offline" : undefined}
-      onClick={(e) => { if (disabled) { e.preventDefault(); return; } onNavigate?.(); }}
-      className={({ isActive }) =>
-        `group flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors ${
-          collapsed ? "justify-center" : ""
-        } ${
-          disabled
-            ? "text-sidebar-foreground/40 cursor-not-allowed"
-            : isActive
-            ? "bg-sidebar-accent text-sidebar-accent-foreground"
-            : "text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
-        }`
-      }
-    >
-      <item.icon className="size-5 shrink-0" />
-      {!collapsed && <span className="flex-1">{item.label}</span>}
-      {!collapsed && item.soon && <span className="text-[10px] uppercase tracking-wider opacity-60">Soon</span>}
-      {!collapsed && offlineBlocked && <WifiOff className="size-3.5 opacity-60" />}
-    </NavLink>
+    <Hint label={hint} side="right" wrap wrapperClass="block">
+      <NavLink
+        to={item.to}
+        end={item.end}
+        // Collapsed the label is visually hidden, so name the link explicitly — a tooltip is not an
+        // accessible name (the native `title` this replaced used to supply one).
+        aria-label={collapsed ? item.label : undefined}
+        onClick={(e) => { if (disabled) { e.preventDefault(); return; } onNavigate?.(); }}
+        className={({ isActive }) =>
+          `${NAV_ROW} ${collapsed ? "justify-center" : ""} ${
+            disabled
+              ? "text-sidebar-foreground/40 cursor-not-allowed"
+              : isActive
+              ? "bg-sidebar-accent text-sidebar-accent-foreground"
+              : "text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
+          }`
+        }
+      >
+        <item.icon className="size-5 shrink-0" />
+        {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
+        {!collapsed && item.soon && <span className="text-[10px] uppercase tracking-wider opacity-60">Soon</span>}
+        {!collapsed && offlineBlocked && <WifiOff className="size-3.5 opacity-60" />}
+      </NavLink>
+    </Hint>
   );
 }
 
@@ -75,7 +85,7 @@ function NavList({ onNavigate, can, hasModule, collapsed = false, online = true,
   // Collapsed icon rail: grouping only applies when expanded, so render every module icon flat.
   if (collapsed) {
     return (
-      <nav className="flex-1 px-2 space-y-1 overflow-y-auto">
+      <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
         {allVisibleModuleItems(grants).map((item) => (
           <NavItemLink key={item.to} item={item} collapsed online={online} onNavigate={onNavigate} />
         ))}
@@ -86,24 +96,25 @@ function NavList({ onNavigate, can, hasModule, collapsed = false, online = true,
   const pinned = visiblePinned(grants);
   const sections = visibleSections(grants);
   return (
-    <nav className="flex-1 px-2 space-y-1 overflow-y-auto">
+    <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
       {pinned.map((item) => <NavItemLink key={item.to} item={item} online={online} onNavigate={onNavigate} />)}
       {sections.map((s) => {
         // Default open; the section owning the active route is always open so it can't be hidden.
         const open = (openSections[s.key] ?? true) || s.key === activeSectionKey;
         return (
-          <div key={s.key} className="pt-2">
+          <div key={s.key} className="pt-3 first:pt-1">
             <button
               type="button"
               onClick={() => onToggleSection(s.key)}
               aria-expanded={open}
-              className="w-full flex items-center justify-between gap-2 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/50 hover:text-sidebar-foreground/80 transition-colors"
+              // px-3 matches NAV_ROW so a header sits on the same left edge as its items.
+              className="w-full flex items-center justify-between gap-2 px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/50 hover:text-sidebar-foreground/80 transition-colors"
             >
               <span>{s.label}</span>
               <ChevronDown className={`size-3.5 shrink-0 transition-transform ${open ? "" : "-rotate-90"}`} />
             </button>
             {open && (
-              <div className="space-y-1 mt-0.5">
+              <div className="space-y-1">
                 {s.items.map((item) => <NavItemLink key={item.to} item={item} online={online} onNavigate={onNavigate} />)}
               </div>
             )}
@@ -252,15 +263,18 @@ export default function AppShell() {
       {/* Desktop Sidebar */}
       <aside className={`hidden lg:flex flex-col bg-sidebar text-sidebar-foreground sticky top-[var(--titlebar-h)] h-[calc(100vh-var(--titlebar-h))] transition-all duration-200 ${collapsed ? "w-16" : "w-64"}`}>
         {/* Brand + collapse toggle */}
-        <div className={`flex items-center border-b border-sidebar-border shrink-0 ${collapsed ? "justify-center p-3" : "justify-between pl-6 pr-3 py-4"}`}>
+        {/* h-16 matches the topbar so the brand lines up with the business name across the divider. */}
+        <div className={`flex h-16 items-center border-b border-sidebar-border shrink-0 ${collapsed ? "justify-center px-2" : "justify-between pl-5 pr-3"}`}>
           {collapsed ? (
-            <button
-              onClick={toggleCollapsed}
-              title="Expand sidebar"
-              className="size-9 rounded-xl bg-sidebar-primary text-sidebar-primary-foreground grid place-items-center hover:opacity-80 transition-opacity"
-            >
-              <Store className="size-4" />
-            </button>
+            <Hint label="Expand sidebar" side="right">
+              <button
+                onClick={toggleCollapsed}
+                aria-label="Expand sidebar"
+                className="size-9 rounded-xl bg-sidebar-primary text-sidebar-primary-foreground grid place-items-center hover:opacity-80 transition-opacity"
+              >
+                <Store className="size-4" />
+              </button>
+            </Hint>
           ) : (
             <>
               <div className="flex items-center gap-2 font-display text-xl font-bold">
@@ -269,44 +283,47 @@ export default function AppShell() {
                 </div>
                 iTrova
               </div>
-              <button
-                onClick={toggleCollapsed}
-                title="Collapse sidebar"
-                className="p-1.5 rounded-md text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-colors"
-              >
-                <ChevronLeft className="size-4" />
-              </button>
+              <Hint label="Collapse sidebar" side="right">
+                <button
+                  onClick={toggleCollapsed}
+                  aria-label="Collapse sidebar"
+                  className="p-1.5 rounded-md text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-colors"
+                >
+                  <ChevronLeft className="size-4" />
+                </button>
+              </Hint>
             </>
           )}
         </div>
 
         <NavList can={can} hasModule={hasModule} collapsed={collapsed} online={online} openSections={openSections} onToggleSection={toggleSection} activeSectionKey={activeSectionKey} />
 
-        {/* Settings + Sign out, pinned at the bottom */}
-        <div className={`p-3 border-t border-sidebar-border shrink-0 space-y-1`}>
+        {/* Settings + Sign out, pinned at the bottom. It carries the nav's padding AND its scroll
+            gutter (nav-scroll + overflow-auto, which never actually scrolls here) so both boxes are
+            identical — otherwise the footer's hover backgrounds sit wider than the nav's. */}
+        <div className="p-2 border-t border-sidebar-border shrink-0 space-y-1">
           <NavItemLink item={SETTINGS_ITEM} collapsed={collapsed} online={online} />
-          <button
-            onClick={requestSignOut}
-            title={collapsed ? "Sign out" : undefined}
-            className={`flex items-center gap-3 px-3 py-2 w-full rounded-lg text-sm text-sidebar-foreground/80 hover:bg-sidebar-accent/50 transition-colors ${collapsed ? "justify-center" : ""}`}
-          >
-            <LogOut className="size-4 shrink-0" />
-            {!collapsed && <span>Sign out</span>}
-          </button>
-        </div>
-
-        {/* Expand button when collapsed */}
-        {collapsed && (
-          <div className="pb-3 flex justify-center shrink-0">
+          <Hint label={collapsed ? "Sign out" : undefined} side="right">
             <button
-              onClick={toggleCollapsed}
-              title="Expand sidebar"
-              className="p-1.5 rounded-md text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-colors"
+              onClick={requestSignOut}
+              className={`${NAV_ROW} w-full text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground ${collapsed ? "justify-center" : ""}`}
             >
-              <ChevronRight className="size-4" />
+              <LogOut className="size-5 shrink-0" />
+              {!collapsed && <span className="flex-1 text-left">Sign out</span>}
             </button>
-          </div>
-        )}
+          </Hint>
+          {collapsed && (
+            <Hint label="Expand sidebar" side="right">
+              <button
+                onClick={toggleCollapsed}
+                aria-label="Expand sidebar"
+                className={`${NAV_ROW} w-full justify-center text-sidebar-foreground/50 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground`}
+              >
+                <ChevronRight className="size-5 shrink-0" />
+              </button>
+            </Hint>
+          )}
+        </div>
       </aside>
 
       {/* Main */}
@@ -335,14 +352,15 @@ export default function AppShell() {
                   {business?.name || "—"}
                 </span>
                 {planAlert && (
-                  <Link
-                    to="/settings"
-                    title={planAlert.danger ? "Your plan has expired — renew to restore features" : "Your plan is about to expire — renew to avoid losing features"}
-                    className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold transition-opacity hover:opacity-80 ${planAlert.danger ? "bg-danger/10 text-danger" : "bg-warning/10 text-warning"}`}
-                  >
-                    {planAlert.danger ? <AlertTriangle className="size-3" /> : <Clock className="size-3" />}
-                    {planAlert.text}
-                  </Link>
+                  <Hint label={planAlert.danger ? "Your plan has expired — renew to restore features" : "Your plan is about to expire — renew to avoid losing features"} side="bottom">
+                    <Link
+                      to="/settings"
+                      className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold transition-opacity hover:opacity-80 ${planAlert.danger ? "bg-danger/10 text-danger" : "bg-warning/10 text-warning"}`}
+                    >
+                      {planAlert.danger ? <AlertTriangle className="size-3" /> : <Clock className="size-3" />}
+                      {planAlert.text}
+                    </Link>
+                  </Hint>
                 )}
               </div>
             </div>

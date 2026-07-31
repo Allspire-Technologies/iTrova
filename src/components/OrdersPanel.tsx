@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import Hint from "@/components/Hint";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -491,9 +492,11 @@ export default function OrdersPanel({ products, onStockChanged }: { products: Pr
                     options={orderStatusOptions(o.status).map(s => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) }))}
                   />
                   {/* Max-3 rule: status select · Edit · ⋮ (destructive lives in the menu). */}
-                  <Button variant="ghost" size="sm" aria-label="Edit order" disabled={o.status === "delivered" || o.status === "cancelled"} title={o.status === "delivered" || o.status === "cancelled" ? "Delivered and cancelled orders can't be edited" : undefined} onClick={() => openEdit(o)}>
-                    <Pencil className="size-4" /> Edit
-                  </Button>
+                  <Hint label={o.status === "delivered" || o.status === "cancelled" ? "Delivered and cancelled orders can't be edited" : undefined} wrap>
+                    <Button variant="ghost" size="sm" aria-label="Edit order" disabled={o.status === "delivered" || o.status === "cancelled"} onClick={() => openEdit(o)}>
+                      <Pencil className="size-4" /> Edit
+                    </Button>
+                  </Hint>
                   {canManage && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>

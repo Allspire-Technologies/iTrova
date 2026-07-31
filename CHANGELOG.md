@@ -3,6 +3,25 @@
 All notable, user-facing changes to iTrova are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); entries are grouped by ship date, newest first.
 
+## 2026-07-31 — A tidier, friendlier app
+
+### Added
+- **A greeting that knows the time** — the Dashboard now says **Good morning**, **Good afternoon** or
+  **Good evening** (morning from midnight, afternoon from noon, evening from 5pm) instead of "Good day".
+
+### Changed
+- **Slim scrollbars everywhere** — the chunky browser scrollbar is gone. Scrollable areas (including the
+  sidebar when your modules overflow) now show a thin, theme-matched bar that fades in only when you
+  hover, and never shifts the layout.
+- **A tidier sidebar** — every row (modules, Settings, Sign out) now shares one height and alignment, so
+  icons sit in a single column and hover highlights line up. Collapsed to icons, the rail is properly
+  centred and stays that way while scrolling.
+- **One consistent tooltip** — hover hints across the app now use iTrova's own styling instead of the
+  grey browser box, including on buttons that are switched off (so you can still see *why*).
+
+### Fixed
+- Sidebar tooltips no longer slide underneath the top bar.
+
 ## 2026-07-30 — Reports for every role
 
 What each person sees in Reports now follows their permissions.

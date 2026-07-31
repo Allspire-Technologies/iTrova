@@ -19,6 +19,7 @@ import { useOnline } from "@/contexts/OnlineContext";
 import { ReadOnlyOfflineNotice } from "@/components/OfflineBanner";
 import { cacheDashboard, readCachedDashboard } from "@/lib/offlineStore";
 import { fetchDashboardSnapshot, type DashSnap, type DashProduct as Product, type DashTopProduct as TopProduct, type DashActivityEntry as ActivityEntry } from "@/lib/dashboardSnapshot";
+import { greeting } from "@/lib/greeting";
 
 // Donut slice colours for the payment-methods breakdown — brand shades, cycled.
 const PAY_COLORS = ["hsl(var(--brand))", "hsl(var(--brand) / 0.6)", "hsl(var(--brand) / 0.35)", "hsl(var(--muted-foreground) / 0.55)"];
@@ -136,7 +137,7 @@ export default function Dashboard() {
       <div className="flex items-end justify-between flex-wrap gap-4">
         <div>
           <h1 className="font-display text-3xl lg:text-4xl font-bold text-brand-dark">
-            Good day, {profile?.owner_name?.split(" ")[0] || "Owner"} 👋
+            {greeting()}, {profile?.owner_name?.split(" ")[0] || "Owner"} 👋
           </h1>
           <p className="text-muted-foreground mt-1">Here's what's happening across your business today.</p>
         </div>

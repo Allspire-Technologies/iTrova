@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Hint from "@/components/Hint";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -392,7 +393,7 @@ export default function Production() {
             <Button variant="hero" onClick={openNewRequest}><ClipboardList className="size-4" /> Request materials</Button>
           )}
           {tab === "runs" && can("production", "produce") && (
-            <Button variant="hero" onClick={() => openRun()} disabled={approvedReqs.length === 0} title={approvedReqs.length === 0 ? "Get a materials request approved first" : undefined}><PackagePlus className="size-4" /> Record production</Button>
+            <Hint label={approvedReqs.length === 0 ? "Get a materials request approved first" : undefined} wrap><Button variant="hero" onClick={() => openRun()} disabled={approvedReqs.length === 0}><PackagePlus className="size-4" /> Record production</Button></Hint>
           )}
         </div>
       </div>
@@ -479,7 +480,7 @@ export default function Production() {
                   : "Record what you produced from an approved materials request to add it to product stock."}
               </p>
               {can("production", "produce") && (
-                <Button variant="brand" onClick={() => openRun()} disabled={approvedReqs.length === 0} title={approvedReqs.length === 0 ? "Get a materials request approved first" : undefined}><PackagePlus className="size-4" /> Record production</Button>
+                <Hint label={approvedReqs.length === 0 ? "Get a materials request approved first" : undefined} wrap><Button variant="brand" onClick={() => openRun()} disabled={approvedReqs.length === 0}><PackagePlus className="size-4" /> Record production</Button></Hint>
               )}
             </div>
           ) : (

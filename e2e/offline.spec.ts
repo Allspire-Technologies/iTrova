@@ -54,7 +54,7 @@ test.describe("Offline gating (P1)", () => {
     await authenticate(page); // online: caches a dashboard snapshot
     await goOffline(page);
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: /Good day/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Good (morning|afternoon|evening)/ })).toBeVisible();
     await expect(page.getByText("You're offline")).toHaveCount(0); // read-only, not the block notice
   });
 

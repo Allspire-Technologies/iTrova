@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Hint from "@/components/Hint";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -627,13 +628,14 @@ export default function POS() {
                         <div className="font-medium text-sm text-brand-dark line-clamp-2 min-h-[2.5em]">{p.name}</div>
                         <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 mt-2">
                           <div className="font-display font-bold text-brand">{fmt(p.selling_price)}</div>
-                          <Badge
-                            variant="outline"
-                            title={low ? "Low stock" : undefined}
-                            className={`text-xs gap-1 ${low ? "bg-warning/10 text-warning border-warning/20" : "bg-secondary"}`}
-                          >
-                            {low && <AlertTriangle className="size-3" />}{Number(p.stock_quantity)} left
-                          </Badge>
+                          <Hint label={low ? "Low stock" : undefined}>
+                            <Badge
+                              variant="outline"
+                              className={`text-xs gap-1 ${low ? "bg-warning/10 text-warning border-warning/20" : "bg-secondary"}`}
+                            >
+                              {low && <AlertTriangle className="size-3" />}{Number(p.stock_quantity)} left
+                            </Badge>
+                          </Hint>
                         </div>
                       </button>
                       );

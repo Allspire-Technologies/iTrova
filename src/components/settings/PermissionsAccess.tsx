@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import Hint from "@/components/Hint";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, MoreHorizontal, Lock, RotateCcw, ShieldCheck, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -207,10 +208,12 @@ export default function PermissionsAccess() {
                   <p className="text-xs text-muted-foreground">{key === "manager" ? "All operations except Team by default." : "POS and invoicing basics by default."}</p>
                 </div>
                 <div className="flex items-center gap-1">
-                  <Button variant="ghost" size="sm" disabled={locked} title={locked ? "You can't edit your own role" : undefined}
-                    onClick={() => setRoleForm({ system_key: key, name: label, permissions: clonePermissionMap(row?.permissions ?? DEFAULT_ROLE_PERMISSIONS[key]) })}>
-                    <Pencil className="size-4" /> Edit
-                  </Button>
+                  <Hint label={locked ? "You can't edit your own role" : undefined} wrap>
+                    <Button variant="ghost" size="sm" disabled={locked}
+                      onClick={() => setRoleForm({ system_key: key, name: label, permissions: clonePermissionMap(row?.permissions ?? DEFAULT_ROLE_PERMISSIONS[key]) })}>
+                      <Pencil className="size-4" /> Edit
+                    </Button>
+                  </Hint>
                   {row && !locked && (
                     <Button variant="ghost" size="sm" onClick={() => resetSystemRole(key)}><RotateCcw className="size-4" /> Reset</Button>
                   )}
@@ -228,10 +231,12 @@ export default function PermissionsAccess() {
                   <p className="text-xs text-muted-foreground">{Object.keys(r.permissions).length} module{Object.keys(r.permissions).length === 1 ? "" : "s"} granted</p>
                 </div>
                 <div className="flex items-center gap-1">
-                  <Button variant="ghost" size="sm" disabled={locked} title={locked ? "You can't edit a role assigned to you" : undefined}
-                    onClick={() => setRoleForm({ id: r.id, system_key: null, name: r.name, permissions: clonePermissionMap(r.permissions) })}>
-                    <Pencil className="size-4" /> Edit
-                  </Button>
+                  <Hint label={locked ? "You can't edit a role assigned to you" : undefined} wrap>
+                    <Button variant="ghost" size="sm" disabled={locked}
+                      onClick={() => setRoleForm({ id: r.id, system_key: null, name: r.name, permissions: clonePermissionMap(r.permissions) })}>
+                      <Pencil className="size-4" /> Edit
+                    </Button>
+                  </Hint>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" size="sm" aria-label={`More actions for ${r.name}`}><MoreHorizontal className="size-4" /> More</Button>
@@ -278,17 +283,18 @@ export default function PermissionsAccess() {
                 {m.app_role !== "owner" && (
                   <div className="flex flex-wrap items-center gap-1.5">
                     {custom && <Badge variant="outline">Custom</Badge>}
-                    <select
-                      className="h-9 rounded-md border border-input bg-background px-2 text-base md:text-sm disabled:opacity-60"
-                      disabled={rowLocked}
-                      value={a?.team_role_id ?? ""}
-                      onChange={(e) => assignRole(m, e.target.value || null)}
-                      aria-label={`Role for ${m.name}`}
-                      title={rowLocked && isSelf ? "Managed by the owner" : undefined}
-                    >
-                      <option value="">{m.app_role === "manager" ? "Manager (default)" : "Cashier (default)"}</option>
-                      {customRoles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-                    </select>
+                    <Hint label={rowLocked && isSelf ? "Managed by the owner" : undefined} wrap>
+                      <select
+                        className="h-9 rounded-md border border-input bg-background px-2 text-base md:text-sm disabled:opacity-60"
+                        disabled={rowLocked}
+                        value={a?.team_role_id ?? ""}
+                        onChange={(e) => assignRole(m, e.target.value || null)}
+                        aria-label={`Role for ${m.name}`}
+                      >
+                        <option value="">{m.app_role === "manager" ? "Manager (default)" : "Cashier (default)"}</option>
+                        {customRoles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                      </select>
+                    </Hint>
                     <Button variant="ghost" size="sm" disabled={rowLocked}
                       onClick={() => setOverrideForm({ member: m, permissions: clonePermissionMap(effectiveMapFor(m)) })}>
                       <Pencil className="size-4" /> Customize
