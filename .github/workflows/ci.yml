@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, staging]
   pull_request:
 
 jobs:
@@ -42,10 +42,12 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
+  # main → the `itrova` worker on the production Supabase project.
+  # staging → the `itrova-staging` worker on the staging Supabase project (STAGING_* secrets).
   deploy:
     name: Deploy to Cloudflare
     needs: [unit, e2e]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -54,15 +56,48 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # vite build (not npm run build) — `needs` already proved tests green, so skip the prebuild rerun
-      - run: npx vite build
+
+      # vite build (not npm run build) — `needs` already proved tests green, so skip the prebuild rerun.
+      # The guard below is the important part: an unset STAGING_* secret would otherwise fall back to
+      # nothing (or, if the names were shared, to production) and quietly point staging at live data.
+      - name: Build
         env:
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          IS_STAGING: ${{ github.ref == 'refs/heads/staging' }}
+          PROD_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          # @cloudflare/vite-plugin bakes the target worker into dist/wrangler.json at BUILD time, so
+          # the environment must be chosen HERE — a `wrangler deploy --env staging` flag is ignored
+          # and would publish straight over production.
+          CLOUDFLARE_ENV: ${{ github.ref == 'refs/heads/staging' && 'staging' || '' }}
+          VITE_SUPABASE_URL: ${{ github.ref == 'refs/heads/staging' && secrets.STAGING_VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ github.ref == 'refs/heads/staging' && secrets.STAGING_VITE_SUPABASE_PUBLISHABLE_KEY || secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          if [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_PUBLISHABLE_KEY" ]; then
+            echo "::error::Supabase credentials are missing for this branch. See STAGING.md."
+            exit 1
+          fi
+          if [ "$IS_STAGING" = "true" ] && [ "$VITE_SUPABASE_URL" = "$PROD_SUPABASE_URL" ]; then
+            echo "::error::Staging is pointing at the PRODUCTION Supabase project. Set STAGING_VITE_SUPABASE_URL."
+            exit 1
+          fi
+          npx vite build
       # Stamp the service worker with this commit's SHA so the deploy busts the old PWA cache.
       # (npm run build does this automatically; the bare `vite build` above doesn't, so run it here.)
       - run: node scripts/stamp-sw.mjs
-      - run: npx wrangler deploy
+
+      # Last line of defence: prove the built bundle targets the worker this branch is allowed to
+      # touch before anything is published.
+      - name: Verify deploy target
+        run: |
+          NAME=$(node -p "require('./dist/wrangler.json').name")
+          if [ "$GITHUB_REF" = "refs/heads/staging" ]; then EXPECTED=itrova-staging; else EXPECTED=itrova; fi
+          echo "Built for worker: $NAME (expected: $EXPECTED)"
+          if [ "$NAME" != "$EXPECTED" ]; then
+            echo "::error::Build targets '$NAME' but $GITHUB_REF must deploy to '$EXPECTED'."
+            exit 1
+          fi
+
+      - name: Deploy
+        run: npx wrangler deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
