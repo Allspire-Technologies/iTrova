@@ -31,6 +31,7 @@ const TaxSettings = () => (
 );
 const CostingSettingsInner = lazy(() => import("@/components/settings/CostingSettings"));
 const ReferEarnCard = lazy(() => import("@/components/settings/ReferEarnCard"));
+const PaySubscriptionDialog = lazy(() => import("@/components/settings/PaySubscriptionDialog"));
 const CostingSettings = () => (
   <Suspense fallback={<p className="py-8 text-center text-sm text-muted-foreground">Loading costing settings…</p>}>
     <CostingSettingsInner />
@@ -97,6 +98,7 @@ function PlanCard({ plan, inheritsFrom, action, currentPlan, businessName, refer
     .filter(p => p.is_active)
     .sort((a, b) => CYCLE_ORDER.indexOf(a.cycle) - CYCLE_ORDER.indexOf(b.cycle));
   const [cycle, setCycle] = useState<BillingCycle>(cycles[0]?.cycle ?? "monthly");
+  const [payOpen, setPayOpen] = useState(false);
   const selected = cycles.find(p => p.cycle === cycle) ?? cycles[0];
   const base = selected ? Number(selected.price_amount) : Number(plan.price_amount);
   const cycleDiscount = selected ? Number(selected.discount_percent) : 0;
@@ -173,20 +175,46 @@ function PlanCard({ plan, inheritsFrom, action, currentPlan, businessName, refer
       <div className="pt-1">
         {active ? (
           <p className="text-xs text-brand font-medium text-center">Current plan</p>
-        ) : (
+        ) : action === "downgrade" || base === 0 ? (
+          // Downgrades and the free plan collect no money, so they stay a conversation.
           <Button
             variant="outline"
             size="sm"
             className="w-full"
             onClick={() => {
               const priceText = base > 0 ? `${money(effective)}/${CYCLE_PERIOD[cycle]}` : money(effective);
-              const refText = refereeOn ? ` (includes my ${refereeDiscount}% referral discount)` : "";
-              const msg = `Hi, I'd like to ${action} ${businessName || "my business"} to the ${plan.name} plan (${CYCLE_LABEL[cycle]}) — ${priceText}${refText}.`;
+              const msg = `Hi, I'd like to ${action} ${businessName || "my business"} to the ${plan.name} plan (${CYCLE_LABEL[cycle]}) — ${priceText}.`;
               window.open(`https://wa.me/2348137000305?text=${encodeURIComponent(msg)}`, "_blank");
             }}
           >
-            {action === "downgrade" ? "Request downgrade" : "Request upgrade"}
+            {action === "downgrade" ? "Request downgrade" : "Talk to us"}
           </Button>
+        ) : (
+          <>
+            <Button variant="brand" size="sm" className="w-full" onClick={() => setPayOpen(true)}>
+              Pay {money(effective)}
+            </Button>
+            <button
+              type="button"
+              className="mt-1.5 w-full text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => {
+                const refText = refereeOn ? ` (includes my ${refereeDiscount}% referral discount)` : "";
+                const msg = `Hi, I'd like to upgrade ${businessName || "my business"} to the ${plan.name} plan (${CYCLE_LABEL[cycle]}) — ${money(effective)}/${CYCLE_PERIOD[cycle]}${refText}.`;
+                window.open(`https://wa.me/2348137000305?text=${encodeURIComponent(msg)}`, "_blank");
+              }}
+            >
+              or pay another way
+            </button>
+            {payOpen && (
+              <Suspense fallback={null}>
+                <PaySubscriptionDialog
+                  open={payOpen} onOpenChange={setPayOpen}
+                  planKey={plan.key} planName={plan.name} cycle={cycle}
+                  currency={plan.price_currency || "NGN"}
+                />
+              </Suspense>
+            )}
+          </>
         )}
       </div>
     </div>

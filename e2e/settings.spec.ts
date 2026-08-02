@@ -77,7 +77,7 @@ test.describe("Settings", () => {
     await expect(page.getByText("Subscription Plan", { exact: true })).toBeVisible();
     await expect(page.getByText("Pro", { exact: true })).toBeVisible();
     await expect(page.getByText("Current plan")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Request upgrade" })).toHaveCount(2);
+    await expect(page.getByRole("button", { name: /^Pay ₦/ })).toHaveCount(2); // paid plans now collect in-app
     // billing cycles + promo come from the catalogue
     await expect(page.getByRole("button", { name: "Annually" }).first()).toBeVisible();
     await expect(page.getByText(/Launch offer/)).toBeVisible();
@@ -95,8 +95,34 @@ test.describe("Settings", () => {
     // Pro monthly: ₦5,000 − 10% launch promo = ₦4,500, then − 20% referral = ₦3,600.
     await expect(page.getByText("Referral · 20% off first payment").first()).toBeVisible();
     await expect(page.getByText("₦3,600").first()).toBeVisible();
-    // The upgrade request carries the referral discount to the sales team.
-    await expect(page.getByRole("button", { name: "Request upgrade" }).first()).toBeVisible();
+    // The pay button carries the discounted amount, so you pay what you were shown.
+    await expect(page.getByRole("button", { name: "Pay ₦3,600" })).toBeVisible();
+  });
+
+  test("paying by transfer shows the business's own account number (amount comes from the server)", async ({ page }) => {
+    let sentBody: Record<string, unknown> | null = null;
+    await authenticate(page, { role: "owner", businessName: "Sunrise Stores", onRoutes: async (p) => {
+      await p.route("**/functions/v1/create-payment**", (r) => {
+        sentBody = r.request().postDataJSON();
+        return r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+          method: "transfer", reference: "ITV-abc-1", amount: 4500,
+          quote: { amount: 4500, currency: "NGN", list_amount: 5000, cycle_discount: 0, referee_discount: 0 },
+          accounts: [{ bankName: "Moniepoint MFB", accountNumber: "5030123456", accountName: "iTrova - Sunrise Stores" }],
+        }) });
+      });
+    }});
+    await stubRows(page, "plans", plans);
+    await page.goto("/settings");
+    await page.getByRole("button", { name: "Billing", exact: true }).click();
+    await page.getByRole("button", { name: /^Pay ₦/ }).first().click();
+
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("button", { name: /Bank transfer/ }).click();
+    await expect(dialog.getByText("5030123456")).toBeVisible();
+    await expect(dialog.getByText("Moniepoint MFB")).toBeVisible();
+    // The browser asks for a plan + cycle only — never a price. The server decides what it costs.
+    expect(sentBody).toMatchObject({ plan_key: expect.any(String), cycle: expect.any(String), method: "transfer" });
+    expect(sentBody).not.toHaveProperty("amount");
   });
 
   test("Refer & earn card shows the code, share actions and referral count (Billing tab)", async ({ page }) => {
