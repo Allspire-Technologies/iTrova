@@ -286,7 +286,10 @@ export default function Invoices() {
   const vatFraction = editing && Number(editing.total) > 0 ? Number(editing.tax) / Number(editing.total) : 0;
   const invoiceVat = Math.round(invoiceTotal * vatFraction * 100) / 100;
 
-  const save = async () => {
+  /** `asDraft` saves without taking stock or posting to the ledger; issuing does both.
+   *  Sending no status at all (editing anything that isn't a draft) leaves it as it is, so editing
+   *  a paid invoice can't demote it. */
+  const save = async (asDraft = false) => {
     if (!business) return;
     if (!editing && isAtLimit(items.length, business.subscription_tier, "invoices")) {
       toast.error(limitMessage("invoices"));
@@ -311,6 +314,8 @@ export default function Invoices() {
       due_date: form.due_date || null,
       notes: form.notes || null,
       subtotal, discount: discountApplied, tax: invoiceVat, total: invoiceTotal,
+      // Draft on request; a new invoice is issued; an edit keeps whatever status it already has.
+      status: asDraft ? "draft" : editing ? (editing.status === "draft" ? "issued" : null) : "issued",
       created_by: editing ? null : (user?.id ?? null),
       items: lines.map(l => ({
         product_id: l.productKey === CUSTOM ? null : l.productKey,
@@ -915,7 +920,17 @@ export default function Invoices() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Hint label={stockErrors[0]} wrap><Button onClick={save} disabled={busy || stockErrors.length > 0}>{busy ? "Saving…" : (editing ? "Save changes" : "Create invoice")}</Button></Hint>
+            {/* A draft holds no stock, so it can be saved even when the lines exceed what's available. */}
+            {(!editing || editing.status === "draft") && !editing?.sale_id && (
+              <Button variant="outline" onClick={() => save(true)} disabled={busy}>
+                {busy ? "Saving…" : "Save as draft"}
+              </Button>
+            )}
+            <Hint label={stockErrors[0]} wrap>
+              <Button onClick={() => save(false)} disabled={busy || stockErrors.length > 0}>
+                {busy ? "Saving…" : editing ? (editing.status === "draft" ? "Issue invoice" : "Save changes") : "Create invoice"}
+              </Button>
+            </Hint>
           </DialogFooter>
         </DialogContent>
       </Dialog>
