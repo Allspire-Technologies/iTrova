@@ -88,15 +88,24 @@ test.describe("Sidebar grouping", () => {
     for (const collapse of [false, true]) {
       if (collapse) await aside.getByRole("button", { name: "Collapse sidebar" }).click();
       expect(await nav.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
-      // A nav row and the pinned Settings row must line up exactly — same left edge, same width.
+
+      // The scrolling nav loses this much width to its scrollbar; the pinned footer doesn't scroll,
+      // so it keeps it. That's 0 where scrollbars overlay (most desktops) but a few px on platforms
+      // that reserve space — so it's the tolerance, not a failure. Measured rather than hardcoded
+      // because the width differs per platform: asserting exact equality made this test flaky on CI.
+      const gutter = await nav.evaluate((el) => (el as HTMLElement).offsetWidth - el.clientWidth);
+
+      // A nav row and the pinned Settings row line up: identical left edge, same width bar the gutter.
       const row = (await nav.locator("a").first().boundingBox())!;
       const settings = (await aside.locator("a[href='/settings']").last().boundingBox())!;
-      expect(settings.x).toBeCloseTo(row.x, 0);
-      expect(settings.width).toBeCloseTo(row.width, 0);
+      expect(settings.x).toBeCloseTo(row.x, 0);                       // left edge is exact
+      expect(Math.abs(settings.width - row.width)).toBeLessThanOrEqual(gutter + 1);
       if (collapse) {
         const box = (await aside.boundingBox())!;
         const icon = (await nav.locator("a svg").first().boundingBox())!;
-        expect(icon.x + icon.width / 2).toBeCloseTo(box.x + box.width / 2, 0); // optically centred
+        // Centred in the space actually available — a reserved scrollbar shifts that centre by half.
+        const drift = Math.abs((icon.x + icon.width / 2) - (box.x + box.width / 2));
+        expect(drift).toBeLessThanOrEqual(gutter / 2 + 1);
       }
     }
   });
