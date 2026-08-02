@@ -4,21 +4,23 @@ import { supabase } from "@/integrations/supabase/client";
 // plan server-side (cycle discount + any referred-business discount), so what you're charged can't be
 // tampered with and always matches what the Billing tab promised.
 
-export type ReservedAccount = { bankName: string; accountNumber: string; accountName?: string; bankCode?: string };
-
 export type PaymentStart = {
   method: "transfer" | "card";
   reference: string;
   amount: number;
   quote?: { amount: number; currency: string; list_amount: number; cycle_discount: number; referee_discount: number };
-  accounts?: ReservedAccount[];   // transfer
-  checkout_url?: string;          // card
+  /** Monnify's page for this transaction. The amount is bound to it, so the customer cannot pay a
+   *  different figure — for a transfer Monnify issues a one-time account for exactly this amount. */
+  checkout_url?: string;
+  provider_reference?: string | null;
 };
 
 /** Start a payment for the signed-in user's own business. */
 export async function createPayment(planKey: string, cycle: string, method: "transfer" | "card" = "transfer"): Promise<PaymentStart> {
   const { data, error } = await supabase.functions.invoke<PaymentStart & { error?: string }>("create-payment", {
-    body: { plan_key: planKey, cycle, method },
+    // Card payment leaves the app and comes back, so tell the server where "back" is — otherwise a
+    // dev or staging user is returned to production and lands on the login page. Allowlisted server-side.
+    body: { plan_key: planKey, cycle, method, return_origin: window.location.origin },
   });
   if (error) {
     if ((error as { name?: string }).name === "FunctionsFetchError") {
@@ -30,6 +32,34 @@ export async function createPayment(planKey: string, cycle: string, method: "tra
   }
   if (!data || (data as { error?: string }).error) throw new Error((data as { error?: string })?.error ?? "Couldn't start the payment.");
   return data;
+}
+
+export type BillingHistoryRow = {
+  id: string;
+  paidAt: string;
+  planKey: string | null;
+  cycle: string | null;
+  amount: number;
+  currency: string;
+  reference: string | null;
+  method: string;
+};
+
+/** Every subscription payment for this business — self-serve or recorded by an admin. */
+export async function listBillingHistory(): Promise<BillingHistoryRow[]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any).rpc("my_billing_history");
+  if (error) throw error;
+  return ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+    id: String(r.id),
+    paidAt: String(r.paid_at),
+    planKey: r.plan_key == null ? null : String(r.plan_key),
+    cycle: r.cycle == null ? null : String(r.cycle),
+    amount: Number(r.amount) || 0,
+    currency: String(r.currency ?? "NGN"),
+    reference: r.reference == null ? null : String(r.reference),
+    method: String(r.method ?? "manual"),
+  }));
 }
 
 /** Has a payment landed yet? Polled while the transfer instructions are on screen.

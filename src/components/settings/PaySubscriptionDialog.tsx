@@ -3,11 +3,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Copy, Building2, CreditCard, CheckCircle2, Loader2 } from "lucide-react";
+import { Building2, CreditCard, CheckCircle2, Loader2, ExternalLink } from "lucide-react";
 import { createPayment, latestPaymentStatus, type PaymentStart } from "@/lib/billing";
 import { useAuth } from "@/contexts/AuthContext";
 
-/** Pay for a plan by bank transfer (a dedicated account per business) or by card.
+/** Pay for a plan by bank transfer or card, both settled on Monnify with the amount locked in.
  *  The amount shown is the server's quote, not a figure computed here — see src/lib/billing.ts. */
 export default function PaySubscriptionDialog({
   open, onOpenChange, planKey, planName, cycle, currency = "NGN",
@@ -29,7 +29,10 @@ export default function PaySubscriptionDialog({
     try {
       const s = await createPayment(planKey, cycle, method);
       setStart(s);
-      if (method === "card" && s.checkout_url) window.open(s.checkout_url, "_blank", "noopener,noreferrer");
+      // Both methods finish on Monnify's page, which has the amount bound to the transaction — for a
+      // transfer it shows a one-time account for exactly this figure, so a wrong amount can't be sent.
+      if (s.checkout_url) window.open(s.checkout_url, "_blank", "noopener,noreferrer");
+      else toast.error("Monnify didn't return a payment page — please try again.");
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -46,8 +49,8 @@ export default function PaySubscriptionDialog({
         setPaid(true);
         toast.success("Payment received — your plan is active.");
         refresh();
-      } else if (status === "underpaid") {
-        toast.warning("We received less than the full amount — it's been held as credit. Contact us to sort it out.");
+      } else if (status === "mismatch") {
+        toast.warning("The amount received didn't match — your plan isn't active yet. Please contact us.");
       }
     }, 5000);
     return () => { if (poll.current) window.clearInterval(poll.current); };
@@ -55,10 +58,6 @@ export default function PaySubscriptionDialog({
 
   useEffect(() => { if (!open) { setStart(null); setPaid(false); } }, [open]);
 
-  const copy = async (text: string, label: string) => {
-    try { await navigator.clipboard.writeText(text); toast.success(`${label} copied`); }
-    catch { toast.error("Couldn't copy — long-press to copy instead"); }
-  };
 
   const q = start?.quote;
 
@@ -81,7 +80,7 @@ export default function PaySubscriptionDialog({
                 className="rounded-xl border-2 border-border p-4 text-left hover:border-brand/50 transition-colors disabled:opacity-60">
                 <Building2 className="size-5 text-brand mb-2" />
                 <div className="font-medium">Bank transfer</div>
-                <div className="text-xs text-muted-foreground mt-0.5">Transfer from any bank app to your own iTrova account number.</div>
+                <div className="text-xs text-muted-foreground mt-0.5">Monnify gives you a one-off account number for this exact amount.</div>
               </button>
               <button onClick={() => begin("card")} disabled={busy}
                 className="rounded-xl border-2 border-border p-4 text-left hover:border-brand/50 transition-colors disabled:opacity-60">
@@ -104,38 +103,20 @@ export default function PaySubscriptionDialog({
               )}
             </div>
 
-            {start.method === "transfer" ? (
-              <>
-                <p className="text-sm text-muted-foreground">
-                  Transfer <strong className="text-foreground">exactly {money(start.amount)}</strong> to the account below.
-                  Your plan activates automatically once it arrives — usually within a minute.
-                </p>
-                <div className="space-y-2">
-                  {(start.accounts ?? []).map((a) => (
-                    <div key={a.accountNumber} className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
-                      <div className="min-w-0">
-                        <div className="font-mono text-lg font-semibold tracking-wider text-brand-dark">{a.accountNumber}</div>
-                        <div className="text-xs text-muted-foreground truncate">{a.bankName}{a.accountName ? ` · ${a.accountName}` : ""}</div>
-                      </div>
-                      <Button variant="outline" size="sm" onClick={() => copy(a.accountNumber, "Account number")}>
-                        <Copy className="size-4" /> Copy
-                      </Button>
-                    </div>
-                  ))}
-                  {(start.accounts ?? []).length === 0 && (
-                    <p className="text-sm text-destructive">No account was returned — please contact support.</p>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-                  <Loader2 className="size-3.5 animate-spin" /> Waiting for your transfer… you can close this and come back.
-                </p>
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                We've opened Monnify's secure payment page in a new tab. Once you've paid, your plan activates
-                automatically — come back here and it'll be live.
-              </p>
+            <p className="text-sm text-muted-foreground">
+              {start.method === "transfer"
+                ? "We've opened Monnify's secure page in a new tab. It shows a one-off account number for this exact amount — transfer to it from any bank app."
+                : "We've opened Monnify's secure payment page in a new tab. Enter your card details there."}
+              {" "}Your plan activates automatically once Monnify confirms the payment.
+            </p>
+            {start.checkout_url && (
+              <Button variant="outline" size="sm" onClick={() => window.open(start.checkout_url!, "_blank", "noopener,noreferrer")}>
+                <ExternalLink className="size-4" /> Reopen payment page
+              </Button>
             )}
+            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <Loader2 className="size-3.5 animate-spin" /> Waiting for confirmation… you can close this and come back.
+            </p>
           </div>
         )}
 

@@ -70,22 +70,13 @@ end $$;
 revoke all on function public.quote_subscription_price(uuid, text, text) from public, anon;
 grant execute on function public.quote_subscription_price(uuid, text, text) to authenticated;
 
--- ---------------------------------------------------------------- 3. the reserved (virtual) account
--- Monnify issues one permanent account per business; created on first use and reused thereafter.
-create table if not exists public.business_reserved_account (
-  business_id       uuid primary key references public.businesses(id) on delete cascade,
-  account_reference text not null unique,       -- our reference, sent to Monnify
-  account_name      text,
-  accounts          jsonb not null default '[]'::jsonb,  -- Monnify returns one row per bank
-  provider          text not null default 'monnify',
-  created_at        timestamptz not null default now()
-);
-alter table public.business_reserved_account enable row level security;
-revoke all on public.business_reserved_account from anon;
-grant select on public.business_reserved_account to authenticated;
-drop policy if exists "own reserved account" on public.business_reserved_account;
-create policy "own reserved account" on public.business_reserved_account
-  for select to authenticated using (business_id = public.current_business_id());
+-- ---------------------------------------------------------------- 3. no permanent virtual accounts
+-- An earlier draft gave each business a permanent reserved account. That account accepts ANY amount
+-- from anyone, forever, so the wrong figure could arrive and we'd be rejecting money after the fact.
+-- Every payment now goes through Monnify's init-transaction, which binds the amount to that one
+-- transaction and issues a one-time account for exactly it — Monnify enforces the amount, we don't
+-- have to. Dropped here so a project that ran the earlier draft doesn't keep a live any-amount account.
+drop table if exists public.business_reserved_account;
 
 -- ---------------------------------------------------------------- 4. payment intents/attempts
 create table if not exists public.billing_payment (
@@ -101,7 +92,7 @@ create table if not exists public.billing_payment (
   our_reference      text not null unique,                   -- paymentReference we generate
   provider_reference text unique,                            -- Monnify's transactionReference
   status             text not null default 'pending'
-                       check (status in ('pending', 'paid', 'underpaid', 'failed', 'abandoned')),
+                       check (status in ('pending', 'paid', 'mismatch', 'failed', 'abandoned')),
   raw                jsonb,
   created_by         uuid references auth.users(id) on delete set null,
   created_at         timestamptz not null default now(),
@@ -117,6 +108,31 @@ grant select on public.billing_payment to authenticated;
 drop policy if exists "own billing payments" on public.billing_payment;
 create policy "own billing payments" on public.billing_payment
   for select to authenticated using (business_id = public.current_business_id());
+
+-- ---------------------------------------------------------------- 4b. downgrading to Free
+-- A downgrade takes effect at the END of the paid period: the customer keeps what they paid for,
+-- nothing is refunded, and there is no cash to claw back from an irreversible bank transfer. A
+-- subscription already lapses at subscription_renews_at, so this is really "don't renew" — the flag
+-- records the intent so the UI can show it and (Phase 3) renewal reminders can skip them.
+alter table public.businesses add column if not exists cancel_at_period_end boolean not null default false;
+comment on column public.businesses.cancel_at_period_end is
+  'Owner asked to move to Free. They keep the paid plan until subscription_renews_at, then lapse. '
+  'Cleared automatically whenever a new payment is activated.';
+
+create or replace function public.set_subscription_cancel(p_cancel boolean)
+returns boolean language plpgsql security definer set search_path = public as $$
+declare v_biz uuid := public.current_business_id();
+begin
+  if v_biz is null then raise exception 'no business' using errcode = 'no_data_found'; end if;
+  -- Billing is the owner's call, not a manager's.
+  if not public.has_business_role(v_biz, auth.uid(), 'owner') then
+    raise exception 'only the owner can change the subscription' using errcode = '42501';
+  end if;
+  update public.businesses set cancel_at_period_end = coalesce(p_cancel, false) where id = v_biz;
+  return coalesce(p_cancel, false);
+end $$;
+revoke all on function public.set_subscription_cancel(boolean) from public, anon;
+grant execute on function public.set_subscription_cancel(boolean) to authenticated;
 
 -- ---------------------------------------------------------------- 5. activation from a confirmed payment
 -- service_role only: the webhook calls this AFTER verifying Monnify's signature and re-confirming the
@@ -136,25 +152,28 @@ begin
     return jsonb_build_object('ok', true, 'idempotent', true, 'business_id', p.business_id);
   end if;
 
-  -- Short payment: keep the money against the business and tell them, rather than silently
-  -- activating a plan they haven't covered or bouncing a transfer they've already sent.
-  if coalesce(p_amount_paid, 0) < p.amount then
+  -- Only an EXACT transfer activates a plan. Anything else is recorded against the business and
+  -- flagged for a human — we never guess what a mismatched amount was meant to buy, and we never
+  -- activate a plan the money doesn't cover. The money is still logged so nothing is lost.
+  if coalesce(p_amount_paid, 0) <> p.amount then
     update public.billing_payment
-       set status = 'underpaid', amount_paid = p_amount_paid,
+       set status = 'mismatch', amount_paid = p_amount_paid,
            provider_reference = coalesce(p_provider_reference, provider_reference),
            raw = coalesce(p_raw, raw)
      where id = p.id;
     insert into public.cs_renewal_payment (business_id, paid_at, amount, plan_key, cycle, notes)
     values (p.business_id, current_date, p_amount_paid, p.plan_key, p.cycle,
-            'Monnify: part payment, subscription not activated');
-    return jsonb_build_object('ok', true, 'activated', false, 'reason', 'underpaid',
+            format('Monnify: expected %s, received %s — subscription NOT activated, needs review',
+                   p.amount, p_amount_paid));
+    return jsonb_build_object('ok', true, 'activated', false, 'reason', 'amount_mismatch',
                               'expected', p.amount, 'received', p_amount_paid);
   end if;
 
   update public.businesses
      set subscription_tier       = p.plan_key,
          subscription_cycle      = p.cycle,
-         subscription_started_at = now()
+         subscription_started_at = now(),
+         cancel_at_period_end    = false   -- paying again cancels any pending move to Free
    where id = p.business_id;
 
   -- The money record. This is what Renewals, revenue reporting and referral earnings all read.
@@ -176,5 +195,36 @@ revoke all on function public.activate_subscription_from_payment(text, text, num
   from public, anon, authenticated;
 -- Only the webhook (service_role) may activate. Nothing the browser can reach grants a subscription.
 grant execute on function public.activate_subscription_from_payment(text, text, numeric, jsonb) to service_role;
+
+-- ---------------------------------------------------------------- 6. billing history for the business
+-- Reads cs_renewal_payment — the money record every payment lands in, whether it came through
+-- Monnify here or was recorded by an admin in the CRM. billing_payment alone would show only
+-- self-serve payments, so a business activated manually would see an empty history.
+-- cs_renewal_payment is CRM/staff-only at the RLS layer, hence SECURITY DEFINER scoped to the
+-- caller's own business.
+create or replace function public.my_billing_history()
+returns table (
+  id uuid, paid_at date, plan_key text, cycle text,
+  amount numeric, currency text, reference text, method text
+)
+language plpgsql stable security definer set search_path = public as $$
+declare v_biz uuid := public.current_business_id();
+begin
+  if v_biz is null then return; end if;
+  return query
+  select rp.id, rp.paid_at, rp.plan_key, rp.cycle,
+         coalesce(rp.amount, 0), coalesce(rp.currency, 'NGN'),
+         coalesce(rp.ref_no, bp.provider_reference, bp.our_reference),
+         coalesce(bp.method, 'manual')
+  from public.cs_renewal_payment rp
+  -- Same business, same day, same amount ⇒ the self-serve payment that produced this record.
+  left join public.billing_payment bp
+    on bp.business_id = rp.business_id and bp.status = 'paid'
+   and bp.amount = rp.amount and bp.paid_at::date = rp.paid_at
+  where rp.business_id = v_biz
+  order by rp.paid_at desc, rp.created_at desc;
+end $$;
+revoke all on function public.my_billing_history() from public, anon;
+grant execute on function public.my_billing_history() to authenticated;
 
 notify pgrst, 'reload schema';

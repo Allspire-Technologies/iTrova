@@ -83,8 +83,8 @@ test.describe("Onboarding plan picker", () => {
     expect(profilePatch.onboarding_profile.modules).toEqual(["export_invoices"]);
     expect(profilePatch.onboarding_profile.scale).toMatchObject({ products: "m" });
     await expect(page.getByText("Pro", { exact: true })).toBeVisible();
-    // All three paths are on offer: trial, immediate upgrade, stay free.
-    await expect(page.getByRole("button", { name: "Request immediate upgrade" })).toBeVisible();
+    // All three paths are on offer: trial, pay now, stay free.
+    await expect(page.getByRole("button", { name: /^Upgrade now — pay / })).toBeVisible();
     await expect(page.getByRole("button", { name: "Use iTrova for Free for now" })).toBeVisible();
     await page.getByRole("button", { name: "Start 7-day free trial" }).click();
     await expect(page.getByText(/Trial active/)).toBeVisible();

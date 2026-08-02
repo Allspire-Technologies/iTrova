@@ -21,6 +21,8 @@ import { cn } from "@/lib/utils";
 import { Link } from "react-router-dom";
 import { LEGAL_LINKS } from "@/lib/legalLinks";
 import { isEmailConfirmed, isValidEmail, normalizeEmail, verifyAction } from "@/lib/emailVerification";
+import { latestPaymentStatus } from "@/lib/billing";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import { lazy, Suspense } from "react";
 
 const TaxSettingsInner = lazy(() => import("@/components/settings/TaxSettings"));
@@ -32,6 +34,7 @@ const TaxSettings = () => (
 const CostingSettingsInner = lazy(() => import("@/components/settings/CostingSettings"));
 const ReferEarnCard = lazy(() => import("@/components/settings/ReferEarnCard"));
 const PaySubscriptionDialog = lazy(() => import("@/components/settings/PaySubscriptionDialog"));
+const BillingHistoryCard = lazy(() => import("@/components/settings/BillingHistoryCard"));
 const CostingSettings = () => (
   <Suspense fallback={<p className="py-8 text-center text-sm text-muted-foreground">Loading costing settings…</p>}>
     <CostingSettingsInner />
@@ -91,14 +94,25 @@ function ViewField({ label, value }: { label: string; value?: string | null }) {
 type NotifPrefs = { low_stock_alerts: boolean; overdue_invoice_alerts: boolean; expiry_alerts: boolean; general_store_alerts: boolean; production_alerts: boolean; expense_alerts: boolean; daily_summary: boolean };
 const DEFAULT_PREFS: NotifPrefs = { low_stock_alerts: true, overdue_invoice_alerts: true, expiry_alerts: true, general_store_alerts: true, production_alerts: true, expense_alerts: true, daily_summary: false };
 
-function PlanCard({ plan, inheritsFrom, action, currentPlan, businessName, refereeDiscount = 0 }: { plan: Plan; inheritsFrom: { name: string; features: string[] } | null; action: PlanChange; currentPlan: string; businessName: string; refereeDiscount?: number }) {
-  const active = plan.key === currentPlan;
+function PlanCard({ plan, inheritsFrom, action, currentPlan, currentCycle = null, businessName, refereeDiscount = 0, cancelPending = false, renewsAt = null, onCancelChange, autoPay = false, renewable = false }: { plan: Plan; inheritsFrom: { name: string; features: string[] } | null; action: PlanChange; currentPlan: string; currentCycle?: string | null; businessName: string; refereeDiscount?: number; cancelPending?: boolean; renewsAt?: string | null; onCancelChange?: (cancel: boolean) => void; autoPay?: boolean; renewable?: boolean }) {
+  const onThisPlan = plan.key === currentPlan;
   const shownFeatures = inheritsFrom ? featuresBeyond(plan.features || [], inheritsFrom.features) : (plan.features || []);
   const cycles = (plan.prices || [])
     .filter(p => p.is_active)
     .sort((a, b) => CYCLE_ORDER.indexOf(a.cycle) - CYCLE_ORDER.indexOf(b.cycle));
-  const [cycle, setCycle] = useState<BillingCycle>(cycles[0]?.cycle ?? "monthly");
+  // Start on the cycle they're actually billed on, so their current plan reads "Current plan"
+  // rather than offering to sell them a cycle they already have.
+  const [cycle, setCycle] = useState<BillingCycle>(
+    (onThisPlan && currentCycle && cycles.some(c => c.cycle === currentCycle) ? currentCycle as BillingCycle : cycles[0]?.cycle) ?? "monthly",
+  );
   const [payOpen, setPayOpen] = useState(false);
+  const [downgradeOpen, setDowngradeOpen] = useState(false);
+  // Arriving from the "Plan expired / Expires in Nd" badge — open the payment straight away for the
+  // plan they're renewing, rather than making them find it on the page.
+  useEffect(() => { if (autoPay) setPayOpen(true); }, [autoPay]);
+  // "Current plan" means this plan AND this billing cycle. Switching the selector to a cycle they
+  // aren't on is a real, payable change — it used to fall through to "Current plan" and dead-end.
+  const active = onThisPlan && (!currentCycle || cycle === currentCycle);
   const selected = cycles.find(p => p.cycle === cycle) ?? cycles[0];
   const base = selected ? Number(selected.price_amount) : Number(plan.price_amount);
   const cycleDiscount = selected ? Number(selected.discount_percent) : 0;
@@ -107,7 +121,7 @@ function PlanCard({ plan, inheritsFrom, action, currentPlan, businessName, refer
   // A referred first-time payer's discount auto-applies to their first payment (upgrades only, paid
   // plans only). Layered on top of any cycle discount / promo. RPC gates eligibility (valid code +
   // not yet a paying subscriber), so refereeDiscount is 0 unless it should apply.
-  const refereeOn = refereeDiscount > 0 && base > 0 && action !== "downgrade";
+  const refereeOn = refereeDiscount > 0 && base > 0;  // any first payment qualifies; the server is authoritative
   const effective = refereeOn ? applyDiscount(listEffective, refereeDiscount) : listEffective;
   const money = (n: number) =>
     n === 0
@@ -115,12 +129,12 @@ function PlanCard({ plan, inheritsFrom, action, currentPlan, businessName, refer
       : new Intl.NumberFormat(undefined, { style: "currency", currency: plan.price_currency || "NGN", currencyDisplay: "narrowSymbol", maximumFractionDigits: 0 }).format(n);
 
   return (
-    <div className={`rounded-xl border-2 p-4 flex flex-col gap-3 transition-colors ${active ? "border-brand bg-brand-light/30" : "border-border/60"}`}>
+    <div className={`rounded-xl border-2 p-4 flex flex-col gap-3 transition-colors ${onThisPlan ? "border-brand bg-brand-light/30" : "border-border/60"}`}>
       <div className="flex items-center justify-between gap-2">
         <span className="font-display font-semibold text-brand-dark">{plan.name}</span>
         <div className="flex items-center gap-1.5">
           {plan.business_id && <Badge variant="outline" className="text-[10px] bg-secondary">Custom</Badge>}
-          {active && <CheckCircle2 className="size-4 text-brand" />}
+          {onThisPlan && <CheckCircle2 className="size-4 text-brand" />}
         </div>
       </div>
 
@@ -174,25 +188,41 @@ function PlanCard({ plan, inheritsFrom, action, currentPlan, businessName, refer
 
       <div className="pt-1">
         {active ? (
-          <p className="text-xs text-brand font-medium text-center">Current plan</p>
-        ) : action === "downgrade" || base === 0 ? (
-          // Downgrades and the free plan collect no money, so they stay a conversation.
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full"
-            onClick={() => {
-              const priceText = base > 0 ? `${money(effective)}/${CYCLE_PERIOD[cycle]}` : money(effective);
-              const msg = `Hi, I'd like to ${action} ${businessName || "my business"} to the ${plan.name} plan (${CYCLE_LABEL[cycle]}) — ${priceText}.`;
-              window.open(`https://wa.me/2348137000305?text=${encodeURIComponent(msg)}`, "_blank");
-            }}
-          >
-            {action === "downgrade" ? "Request downgrade" : "Talk to us"}
-          </Button>
+          // Renewing early was impossible: the current plan showed a label and nothing else, so a
+          // business whose plan was about to lapse had no way to pay for the next period.
+          renewable && base > 0 ? (
+            <div className="space-y-1.5">
+              <Button variant="brand" size="sm" className="w-full" onClick={() => setPayOpen(true)}>
+                Renew · {money(effective)}
+              </Button>
+              <p className="text-[11px] text-muted-foreground text-center">Current plan</p>
+            </div>
+          ) : (
+            <p className="text-xs text-brand font-medium text-center">Current plan</p>
+          )
+        ) : base === 0 ? (
+          // ONLY a free plan collects nothing. Every priced plan is payable — moving DOWN from
+          // Business to Pro is still a purchase, and used to dead-end on "Request downgrade".
+          // Downgrading takes effect at the END of the paid period: they keep what they paid for,
+          // and no refund is owed on a transfer that can't be reversed.
+          cancelPending ? (
+            <div className="space-y-1.5 text-center">
+              <p className="text-xs text-muted-foreground">
+                Moving to Free{renewsAt ? ` on ${renewsAt}` : " at the end of your period"}.
+              </p>
+              <Button variant="outline" size="sm" className="w-full" onClick={() => onCancelChange?.(false)}>
+                Keep my current plan
+              </Button>
+            </div>
+          ) : (
+            <Button variant="outline" size="sm" className="w-full" onClick={() => setDowngradeOpen(true)}>
+              Downgrade to Free
+            </Button>
+          )
         ) : (
           <>
             <Button variant="brand" size="sm" className="w-full" onClick={() => setPayOpen(true)}>
-              Pay {money(effective)}
+              {onThisPlan ? `Switch to ${CYCLE_LABEL[cycle]} · ${money(effective)}` : `Pay ${money(effective)}`}
             </Button>
             <button
               type="button"
@@ -205,18 +235,34 @@ function PlanCard({ plan, inheritsFrom, action, currentPlan, businessName, refer
             >
               or pay another way
             </button>
-            {payOpen && (
-              <Suspense fallback={null}>
-                <PaySubscriptionDialog
-                  open={payOpen} onOpenChange={setPayOpen}
-                  planKey={plan.key} planName={plan.name} cycle={cycle}
-                  currency={plan.price_currency || "NGN"}
-                />
-              </Suspense>
-            )}
           </>
         )}
       </div>
+
+      {/* Mounted outside the branches above: renewing the CURRENT plan opens this too, and it used
+          to exist only on the not-yet-yours cards. */}
+      {payOpen && (
+        <Suspense fallback={null}>
+          <PaySubscriptionDialog
+            open={payOpen} onOpenChange={setPayOpen}
+            planKey={plan.key} planName={plan.name} cycle={cycle}
+            currency={plan.price_currency || "NGN"}
+          />
+        </Suspense>
+      )}
+
+      <ConfirmDialog
+        open={downgradeOpen}
+        onOpenChange={setDowngradeOpen}
+        title="Move to the Free plan?"
+        description={
+          renewsAt
+            ? `You'll keep your current plan and everything in it until ${renewsAt}, then move to Free. Nothing is charged, and you can cancel this any time before then.`
+            : "You'll move to the Free plan at the end of your current period. Nothing is charged, and you can cancel this any time before then."
+        }
+        confirmLabel="Move to Free"
+        onConfirm={() => { onCancelChange?.(true); setDowngradeOpen(false); }}
+      />
     </div>
   );
 }
@@ -285,6 +331,33 @@ export default function Settings() {
   const { fmtDate } = useDateFormat();
   const isOwner = role === "owner";
 
+  // ?pay=1 comes from the plan-expiry badge. Renew the plan they're actually on — `subscription.tier`
+  // keeps the real tier even once it has lapsed (the app treats an expired plan as Free for access,
+  // but you renew what you had, not Free). Cleared after use so a refresh doesn't reopen it.
+  const [payNowPlan, setPayNowPlan] = useState<string | null>(null);
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("pay") !== "1") return;
+    const tier = subscription?.tier;
+    if (!tier || tier === "free") return;
+    setPayNowPlan(tier);
+    window.history.replaceState({}, "", "/settings?tab=billing");
+  }, [subscription?.tier]);
+
+  // A pending move to Free. It takes effect when the paid period ends, so this is just the intent —
+  // the business keeps everything it paid for until then, and paying again clears it server-side.
+  const [cancelAtPeriodEnd, setCancelAtPeriodEnd] = useState(false);
+  useEffect(() => {
+    setCancelAtPeriodEnd(Boolean((business as { cancel_at_period_end?: boolean } | null)?.cancel_at_period_end));
+  }, [business]);
+  const setSubscriptionCancel = async (cancel: boolean) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase as any).rpc("set_subscription_cancel", { p_cancel: cancel });
+    if (error) return toast.error(error.message);
+    setCancelAtPeriodEnd(cancel);
+    toast.success(cancel ? "You'll move to Free at the end of your period." : "Your plan will continue.");
+    refresh();
+  };
+
   // Referral: a referred first-time payer's auto-applied first-payment discount (0 = none/already paid).
   // Validated server-side (valid code + not yet a paying subscriber) by my_referee_discount().
   const [refereeDiscount, setRefereeDiscount] = useState(0);
@@ -293,6 +366,28 @@ export default function Settings() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (supabase as any).rpc("my_referee_discount").then(({ data }: { data: unknown }) => setRefereeDiscount(Number(data) || 0));
   }, [isOwner, business]);
+
+  // Returning from Monnify's card page. The webhook is what actually activates the plan, so confirm
+  // against our own record rather than trusting the redirect, then tidy the URL.
+  useEffect(() => {
+    const ref = new URLSearchParams(window.location.search).get("paid");
+    if (!ref) return;
+    let tries = 0;
+    const check = async () => {
+      const status = await latestPaymentStatus(ref);
+      if (status === "paid") {
+        toast.success("Payment received — your plan is active.");
+        refresh();
+      } else if (status === "mismatch") {
+        toast.warning("The amount received didn't match — your plan isn't active yet. Please contact us.");
+      } else if (++tries < 6) {
+        return void setTimeout(check, 3000);   // the webhook can land a moment after the redirect
+      }
+      window.history.replaceState({}, "", "/settings?tab=billing");
+    };
+    check();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Business Profile
   const [bizName, setBizName] = useState("");
@@ -347,7 +442,13 @@ export default function Settings() {
 
   // Sectioned layout: tabs + per-card view→edit. Data cards render read-only until Edit is pressed.
   type SettingsTab = "business" | "preferences" | "billing" | "permissions" | "security";
-  const [tab, setTab] = useState<SettingsTab>("business");
+  // ?tab=billing&paid=<ref> is where Monnify returns a card payer — land them on Billing, not the
+  // default Business tab, and confirm the payment they just made.
+  const [tab, setTab] = useState<SettingsTab>(() => {
+    const t = new URLSearchParams(window.location.search).get("tab");
+    return (["business", "preferences", "billing", "permissions", "security"] as const).includes(t as SettingsTab)
+      ? (t as SettingsTab) : "business";
+  });
   const [editProfile, setEditProfile] = useState(false);
   const [editExporter, setEditExporter] = useState(false);
   const [editRegional, setEditRegional] = useState(false);
@@ -973,7 +1074,16 @@ export default function Settings() {
                 const currentSortOrder = plans.find(p => p.key === currentPlan)?.sort_order ?? null;
                 const action = planChangeAction(plan.sort_order, currentSortOrder);
                 return (
-                  <PlanCard key={plan.key} plan={plan} inheritsFrom={inheritsFrom} action={action} currentPlan={currentPlan} businessName={business?.name || ""} refereeDiscount={refereeDiscount} />
+                  <PlanCard
+                    key={plan.key} plan={plan} inheritsFrom={inheritsFrom} action={action}
+                    currentPlan={currentPlan} currentCycle={subscription?.cycle ?? null}
+                    businessName={business?.name || ""} refereeDiscount={refereeDiscount}
+                    cancelPending={cancelAtPeriodEnd}
+                    renewsAt={subscription?.renewsAt ? fmtDate(subscription.renewsAt) : null}
+                    onCancelChange={setSubscriptionCancel}
+                    autoPay={payNowPlan === plan.key}
+                    renewable={Boolean(subscription && (subscription.expired || (subscription.daysRemaining != null && subscription.daysRemaining <= 7)))}
+                  />
                 );
               })}
             </div>
@@ -981,6 +1091,7 @@ export default function Settings() {
             <CustomPlanCard reference={highestCataloguePlan(plans)} />
           </CardContent>
         </Card>
+        <Suspense fallback={null}><BillingHistoryCard /></Suspense>
         <Suspense fallback={null}><ReferEarnCard /></Suspense>
         </>
       )}
