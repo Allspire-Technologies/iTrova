@@ -178,4 +178,44 @@ test.describe("Invoices", () => {
     await expect(dialog.getByRole("button", { name: "Create invoice" })).toBeDisabled();
     expect(called).toBe(false);
   });
+
+  test("saving as draft asks for status 'draft' — the server takes no stock for it", async ({ page }) => {
+    await authenticate(page, { role: "owner" });
+    await stubRows(page, "products", [
+      { id: "p1", name: "Bag of rice", selling_price: 5000, cost_price: 3000, stock_quantity: 10 },
+    ]);
+    let saveBody: { _payload?: { status?: string | null } } | null = null;
+    await page.route("**/rest/v1/rpc/save_invoice**", (r) => {
+      saveBody = r.request().postDataJSON();
+      return r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ invoice_id: "inv-d", invoice_number: "INV-010", status: "draft" }) });
+    });
+    await page.goto("/invoices");
+    await page.getByRole("button", { name: "New invoice" }).first().click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("textbox").first().fill("Ada");
+    await dialog.getByRole("combobox").first().click();
+    await page.getByRole("option", { name: /Bag of rice/ }).click();
+    await dialog.getByPlaceholder("Qty").fill("3");
+    await dialog.getByRole("button", { name: "Save as draft" }).click();
+    expect(saveBody?._payload?.status).toBe("draft");
+  });
+
+  test("a draft can be saved even when the lines exceed available stock", async ({ page }) => {
+    await authenticate(page, { role: "owner" });
+    await stubRows(page, "products", [
+      { id: "p1", name: "Bag of rice", selling_price: 5000, cost_price: 3000, stock_quantity: 2 },
+    ]);
+    await page.route("**/rest/v1/rpc/save_invoice**", (r) =>
+      r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ invoice_id: "inv-d", invoice_number: "INV-011", status: "draft" }) }));
+    await page.goto("/invoices");
+    await page.getByRole("button", { name: "New invoice" }).first().click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("textbox").first().fill("Ada");
+    await dialog.getByRole("combobox").first().click();
+    await page.getByRole("option", { name: /Bag of rice/ }).click();
+    await dialog.getByPlaceholder("Qty").fill("5"); // more than the 2 in stock
+    // Issuing is blocked by the oversell guard, but a draft reserves nothing, so it stays available.
+    await expect(dialog.getByRole("button", { name: "Create invoice" })).toBeDisabled();
+    await expect(dialog.getByRole("button", { name: "Save as draft" })).toBeEnabled();
+  });
 });
