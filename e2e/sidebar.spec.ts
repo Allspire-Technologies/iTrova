@@ -85,27 +85,55 @@ test.describe("Sidebar grouping", () => {
     const aside = page.locator("aside").first();
     const nav = aside.locator("nav").first();
 
+    // The sidebar animates its width (transition-all duration-200). CI's DOM snapshot showed the
+    // failure in the COLLAPSED pass — i.e. mid-animation — with the mismatch varying run to run
+    // (13.0px, then 12.0px on retry), which is a moving layout, not a broken one. Kill the animation
+    // outright so the geometry assertions measure a settled sidebar rather than racing it.
+    await page.addStyleTag({ content: "*, *::before, *::after { transition: none !important; animation: none !important; }" });
+    const settled = async () => {
+      await expect(aside).toBeVisible();      // it mounts behind a skeleton, so wait for it first
+      let prev = -1;
+      await expect.poll(async () => {
+        const box = await aside.boundingBox();
+        if (!box) return false;
+        const same = box.width === prev;
+        prev = box.width;
+        return same;
+      }, { timeout: 5000, intervals: [100] }).toBe(true);
+    };
+
     for (const collapse of [false, true]) {
       if (collapse) await aside.getByRole("button", { name: "Collapse sidebar" }).click();
+      await settled();
       expect(await nav.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
 
-      // The scrolling nav loses this much width to its scrollbar; the pinned footer doesn't scroll,
-      // so it keeps it. That's 0 where scrollbars overlay (most desktops) but a few px on platforms
-      // that reserve space — so it's the tolerance, not a failure. Measured rather than hardcoded
-      // because the width differs per platform: asserting exact equality made this test flaky on CI.
-      const gutter = await nav.evaluate((el) => (el as HTMLElement).offsetWidth - el.clientWidth);
+      // Take every measurement in ONE evaluate. Separate boundingBox() calls are separate async
+      // round-trips, so during the width animation each samples a different frame — which is how
+      // this produced a 13.0px mismatch on CI and 12.0px on the retry, while passing locally.
+      const m = await aside.evaluate((el) => {
+        const nav = el.querySelector("nav")!;
+        const row = nav.querySelector("a")!.getBoundingClientRect();
+        const links = el.querySelectorAll("a[href='/settings']");
+        const settings = links[links.length - 1].getBoundingClientRect();
+        const icon = nav.querySelector("a svg")!.getBoundingClientRect();
+        const aside = el.getBoundingClientRect();
+        return {
+          rowX: row.x, rowW: row.width,
+          setX: settings.x, setW: settings.width,
+          iconCentre: icon.x + icon.width / 2,
+          asideCentre: aside.x + aside.width / 2,
+          // The scrolling nav loses this to a reserved scrollbar; the pinned footer doesn't scroll,
+          // so it keeps it. 0 where scrollbars overlay, a few px where they take space.
+          gutter: (nav as HTMLElement).offsetWidth - nav.clientWidth,
+        };
+      });
 
       // A nav row and the pinned Settings row line up: identical left edge, same width bar the gutter.
-      const row = (await nav.locator("a").first().boundingBox())!;
-      const settings = (await aside.locator("a[href='/settings']").last().boundingBox())!;
-      expect(settings.x).toBeCloseTo(row.x, 0);                       // left edge is exact
-      expect(Math.abs(settings.width - row.width)).toBeLessThanOrEqual(gutter + 1);
+      expect(m.setX).toBeCloseTo(m.rowX, 0);
+      expect(Math.abs(m.setW - m.rowW)).toBeLessThanOrEqual(m.gutter + 1);
       if (collapse) {
-        const box = (await aside.boundingBox())!;
-        const icon = (await nav.locator("a svg").first().boundingBox())!;
         // Centred in the space actually available — a reserved scrollbar shifts that centre by half.
-        const drift = Math.abs((icon.x + icon.width / 2) - (box.x + box.width / 2));
-        expect(drift).toBeLessThanOrEqual(gutter / 2 + 1);
+        expect(Math.abs(m.iconCentre - m.asideCentre)).toBeLessThanOrEqual(m.gutter / 2 + 1);
       }
     }
   });
