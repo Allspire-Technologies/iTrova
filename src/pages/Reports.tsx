@@ -11,6 +11,7 @@ import { Download, TrendingUp, ShoppingCart, Package, AlertTriangle, Truck, User
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, AreaChart, Area, CartesianGrid, PieChart, Pie, Cell } from "recharts";
 import { paymentLabel } from "@/lib/receipt";
+import { pdfMoneyFormatter } from "@/lib/pdf";
 import { toast } from "sonner";
 import { ReportsChartSkeleton } from "@/components/Skeletons";
 import {
@@ -48,8 +49,8 @@ type ProdRun = {
 const PAY_COLORS = ["hsl(var(--brand))", "hsl(var(--brand) / 0.6)", "hsl(var(--brand) / 0.35)", "hsl(var(--muted-foreground) / 0.55)"];
 
 export default function Reports() {
-  const { business, hasModule, can, user } = useAuth();
-  const { fmt } = useCurrency();
+  const { business, hasModule, can, user, profile } = useAuth();
+  const { fmt, currency } = useCurrency();
   const { fmtDate } = useDateFormat();
   const showExpenses = hasModule("expenditure");
   // The report is composed from the viewer's permissions: money metrics need reports.view_financials;
@@ -360,24 +361,40 @@ export default function Reports() {
       import("jspdf"),
       import("jspdf-autotable"),
     ]);
+    // Shadow the on-screen formatter for the whole export: jsPDF's built-in Helvetica has no ₦
+    // glyph (or ∞/→), so "₦45,000" prints as garbage in the file. Money in the PDF uses the same
+    // ASCII currency-code style as the invoice PDFs; any future line added here is safe by default.
+    const fmt = pdfMoneyFormatter(currency);
+
     const doc = new jsPDF({ unit: "pt", format: "a4" });
     const M = 40; const w = doc.internal.pageSize.getWidth();
-    doc.setFont("helvetica", "bold").setFontSize(20).text("Business Report", M, 56);
+    // A cashier's export is their own report, and its title should say so — not "Business Report".
+    doc.setFont("helvetica", "bold").setFontSize(20).text(seesFinancials ? "Business Report" : "My Sales Report", M, 56);
     doc.setFont("helvetica", "normal").setFontSize(10);
     doc.text(`${business?.name || ""}`, w - M, 56, { align: "right" });
-    doc.text(`Period: ${from} → ${to}`, M, 74);
+    doc.text(`Period: ${from} to ${to}`, M, 74);
+    if (!seesFinancials && profile?.owner_name) doc.text(profile.owner_name, w - M, 74, { align: "right" });
 
     const tableStyle = {
       styles: { fontSize: 10, cellPadding: 6 },
       headStyles: { fillColor: [30, 41, 59] as [number, number, number], textColor: 255 },
       margin: { left: M, right: M },
     };
-    const right = (...cols: number[]) => Object.fromEntries(cols.map(c => [c, { halign: "right" as const }]));
+    // autoTable's columnStyles aligns BODY cells only — the head row ignores it, which left "Value"/
+    // "Amount"/"Share" floating mid-table above right-aligned numbers. The hook aligns the header
+    // cell with its column so each label sits directly over its figures.
+    const right = (...cols: number[]) => ({
+      columnStyles: Object.fromEntries(cols.map(c => [c, { halign: "right" as const }])),
+      didParseCell: (d: { section: string; column: { index: number }; cell: { styles: { halign?: string } } }) => {
+        if (d.section === "head" && cols.includes(d.column.index)) d.cell.styles.halign = "right";
+      },
+    });
 
     // The PDF mirrors the on-screen composition: only sections the viewer can see are included.
     autoTable(doc, {
       startY: 96,
       head: [["Metric", "Value"]],
+      ...right(1),   // numbers read from the decimal point; header aligns with them too
       body: seesFinancials ? [
         ["Revenue", fmt(totals.revenue)],
         ["Transactions", String(totals.txns)],
@@ -407,7 +424,7 @@ export default function Reports() {
     let y = doc.lastAutoTable.finalY + 20;
     const section = (title: string, head: string[], body: (string | number)[][], rightCols: number[]) => {
       doc.setFont("helvetica", "bold").setFontSize(12).text(title, M, y);
-      autoTable(doc, { startY: y + 8, head: [head], body, columnStyles: right(...rightCols), ...tableStyle });
+      autoTable(doc, { startY: y + 8, head: [head], body, ...right(...rightCols), ...tableStyle });
       // @ts-expect-error lastAutoTable
       y = doc.lastAutoTable.finalY + 20;
     };
@@ -428,7 +445,8 @@ export default function Reports() {
       section(seesFinancials ? "Payment methods" : "My payment methods", ["Method", "Amount", "Share"], pdfPayMethods.map(r => [paymentLabel(r.method), fmt(r.total), `${r.pct}%`]), [1, 2]);
     }
     if (seesInventory && turnover.length > 0) {
-      section("Inventory turnover", ["Product", "Sold", "On hand", "Ratio"], turnover.map(r => [r.name, String(r.sold), String(r.stock), r.rate != null ? r.rate.toFixed(2) + "×" : "∞"]), [1, 2, 3]);
+      // ASCII "x" and "Sold out" on purpose: the screen's × and ∞ aren't in the PDF font's charset.
+      section("Inventory turnover", ["Product", "Sold", "On hand", "Ratio"], turnover.map(r => [r.name, String(r.sold), String(r.stock), r.rate != null ? r.rate.toFixed(2) + "x" : "Sold out"]), [1, 2, 3]);
     }
     if (seesProduction) {
       section("Production", ["Metric", "Value"], [
@@ -442,7 +460,7 @@ export default function Reports() {
       }
     }
 
-    doc.save(`report_${from}_to_${to}.pdf`);
+    doc.save(`${seesFinancials ? "business-report" : "my-sales-report"}_${from}_to_${to}.pdf`);
     toast.success("Report downloaded");
   };
 
