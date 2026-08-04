@@ -128,7 +128,10 @@ test.describe("Sidebar grouping", () => {
         };
       });
 
-      // A nav row and the pinned Settings row line up: identical left edge, same width bar the gutter.
+      // A nav row and the pinned Settings row line up. ±0.5px on the left edge is deliberate, not
+      // sloppiness: getBoundingClientRect() returns subpixel floats that differ across renderers,
+      // and this test has already flaked on CI twice for over-asserting geometry. A real
+      // misalignment would be padding-sized (≥4px), which this still catches.
       expect(m.setX).toBeCloseTo(m.rowX, 0);
       expect(Math.abs(m.setW - m.rowW)).toBeLessThanOrEqual(m.gutter + 1);
       if (collapse) {
