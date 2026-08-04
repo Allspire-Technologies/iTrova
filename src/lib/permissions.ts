@@ -104,7 +104,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<"manager" | "cashier", PermissionM
   cashier: {
     pos: ["view", "orders_manage"],
     invoices: ["view", "create", "print"], // cashiers print receipts every sale
-    reports: ["view"], // scoped: without view_financials they see only their own sales
+    reports: ["view", "export"], // scoped: without view_financials they see (and export) only their own sales
   },
 };
 

@@ -21,8 +21,8 @@ test.describe("Reports", () => {
     await expect(page.getByText("Revenue trend")).toHaveCount(0);
     await expect(page.getByText("Sales by staff")).toHaveCount(0);
     await expect(page.getByText("Inventory turnover")).toHaveCount(0);
-    // Cashier defaults grant view but not export.
-    await expect(page.getByRole("button", { name: "Export PDF" })).toHaveCount(0);
+    // Cashiers can download what they can see — their export is the scoped "My sales" report.
+    await expect(page.getByRole("button", { name: "Export PDF" })).toBeVisible();
   });
 
   test("a manager still sees the full report including production activity", async ({ page }) => {
