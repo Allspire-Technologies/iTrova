@@ -353,8 +353,10 @@ export default function AppShell() {
                 </span>
                 {planAlert && (
                   <Hint label={planAlert.danger ? "Your plan has expired — renew to restore features" : "Your plan is about to expire — renew to avoid losing features"} side="bottom">
+                    {/* Straight to paying for the plan they're on. Dropping them on Settings to hunt
+                        for the Billing tab loses people at the exact moment they meant to renew. */}
                     <Link
-                      to="/settings"
+                      to="/settings?tab=billing&pay=1"
                       className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold transition-opacity hover:opacity-80 ${planAlert.danger ? "bg-danger/10 text-danger" : "bg-warning/10 text-warning"}`}
                     >
                       {planAlert.danger ? <AlertTriangle className="size-3" /> : <Clock className="size-3" />}
