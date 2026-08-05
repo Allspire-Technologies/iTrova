@@ -20,11 +20,16 @@ export default function BillingHistoryCard() {
   const { business } = useAuth();
   const { fmtDate } = useDateFormat();
   const [rows, setRows] = useState<BillingHistoryRow[] | null>(null);
+  const [failed, setFailed] = useState(false);
   const [viewing, setViewing] = useState<BillingHistoryRow | null>(null);
 
-  useEffect(() => {
-    listBillingHistory().then(setRows).catch(() => setRows([]));
-  }, [business?.id]);
+  // A failed request is NOT an empty history — it keeps the card visible with a retry.
+  const load = () => {
+    setFailed(false);
+    setRows(null);
+    listBillingHistory().then(setRows).catch(() => setFailed(true));
+  };
+  useEffect(load, [business?.id]);
 
   // Five per page, as asked — short enough to scan without hiding a year of payments.
   const { paged, page, setPage, pageSize, setPageSize, pageCount, total } = usePagination(rows ?? [], 5);
@@ -58,10 +63,10 @@ export default function BillingHistoryCard() {
     }
   };
 
-  if (rows !== null && rows.length === 0) return null;   // nothing paid yet — don't show an empty card
+  if (!failed && rows !== null && rows.length === 0) return null;   // nothing paid yet — don't show an empty card
 
   return (
-    <Card className="shadow-card border-border/60">
+    <Card data-testid="billing-history" className="shadow-card border-border/60">
       <CardHeader className="pb-4">
         <div className="flex items-center gap-3">
           <div className="size-9 rounded-lg bg-brand-light grid place-items-center text-brand"><Receipt className="size-4" /></div>
@@ -72,7 +77,12 @@ export default function BillingHistoryCard() {
         </div>
       </CardHeader>
       <CardContent className="space-y-2">
-        {rows === null ? (
+        {failed ? (
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <p className="text-sm text-muted-foreground">Couldn't load your billing history.</p>
+            <Button variant="outline" size="sm" onClick={load}>Try again</Button>
+          </div>
+        ) : rows === null ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : (
           <>

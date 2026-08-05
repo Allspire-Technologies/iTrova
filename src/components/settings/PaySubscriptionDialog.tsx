@@ -10,15 +10,18 @@ import { useAuth } from "@/contexts/AuthContext";
 /** Pay for a plan by bank transfer or card, both settled on Monnify with the amount locked in.
  *  The amount shown is the server's quote, not a figure computed here — see src/lib/billing.ts. */
 export default function PaySubscriptionDialog({
-  open, onOpenChange, planKey, planName, cycle, currency = "NGN",
+  open, onOpenChange, planKey, planName, cycle, currency = "NGN", onPaid,
 }: {
   open: boolean; onOpenChange: (v: boolean) => void;
   planKey: string; planName: string; cycle: string; currency?: string;
+  /** Fires once the webhook confirms payment (after the auth context refresh). */
+  onPaid?: () => void;
 }) {
   const { refresh } = useAuth();
   const [start, setStart] = useState<PaymentStart | null>(null);
   const [busy, setBusy] = useState(false);
   const [paid, setPaid] = useState(false);
+  const [failed, setFailed] = useState(false);
   const poll = useRef<number | null>(null);
 
   const money = (n: number) =>
@@ -28,11 +31,15 @@ export default function PaySubscriptionDialog({
     setBusy(true);
     try {
       const s = await createPayment(planKey, cycle, method);
-      setStart(s);
       // Both methods finish on Monnify's page, which has the amount bound to the transaction — for a
       // transfer it shows a one-time account for exactly this figure, so a wrong amount can't be sent.
-      if (s.checkout_url) window.open(s.checkout_url, "_blank", "noopener,noreferrer");
-      else toast.error("Monnify didn't return a payment page — please try again.");
+      // No page back means nothing to wait for: stay on the method picker instead of a dead end.
+      if (!s.checkout_url) {
+        toast.error("Monnify didn't return a payment page — please try again.");
+        return;
+      }
+      setStart(s);
+      window.open(s.checkout_url, "_blank", "noopener,noreferrer");
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -41,22 +48,25 @@ export default function PaySubscriptionDialog({
   };
 
   // Money arrives out-of-band (the customer's bank app), so watch for the webhook to land.
+  // Both outcomes are terminal: stop polling on paid AND on mismatch (no toast every 5s).
   useEffect(() => {
-    if (!start?.reference || paid) return;
+    if (!start?.reference || paid || failed) return;
     poll.current = window.setInterval(async () => {
       const status = await latestPaymentStatus(start.reference);
       if (status === "paid") {
         setPaid(true);
         toast.success("Payment received — your plan is active.");
-        refresh();
+        await refresh();
+        onPaid?.();
       } else if (status === "mismatch") {
+        setFailed(true);
         toast.warning("The amount received didn't match — your plan isn't active yet. Please contact us.");
       }
     }, 5000);
     return () => { if (poll.current) window.clearInterval(poll.current); };
-  }, [start?.reference, paid, refresh]);
+  }, [start?.reference, paid, failed, refresh, onPaid]);
 
-  useEffect(() => { if (!open) { setStart(null); setPaid(false); } }, [open]);
+  useEffect(() => { if (!open) { setStart(null); setPaid(false); setFailed(false); } }, [open]);
 
 
   const q = start?.quote;
@@ -76,13 +86,13 @@ export default function PaySubscriptionDialog({
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">How would you like to pay?</p>
             <div className="grid sm:grid-cols-2 gap-3">
-              <button onClick={() => begin("transfer")} disabled={busy}
+              <button type="button" onClick={() => begin("transfer")} disabled={busy}
                 className="rounded-xl border-2 border-border p-4 text-left hover:border-brand/50 transition-colors disabled:opacity-60">
                 <Building2 className="size-5 text-brand mb-2" />
                 <div className="font-medium">Bank transfer</div>
                 <div className="text-xs text-muted-foreground mt-0.5">Monnify gives you a one-off account number for this exact amount.</div>
               </button>
-              <button onClick={() => begin("card")} disabled={busy}
+              <button type="button" onClick={() => begin("card")} disabled={busy}
                 className="rounded-xl border-2 border-border p-4 text-left hover:border-brand/50 transition-colors disabled:opacity-60">
                 <CreditCard className="size-5 text-brand mb-2" />
                 <div className="font-medium">Card</div>
@@ -114,9 +124,15 @@ export default function PaySubscriptionDialog({
                 <ExternalLink className="size-4" /> Reopen payment page
               </Button>
             )}
-            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-              <Loader2 className="size-3.5 animate-spin" /> Waiting for confirmation… you can close this and come back.
-            </p>
+            {failed ? (
+              <p className="text-xs text-destructive">
+                The amount received didn't match, so your plan isn't active. Contact us and we'll sort it out.
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                <Loader2 className="size-3.5 animate-spin" /> Waiting for confirmation… you can close this and come back.
+              </p>
+            )}
           </div>
         )}
 

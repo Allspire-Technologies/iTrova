@@ -13,7 +13,7 @@ import { CURRENCY_OPTIONS } from "@/lib/format";
 import { INDUSTRY_OPTIONS } from "@/lib/industries";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { SETTINGS_PAGE_CLASS, SETTINGS_FIELD_GRID, SETTINGS_PLANS_GRID } from "@/lib/settingsLayout";
-import { highestCataloguePlan, previousCataloguePlan, includesAll, featuresBeyond, planChangeAction, type PlanChange } from "@/lib/planFeatures";
+import { highestCataloguePlan, previousCataloguePlan, includesAll, featuresBeyond } from "@/lib/planFeatures";
 import { isDirty, isPasswordFormReady } from "@/lib/settingsForms";
 import { toast } from "sonner";
 import { Eye, EyeOff, Building2, Globe, Bell, Link2, CreditCard, Shield, CheckCircle2, Scale, ChevronRight, Pencil } from "lucide-react";
@@ -94,7 +94,7 @@ function ViewField({ label, value }: { label: string; value?: string | null }) {
 type NotifPrefs = { low_stock_alerts: boolean; overdue_invoice_alerts: boolean; expiry_alerts: boolean; general_store_alerts: boolean; production_alerts: boolean; expense_alerts: boolean; daily_summary: boolean };
 const DEFAULT_PREFS: NotifPrefs = { low_stock_alerts: true, overdue_invoice_alerts: true, expiry_alerts: true, general_store_alerts: true, production_alerts: true, expense_alerts: true, daily_summary: false };
 
-function PlanCard({ plan, inheritsFrom, action, currentPlan, currentCycle = null, businessName, refereeDiscount = 0, cancelPending = false, renewsAt = null, onCancelChange, autoPay = false, renewable = false }: { plan: Plan; inheritsFrom: { name: string; features: string[] } | null; action: PlanChange; currentPlan: string; currentCycle?: string | null; businessName: string; refereeDiscount?: number; cancelPending?: boolean; renewsAt?: string | null; onCancelChange?: (cancel: boolean) => void; autoPay?: boolean; renewable?: boolean }) {
+function PlanCard({ plan, inheritsFrom, currentPlan, currentCycle = null, businessName, refereeDiscount = 0, cancelPending = false, renewsAt = null, onCancelChange, autoPay = false, renewable = false }: { plan: Plan; inheritsFrom: { name: string; features: string[] } | null; currentPlan: string; currentCycle?: string | null; businessName: string; refereeDiscount?: number; cancelPending?: boolean; renewsAt?: string | null; onCancelChange?: (cancel: boolean) => void; autoPay?: boolean; renewable?: boolean }) {
   const onThisPlan = plan.key === currentPlan;
   const shownFeatures = inheritsFrom ? featuresBeyond(plan.features || [], inheritsFrom.features) : (plan.features || []);
   const cycles = (plan.prices || [])
@@ -107,6 +107,14 @@ function PlanCard({ plan, inheritsFrom, action, currentPlan, currentCycle = null
   );
   const [payOpen, setPayOpen] = useState(false);
   const [downgradeOpen, setDowngradeOpen] = useState(false);
+  // The subscription hydrates after the first render; adopt the billed cycle when it arrives, or
+  // the current plan can render "Pay …" instead of "Current plan" and never correct itself.
+  useEffect(() => {
+    if (onThisPlan && currentCycle && cycles.some(c => c.cycle === currentCycle)) {
+      setCycle(currentCycle as BillingCycle);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onThisPlan, currentCycle]);
   // Arriving from the "Plan expired / Expires in Nd" badge — open the payment straight away for the
   // plan they're renewing, rather than making them find it on the page.
   useEffect(() => { if (autoPay) setPayOpen(true); }, [autoPay]);
@@ -129,7 +137,7 @@ function PlanCard({ plan, inheritsFrom, action, currentPlan, currentCycle = null
       : new Intl.NumberFormat(undefined, { style: "currency", currency: plan.price_currency || "NGN", currencyDisplay: "narrowSymbol", maximumFractionDigits: 0 }).format(n);
 
   return (
-    <div className={`rounded-xl border-2 p-4 flex flex-col gap-3 transition-colors ${onThisPlan ? "border-brand bg-brand-light/30" : "border-border/60"}`}>
+    <div data-testid={`plan-card-${plan.key}`} className={`rounded-xl border-2 p-4 flex flex-col gap-3 transition-colors ${onThisPlan ? "border-brand bg-brand-light/30" : "border-border/60"}`}>
       <div className="flex items-center justify-between gap-2">
         <span className="font-display font-semibold text-brand-dark">{plan.name}</span>
         <div className="flex items-center gap-1.5">
@@ -230,7 +238,7 @@ function PlanCard({ plan, inheritsFrom, action, currentPlan, currentCycle = null
               onClick={() => {
                 const refText = refereeOn ? ` (includes my ${refereeDiscount}% referral discount)` : "";
                 const msg = `Hi, I'd like to upgrade ${businessName || "my business"} to the ${plan.name} plan (${CYCLE_LABEL[cycle]}) — ${money(effective)}/${CYCLE_PERIOD[cycle]}${refText}.`;
-                window.open(`https://wa.me/2348137000305?text=${encodeURIComponent(msg)}`, "_blank");
+                window.open(`https://wa.me/2348137000305?text=${encodeURIComponent(msg)}`, "_blank", "noopener,noreferrer");
               }}
             >
               or pay another way
@@ -373,19 +381,24 @@ export default function Settings() {
     const ref = new URLSearchParams(window.location.search).get("paid");
     if (!ref) return;
     let tries = 0;
+    let timer: number | undefined;
+    let cancelled = false;   // leaving the page must stop the retry chain (and its URL rewrite)
     const check = async () => {
       const status = await latestPaymentStatus(ref);
+      if (cancelled) return;
       if (status === "paid") {
         toast.success("Payment received — your plan is active.");
         refresh();
       } else if (status === "mismatch") {
         toast.warning("The amount received didn't match — your plan isn't active yet. Please contact us.");
       } else if (++tries < 6) {
-        return void setTimeout(check, 3000);   // the webhook can land a moment after the redirect
+        timer = window.setTimeout(check, 3000);   // the webhook can land a moment after the redirect
+        return;
       }
       window.history.replaceState({}, "", "/settings?tab=billing");
     };
     check();
+    return () => { cancelled = true; if (timer) window.clearTimeout(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1071,11 +1084,9 @@ export default function Settings() {
               {plans.map(plan => {
                 const prev = previousCataloguePlan(plans, plan);
                 const inheritsFrom = prev && includesAll(plan.features || [], prev.features) ? prev : null;
-                const currentSortOrder = plans.find(p => p.key === currentPlan)?.sort_order ?? null;
-                const action = planChangeAction(plan.sort_order, currentSortOrder);
                 return (
                   <PlanCard
-                    key={plan.key} plan={plan} inheritsFrom={inheritsFrom} action={action}
+                    key={plan.key} plan={plan} inheritsFrom={inheritsFrom}
                     currentPlan={currentPlan} currentCycle={subscription?.cycle ?? null}
                     businessName={business?.name || ""} refereeDiscount={refereeDiscount}
                     cancelPending={cancelAtPeriodEnd}

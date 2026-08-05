@@ -24,6 +24,9 @@ const SECRET = () => Deno.env.get("MONNIFY_SECRET_KEY") ?? "";
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
+// A stalled Monnify connection must not hold the invocation until the platform kills it.
+const DEADLINE = () => AbortSignal.timeout(15_000);
+
 /** Monnify signs webhooks with HMAC SHA-512 of the RAW body, keyed by the client secret. */
 async function verifySignature(rawBody: string, signature: string | null): Promise<boolean> {
   if (!signature) return false;
@@ -47,13 +50,15 @@ async function getTransaction(transactionReference: string): Promise<Record<stri
   const auth = await fetch(`${BASE()}/api/v1/auth/login`, {
     method: "POST",
     headers: { Authorization: `Basic ${btoa(`${API_KEY()}:${SECRET()}`)}`, "Content-Type": "application/json" },
+    signal: DEADLINE(),
   });
   const authBody = await auth.json().catch(() => ({}));
   const token = authBody?.responseBody?.accessToken;
-  if (!token) throw new Error("Monnify auth failed while verifying the transaction");
+  if (!auth.ok || !token) throw new Error(`Monnify auth failed while verifying the transaction (${auth.status})`);
 
   const res = await fetch(`${BASE()}/api/v2/transactions/${encodeURIComponent(transactionReference)}`, {
     headers: { Authorization: `Bearer ${token}` },
+    signal: DEADLINE(),
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(`Monnify transaction lookup failed (${res.status})`);
@@ -62,6 +67,13 @@ async function getTransaction(transactionReference: string): Promise<Record<stri
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
+
+  // Without the secret, signature verification would run against an empty HMAC key —
+  // misconfiguration must fail loudly, not quietly reject (or worse, accept) webhooks.
+  if (!API_KEY() || !SECRET()) {
+    console.error("monnify-webhook: MONNIFY_API_KEY / MONNIFY_SECRET_KEY not configured");
+    return json({ error: "not configured" }, 500);
+  }
 
   // The signature covers the exact bytes Monnify sent — read as text, never re-serialise.
   const raw = await req.text();
@@ -79,30 +91,41 @@ Deno.serve(async (req) => {
   const providerReference: string | undefined = data?.transactionReference;
 
   // Acknowledge anything that isn't a completed collection so Monnify stops retrying it.
-  if (event && event !== "SUCCESSFUL_TRANSACTION") {
-    console.log("monnify-webhook: ignoring event", event);
-    return json({ ok: true, ignored: event });
+  // Both references are REQUIRED: without transactionReference we can't independently confirm
+  // the payment with Monnify, and the payload alone must never grant a plan.
+  if (event !== "SUCCESSFUL_TRANSACTION") {
+    console.log("monnify-webhook: ignoring event", event ?? "(none)");
+    return json({ ok: true, ignored: event ?? "no eventType" });
   }
   if (!ourReference) return json({ ok: true, ignored: "no paymentReference" });
+  if (!providerReference) return json({ ok: true, ignored: "no transactionReference" });
 
   try {
-    let amountPaid = Number(data?.amountPaid ?? 0);
-    if (providerReference) {
-      const tx = await getTransaction(providerReference);
-      const status = String(tx?.paymentStatus ?? "");
-      amountPaid = Number(tx?.amountPaid ?? amountPaid);
-      if (status !== "PAID") {
-        console.warn("monnify-webhook: transaction not PAID", providerReference, status);
-        return json({ ok: true, ignored: `status ${status}` });
-      }
+    const tx = await getTransaction(providerReference);
+    const status = String(tx?.paymentStatus ?? "");
+    const amountPaid = Number(tx?.amountPaid ?? 0);
+    if (status !== "PAID") {
+      console.warn("monnify-webhook: transaction not PAID", providerReference, status);
+      return json({ ok: true, ignored: `status ${status}` });
     }
+
+    // Keep only what reconciliation needs — the full payload carries payer identity and card
+    // metadata, and billing_payment.raw is readable by the paying business.
+    const auditRaw = {
+      eventType: event,
+      paymentReference: ourReference,
+      transactionReference: providerReference,
+      amountPaid,
+      paidOn: data?.paidOn ?? null,
+      paymentMethod: data?.paymentMethod ?? null,
+    };
 
     const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const { data: result, error } = await admin.rpc("activate_subscription_from_payment", {
       p_our_reference: ourReference,
-      p_provider_reference: providerReference ?? null,
+      p_provider_reference: providerReference,
       p_amount_paid: amountPaid,
-      p_raw: payload,
+      p_raw: auditRaw,
     });
     if (error) {
       // 500 so Monnify retries — the money arrived, we just failed to record it.

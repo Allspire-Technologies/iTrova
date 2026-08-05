@@ -105,8 +105,8 @@ test.describe("Settings", () => {
     await stubRows(page, "plans", plans);
     await page.goto("/settings");
     await page.getByRole("button", { name: "Billing", exact: true }).click();
-    const proCard = page.locator("div").filter({ hasText: /^Pro/ }).first();
-    await expect(page.getByText("Current plan")).toBeVisible();
+    const proCard = page.getByTestId("plan-card-pro");
+    await expect(proCard.getByText("Current plan")).toBeVisible();
 
     // ...and offer to sell the annual cycle once it's selected, instead of dead-ending.
     await proCard.getByRole("button", { name: "Annually" }).click();
@@ -238,7 +238,7 @@ test.describe("Settings", () => {
     await page.getByRole("button", { name: "Billing", exact: true }).click();
 
     await expect(page.getByText("Billing history")).toBeVisible();
-    const card = page.locator("div").filter({ hasText: /^Billing history/ }).first();
+    const card = page.getByTestId("billing-history");
     // 5 on the first page, not all 7.
     await expect(page.getByText("iTrova Pro — Monthly")).toHaveCount(5);
 
@@ -251,7 +251,7 @@ test.describe("Settings", () => {
     await page.getByRole("dialog").getByRole("button", { name: "Close" }).first().click(); // the X is also named Close
 
     // Page 2 holds the remaining 2.
-    await card.getByRole("button", { name: /next|›|2/i }).first().click();
+    await card.getByRole("button", { name: "Next page" }).click();
     await expect(page.getByText("iTrova Pro — Monthly")).toHaveCount(2);
   });
 

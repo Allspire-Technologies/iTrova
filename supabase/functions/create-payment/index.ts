@@ -26,11 +26,15 @@ const cors = {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
+// A stalled Monnify connection must not hold the invocation until the platform kills it.
+const DEADLINE = () => AbortSignal.timeout(15_000);
+
 /** Bearer token for Monnify's REST API. Short-lived, so fetched per invocation rather than cached. */
 async function monnifyToken(): Promise<string> {
   const res = await fetch(`${BASE()}/api/v1/auth/login`, {
     method: "POST",
     headers: { Authorization: `Basic ${btoa(`${API_KEY()}:${SECRET()}`)}`, "Content-Type": "application/json" },
+    signal: DEADLINE(),
   });
   const body = await res.json().catch(() => ({}));
   const t = body?.responseBody?.accessToken;
@@ -43,6 +47,7 @@ async function monnify(path: string, init: RequestInit = {}): Promise<Record<str
   const res = await fetch(`${BASE()}${path}`, {
     ...init,
     headers: { ...(init.headers ?? {}), Authorization: `Bearer ${t}`, "Content-Type": "application/json" },
+    signal: DEADLINE(),
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok || body?.requestSuccessful === false) {
@@ -85,7 +90,9 @@ Deno.serve(async (req) => {
       /^https?:\/\/localhost(:\d+)?$/,
       /^https?:\/\/127\.0\.0\.1(:\d+)?$/,
       /^https:\/\/([a-z0-9-]+\.)*allspire\.tech$/,
-      /^https:\/\/[a-z0-9-]+\.workers\.dev$/,
+      // Pinned to OUR workers, not *.workers.dev — anyone can register a workers.dev subdomain,
+      // which would make this an open redirect again.
+      /^https:\/\/itrova(-staging)?\.techallspire\.workers\.dev$/,
     ];
     const fallback = Deno.env.get("APP_URL") ?? "https://itrova.allspire.tech";
     const origin = typeof return_origin === "string" && ALLOWED.some((re) => re.test(return_origin))
@@ -143,6 +150,6 @@ Deno.serve(async (req) => {
   } catch (e) {
     // Never leak Monnify's raw error to the browser; it goes to this function's logs instead.
     console.error("create-payment failed:", e);
-    return json({ error: (e as Error).message ?? "Couldn't start the payment." }, 500);
+    return json({ error: "Couldn't start the payment. Please try again." }, 500);
   }
 });

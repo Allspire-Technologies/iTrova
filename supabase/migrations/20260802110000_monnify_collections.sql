@@ -151,6 +151,11 @@ begin
   if p.status = 'paid' then                      -- already handled; a retry is not an error
     return jsonb_build_object('ok', true, 'idempotent', true, 'business_id', p.business_id);
   end if;
+  -- A retried mismatch webhook must not log the money twice (a corrected amount may still proceed).
+  if p.status = 'mismatch' and p.amount_paid is not distinct from p_amount_paid then
+    return jsonb_build_object('ok', true, 'idempotent', true, 'activated', false,
+                              'reason', 'amount_mismatch', 'expected', p.amount, 'received', p_amount_paid);
+  end if;
 
   -- Only an EXACT transfer activates a plan. Anything else is recorded against the business and
   -- flagged for a human — we never guess what a mismatched amount was meant to buy, and we never
@@ -161,24 +166,35 @@ begin
            provider_reference = coalesce(p_provider_reference, provider_reference),
            raw = coalesce(p_raw, raw)
      where id = p.id;
-    insert into public.cs_renewal_payment (business_id, paid_at, amount, plan_key, cycle, notes)
+    insert into public.cs_renewal_payment (business_id, paid_at, amount, plan_key, cycle, ref_no, notes)
     values (p.business_id, current_date, p_amount_paid, p.plan_key, p.cycle,
+            coalesce(p_provider_reference, p.our_reference),
             format('Monnify: expected %s, received %s — subscription NOT activated, needs review',
                    p.amount, p_amount_paid));
     return jsonb_build_object('ok', true, 'activated', false, 'reason', 'amount_mismatch',
                               'expected', p.amount, 'received', p_amount_paid);
   end if;
 
+  -- Renewing the same plan+cycle EARLY starts the new period when the current one ends, so paying
+  -- five days before expiry doesn't cost five days. Everything else (upgrades, lapsed plans) starts
+  -- now. The trg_set_subscription_renews_at trigger derives renews_at from this start.
   update public.businesses
-     set subscription_tier       = p.plan_key,
+     set subscription_started_at = case
+           when subscription_tier = p.plan_key and subscription_cycle = p.cycle
+                and subscription_renews_at > now()
+           then subscription_renews_at
+           else now()
+         end,
+         subscription_tier       = p.plan_key,
          subscription_cycle      = p.cycle,
-         subscription_started_at = now(),
          cancel_at_period_end    = false   -- paying again cancels any pending move to Free
    where id = p.business_id;
 
   -- The money record. This is what Renewals, revenue reporting and referral earnings all read.
-  insert into public.cs_renewal_payment (business_id, paid_at, amount, plan_key, cycle, notes)
+  -- ref_no carries the Monnify reference so billing history can join the two records exactly.
+  insert into public.cs_renewal_payment (business_id, paid_at, amount, plan_key, cycle, ref_no, notes)
   values (p.business_id, current_date, p_amount_paid, p.plan_key, p.cycle,
+          coalesce(p_provider_reference, p.our_reference),
           'Monnify ' || coalesce(p_provider_reference, p.our_reference));
 
   update public.billing_payment
@@ -217,10 +233,12 @@ begin
          coalesce(rp.ref_no, bp.provider_reference, bp.our_reference),
          coalesce(bp.method, 'manual')
   from public.cs_renewal_payment rp
-  -- Same business, same day, same amount ⇒ the self-serve payment that produced this record.
+  -- Joined on the payment reference the activation stamped into ref_no — a business/day/amount
+  -- heuristic fans out when two equal payments land on one day.
   left join public.billing_payment bp
     on bp.business_id = rp.business_id and bp.status = 'paid'
-   and bp.amount = rp.amount and bp.paid_at::date = rp.paid_at
+   and rp.ref_no is not null
+   and (bp.provider_reference = rp.ref_no or bp.our_reference = rp.ref_no)
   where rp.business_id = v_biz
   order by rp.paid_at desc, rp.created_at desc;
 end $$;
