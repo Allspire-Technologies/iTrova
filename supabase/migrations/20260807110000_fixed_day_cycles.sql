@@ -33,7 +33,7 @@ create or replace function public.activate_subscription_from_payment(
   p_our_reference text, p_provider_reference text, p_amount_paid numeric, p_raw jsonb default null
 ) returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare p public.billing_payment%rowtype; v_months int;
+declare p public.billing_payment%rowtype;
 begin
   select * into p from public.billing_payment where our_reference = p_our_reference for update;
   if not found then
@@ -99,7 +99,6 @@ begin
          raw = coalesce(p_raw, raw)
    where id = p.id;
 
-  select count(*) into v_months from public.billing_payment where business_id = p.business_id and status = 'paid';
   return jsonb_build_object('ok', true, 'activated', true, 'business_id', p.business_id,
                             'plan', p.plan_key, 'cycle', p.cycle);
 end $$;

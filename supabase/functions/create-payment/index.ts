@@ -99,7 +99,9 @@ Deno.serve(async (req) => {
     const admin = createClient(url, service);
 
     // ---- Which provider serves this payment is OUR call, read server-side. Default: Monnify.
-    const { data: cfg } = await admin.from("billing_config").select("active_provider").maybeSingle();
+    const { data: cfg, error: cfgErr } = await admin.from("billing_config").select("active_provider").maybeSingle();
+    // A failed read must not silently reroute money — log it, then fall back to the default.
+    if (cfgErr) console.error("create-payment: billing_config read failed, defaulting to monnify:", cfgErr.message);
     const provider: "monnify" | "paystack" = cfg?.active_provider === "paystack" ? "paystack" : "monnify";
     if (provider === "paystack" && !PAYSTACK_SECRET()) {
       return json({ error: "Payments aren't configured — set PAYSTACK_SECRET_KEY." }, 500);
@@ -166,7 +168,9 @@ Deno.serve(async (req) => {
         metadata: { business_id: bizId, plan_key, cycle, business_name: businessName.slice(0, 100) },
       });
       checkoutUrl = data?.authorization_url;
-      providerReference = data?.access_code ?? null;
+      // Stays null until the webhook writes Paystack's transaction id — storing the init-time
+      // access_code here would leave pending rows holding a different identifier type than paid ones.
+      providerReference = null;
     } else {
       const tx = await monnify("/api/v1/merchant/transactions/init-transaction", {
         method: "POST",
