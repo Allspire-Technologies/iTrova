@@ -31,15 +31,18 @@ export default function PaySubscriptionDialog({
     setBusy(true);
     try {
       const s = await createPayment(planKey, cycle, method);
-      // Both methods finish on Monnify's page, which has the amount bound to the transaction — for a
-      // transfer it shows a one-time account for exactly this figure, so a wrong amount can't be sent.
-      // No page back means nothing to wait for: stay on the method picker instead of a dead end.
+      // Both methods finish on the provider's page, which has the amount bound to the transaction —
+      // for a transfer it shows a one-time account for exactly this figure, so a wrong amount can't
+      // be sent. No page back means nothing to wait for: stay on the picker instead of a dead end.
       if (!s.checkout_url) {
-        toast.error("Monnify didn't return a payment page — please try again.");
+        toast.error("The payment page couldn't be created — please try again.");
         return;
       }
       setStart(s);
-      window.open(s.checkout_url, "_blank", "noopener,noreferrer");
+      // SAME-TAB hand-off: the provider returns the customer to this page (?paid=…) when done, so
+      // there's never a second app tab. The waiting state below only shows if they come back via
+      // the browser's Back button, where the poll picks up a payment that already landed.
+      window.location.assign(s.checkout_url);
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -70,6 +73,8 @@ export default function PaySubscriptionDialog({
 
 
   const q = start?.quote;
+  // Display only — the server chose the provider; we just name the page we opened.
+  const providerName = start?.provider === "paystack" ? "Paystack" : "Monnify";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -90,13 +95,13 @@ export default function PaySubscriptionDialog({
                 className="rounded-xl border-2 border-border p-4 text-left hover:border-brand/50 transition-colors disabled:opacity-60">
                 <Building2 className="size-5 text-brand mb-2" />
                 <div className="font-medium">Bank transfer</div>
-                <div className="text-xs text-muted-foreground mt-0.5">Monnify gives you a one-off account number for this exact amount.</div>
+                <div className="text-xs text-muted-foreground mt-0.5">You'll get a one-off account number for this exact amount.</div>
               </button>
               <button type="button" onClick={() => begin("card")} disabled={busy}
                 className="rounded-xl border-2 border-border p-4 text-left hover:border-brand/50 transition-colors disabled:opacity-60">
                 <CreditCard className="size-5 text-brand mb-2" />
                 <div className="font-medium">Card</div>
-                <div className="text-xs text-muted-foreground mt-0.5">Pay now with a debit card on Monnify's secure page.</div>
+                <div className="text-xs text-muted-foreground mt-0.5">Pay now with a debit card on a secure payment page.</div>
               </button>
             </div>
             {busy && <p className="text-xs text-muted-foreground flex items-center gap-1.5"><Loader2 className="size-3.5 animate-spin" /> Setting up your payment…</p>}
@@ -115,13 +120,13 @@ export default function PaySubscriptionDialog({
 
             <p className="text-sm text-muted-foreground">
               {start.method === "transfer"
-                ? "We've opened Monnify's secure page in a new tab. It shows a one-off account number for this exact amount — transfer to it from any bank app."
-                : "We've opened Monnify's secure payment page in a new tab. Enter your card details there."}
-              {" "}Your plan activates automatically once Monnify confirms the payment.
+                ? `Complete the transfer on ${providerName}'s secure page — it shows a one-off account number for this exact amount.`
+                : `Complete your card payment on ${providerName}'s secure page.`}
+              {" "}You'll be brought back here automatically, and your plan activates once {providerName} confirms the payment.
             </p>
             {start.checkout_url && (
-              <Button variant="outline" size="sm" onClick={() => window.open(start.checkout_url!, "_blank", "noopener,noreferrer")}>
-                <ExternalLink className="size-4" /> Reopen payment page
+              <Button variant="outline" size="sm" onClick={() => window.location.assign(start.checkout_url!)}>
+                <ExternalLink className="size-4" /> Return to the payment page
               </Button>
             )}
             {failed ? (

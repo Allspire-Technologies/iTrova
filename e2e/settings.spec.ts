@@ -162,41 +162,55 @@ test.describe("Settings", () => {
     expect(sent).toMatchObject({ p_cancel: false });
   });
 
-  test("paying hands off to Monnify with the amount bound server-side", async ({ page }) => {
+  test("paying hands off to Monnify in the SAME tab with the amount bound server-side", async ({ page }) => {
     let sentBody: Record<string, unknown> | null = null;
     await authenticate(page, { role: "owner", businessName: "Sunrise Stores", onRoutes: async (p) => {
       await p.route("**/functions/v1/create-payment**", (r) => {
         sentBody = r.request().postDataJSON();
         return r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
-          method: "transfer", reference: "ITV-abc-1", amount: 4500,
+          method: "transfer", provider: "monnify", reference: "ITV-abc-1", amount: 4500,
           quote: { amount: 4500, currency: "NGN", list_amount: 5000, cycle_discount: 0, referee_discount: 0 },
           checkout_url: "https://sandbox.monnify.com/checkout/ITV-abc-1",
         }) });
       });
+      // Stub the provider page — the SAME tab must navigate there (no second app tab to babysit).
+      await p.route("https://sandbox.monnify.com/**", (r) =>
+        r.fulfill({ status: 200, contentType: "text/html", body: "<h1>Monnify checkout stub</h1>" }));
     }});
-    // Capture the hand-off instead of opening a real tab.
-    await page.addInitScript(() => {
-      (window as unknown as { __opened: string[] }).__opened = [];
-      window.open = ((url?: string | URL) => {
-        (window as unknown as { __opened: string[] }).__opened.push(String(url));
-        return null;
-      }) as typeof window.open;
-    });
     await stubRows(page, "plans", plans);
     await page.goto("/settings");
     await page.getByRole("button", { name: "Billing", exact: true }).click();
     await page.getByRole("button", { name: /^Pay ₦/ }).first().click();
 
-    const dialog = page.getByRole("dialog");
-    await dialog.getByRole("button", { name: /Bank transfer/ }).click();
-    await expect(dialog.getByText(/Waiting for confirmation/)).toBeVisible();
-
-    // The amount is bound to Monnify's transaction, so the customer can't pay a different figure.
-    const opened = await page.evaluate(() => (window as unknown as { __opened: string[] }).__opened);
-    expect(opened).toContain("https://sandbox.monnify.com/checkout/ITV-abc-1");
-    // The browser asks for a plan + cycle only — never a price. The server decides what it costs.
+    await page.getByRole("dialog").getByRole("button", { name: /Bank transfer/ }).click();
+    // The amount is bound to the provider's transaction, so the customer can't pay a different figure.
+    await expect(page).toHaveURL("https://sandbox.monnify.com/checkout/ITV-abc-1");
+    // The browser asks for a plan + cycle only — never a price, never a provider. The server
+    // decides what it costs and which processor takes it.
     expect(sentBody).toMatchObject({ plan_key: expect.any(String), cycle: expect.any(String), method: "transfer" });
     expect(sentBody).not.toHaveProperty("amount");
+    expect(sentBody).not.toHaveProperty("provider");
+  });
+
+  test("when the platform routes payments to Paystack, checkout navigates to Paystack", async ({ page }) => {
+    await authenticate(page, { role: "owner", businessName: "Sunrise Stores", onRoutes: async (p) => {
+      await p.route("**/functions/v1/create-payment**", (r) =>
+        r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+          method: "card", provider: "paystack", reference: "ITV-abc-2", amount: 4500,
+          quote: { amount: 4500, currency: "NGN", list_amount: 5000, cycle_discount: 0, referee_discount: 0 },
+          checkout_url: "https://checkout.paystack.com/abc123",
+        }) }));
+      await p.route("https://checkout.paystack.com/**", (r) =>
+        r.fulfill({ status: 200, contentType: "text/html", body: "<h1>Paystack checkout stub</h1>" }));
+    }});
+    await stubRows(page, "plans", plans);
+    await page.goto("/settings");
+    await page.getByRole("button", { name: "Billing", exact: true }).click();
+    await page.getByRole("button", { name: /^Pay ₦/ }).first().click();
+
+    // The customer never chose a provider — the server did; the same tab goes wherever it said.
+    await page.getByRole("dialog").getByRole("button", { name: /Card/ }).click();
+    await expect(page).toHaveURL("https://checkout.paystack.com/abc123");
   });
 
   test("the plan-expiry badge takes you straight to paying for the plan you're on", async ({ page }) => {

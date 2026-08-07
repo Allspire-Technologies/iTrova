@@ -108,6 +108,13 @@ Deno.serve(async (req) => {
       console.warn("monnify-webhook: transaction not PAID", providerReference, status);
       return json({ ok: true, ignored: `status ${status}` });
     }
+    // 4,500 of some other currency must not buy a ₦4,500 plan. (Soft-defaults to NGN when the
+    // field is absent so an API shape change can't block every activation.)
+    const currency = String(tx?.currencyCode ?? tx?.currency ?? "NGN");
+    if (currency !== "NGN") {
+      console.warn("monnify-webhook: unexpected currency", providerReference, currency);
+      return json({ ok: true, ignored: `currency ${currency}` });
+    }
 
     // Keep only what reconciliation needs — the full payload carries payer identity and card
     // metadata, and billing_payment.raw is readable by the paying business.
