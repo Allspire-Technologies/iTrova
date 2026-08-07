@@ -1,16 +1,15 @@
 import { supabase } from "@/integrations/supabase/client";
 
-// Subscription collection via Monnify. The browser never sends an amount — create-payment prices the
-// plan server-side (cycle discount + any referred-business discount), so what you're charged can't be
-// tampered with and always matches what the Billing tab promised.
 
 export type PaymentStart = {
   method: "transfer" | "card";
+  /** Which processor took this payment — display only; the server decides. */
+  provider?: "monnify" | "paystack";
   reference: string;
   amount: number;
   quote?: { amount: number; currency: string; list_amount: number; cycle_discount: number; referee_discount: number };
-  /** Monnify's page for this transaction. The amount is bound to it, so the customer cannot pay a
-   *  different figure — for a transfer Monnify issues a one-time account for exactly this amount. */
+  /** The provider's page for this transaction. The amount is bound to it, so the customer cannot pay
+   *  a different figure — for a transfer the provider issues a one-time account for exactly this amount. */
   checkout_url?: string;
   provider_reference?: string | null;
 };

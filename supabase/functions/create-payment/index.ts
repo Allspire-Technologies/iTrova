@@ -1,14 +1,17 @@
 // create-payment — starts a subscription payment for the CALLER'S OWN business.
 //
-// The browser sends only { plan_key, cycle, method }. It never sends an amount: the price is read
-// server-side from quote_subscription_price(), which applies the cycle discount and the referred-
-// business first-payment discount. So a tampered request cannot buy Enterprise for ₦100, and a
-// referred business is charged exactly what iTrova promised it.
+// The browser sends only { plan_key, cycle, method }. It never sends an amount OR a provider:
+// the price is read server-side from quote_subscription_price(), which applies the cycle discount
+// and the referred-business first-payment discount, and the provider (Monnify or Paystack) comes
+// from the billing_config row the platform team controls. So a tampered request cannot buy
+// Enterprise for ₦100, and it cannot route itself to a provider we didn't choose.
 //
 // Self-contained on purpose — it can be pasted straight into the Supabase dashboard's function
 // editor, which has no sibling _shared/ folder to import from.
 //
-// Secrets required: MONNIFY_API_KEY, MONNIFY_SECRET_KEY, MONNIFY_CONTRACT_CODE, MONNIFY_BASE_URL
+// Secrets required:
+//   Monnify:  MONNIFY_API_KEY, MONNIFY_SECRET_KEY, MONNIFY_CONTRACT_CODE, MONNIFY_BASE_URL
+//   Paystack: PAYSTACK_SECRET_KEY  (test = sk_test_…, live = sk_live_… — mode is IN THE KEY)
 // (SUPABASE_URL / _ANON_KEY / _SERVICE_ROLE_KEY are injected automatically.)
 // Deploy with verify_jwt ON — the caller's JWT identifies the business.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -17,6 +20,7 @@ const BASE = () => Deno.env.get("MONNIFY_BASE_URL") ?? "https://sandbox.monnify.
 const API_KEY = () => Deno.env.get("MONNIFY_API_KEY") ?? "";
 const SECRET = () => Deno.env.get("MONNIFY_SECRET_KEY") ?? "";
 const CONTRACT = () => Deno.env.get("MONNIFY_CONTRACT_CODE") ?? "";
+const PAYSTACK_SECRET = () => Deno.env.get("PAYSTACK_SECRET_KEY") ?? "";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -26,7 +30,7 @@ const cors = {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
-// A stalled Monnify connection must not hold the invocation until the platform kills it.
+// A stalled provider connection must not hold the invocation until the platform kills it.
 const DEADLINE = () => AbortSignal.timeout(15_000);
 
 /** Bearer token for Monnify's REST API. Short-lived, so fetched per invocation rather than cached. */
@@ -56,13 +60,23 @@ async function monnify(path: string, init: RequestInit = {}): Promise<Record<str
   return body?.responseBody ?? {};
 }
 
+async function paystackInit(payload: Record<string, unknown>): Promise<Record<string, any>> {
+  const res = await fetch("https://api.paystack.co/transaction/initialize", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${PAYSTACK_SECRET()}`, "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    signal: DEADLINE(),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || body?.status !== true) {
+    throw new Error(`Paystack initialize failed (${res.status}): ${body?.message ?? "unknown error"}`);
+  }
+  return body?.data ?? {};
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   try {
-    if (!API_KEY() || !SECRET() || !CONTRACT()) {
-      return json({ error: "Monnify isn't configured — set MONNIFY_API_KEY, MONNIFY_SECRET_KEY and MONNIFY_CONTRACT_CODE." }, 500);
-    }
-
     const url = Deno.env.get("SUPABASE_URL")!;
     const anon = Deno.env.get("SUPABASE_ANON_KEY")!;
     const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -82,8 +96,22 @@ Deno.serve(async (req) => {
     if (!plan_key || !cycle) return json({ error: "A plan and billing cycle are required." }, 400);
     if (!["transfer", "card"].includes(method)) return json({ error: "Unsupported payment method." }, 400);
 
-    // Card payment sends the user off to Monnify and back, so we must return them to the origin they
-    // actually started from — a hardcoded URL drops a dev or staging user onto production, where
+    const admin = createClient(url, service);
+
+    // ---- Which provider serves this payment is OUR call, read server-side. Default: Monnify.
+    const { data: cfg, error: cfgErr } = await admin.from("billing_config").select("active_provider").maybeSingle();
+    // A failed read must not silently reroute money — log it, then fall back to the default.
+    if (cfgErr) console.error("create-payment: billing_config read failed, defaulting to monnify:", cfgErr.message);
+    const provider: "monnify" | "paystack" = cfg?.active_provider === "paystack" ? "paystack" : "monnify";
+    if (provider === "paystack" && !PAYSTACK_SECRET()) {
+      return json({ error: "Payments aren't configured — set PAYSTACK_SECRET_KEY." }, 500);
+    }
+    if (provider === "monnify" && (!API_KEY() || !SECRET() || !CONTRACT())) {
+      return json({ error: "Payments aren't configured — set MONNIFY_API_KEY, MONNIFY_SECRET_KEY and MONNIFY_CONTRACT_CODE." }, 500);
+    }
+
+    // Card payment sends the user off to the provider and back, so we must return them to the origin
+    // they actually started from — a hardcoded URL drops a dev or staging user onto production, where
     // they have no session and land on the login page. Validated against an allowlist: this value
     // comes from the browser, and an unchecked redirect target is an open-redirect for phishing.
     const ALLOWED = [
@@ -98,8 +126,6 @@ Deno.serve(async (req) => {
     const origin = typeof return_origin === "string" && ALLOWED.some((re) => re.test(return_origin))
       ? return_origin
       : fallback;
-
-    const admin = createClient(url, service);
 
     // ---- Price it SERVER-SIDE. This is the only place an amount comes from.
     const { data: quoteRows, error: quoteErr } = await admin
@@ -117,38 +143,62 @@ Deno.serve(async (req) => {
     const ourReference = `ITV-${String(bizId).slice(0, 8)}-${Date.now()}`;
     const { error: insErr } = await admin.from("billing_payment").insert({
       business_id: bizId, plan_key, cycle, amount, currency: quote?.currency ?? "NGN",
-      method, our_reference: ourReference, created_by: user.id,
+      method, provider, our_reference: ourReference, created_by: user.id,
     });
     if (insErr) return json({ error: insErr.message }, 500);
 
-    // ---- Both methods go through init-transaction, which BINDS THE AMOUNT to the transaction.
-    // For a transfer Monnify then issues a one-time account for exactly this figure, so a wrong
-    // amount can't be sent in the first place. (A permanent reserved account would accept any
-    // amount from anyone, forever, leaving us to reject money after it had already arrived.)
-    const tx = await monnify("/api/v1/merchant/transactions/init-transaction", {
-      method: "POST",
-      body: JSON.stringify({
-        amount, customerName: businessName.slice(0, 100), customerEmail: email,
-        paymentReference: ourReference,
-        paymentDescription: `iTrova ${plan_key} (${cycle})`.slice(0, 100),
-        currencyCode: "NGN", contractCode: CONTRACT(),
-        redirectUrl: `${origin}/settings?tab=billing&paid=${encodeURIComponent(ourReference)}`,
-        // Open Monnify on the method the customer picked; the amount is fixed either way.
-        paymentMethods: method === "card" ? ["CARD"] : ["ACCOUNT_TRANSFER"],
-      }),
-    });
+    const redirectUrl = `${origin}/settings?tab=billing&paid=${encodeURIComponent(ourReference)}`;
+
+    // ---- Both providers BIND THE AMOUNT to the transaction at init, so a wrong amount can't be
+    // sent in the first place: Monnify's init-transaction issues a one-time account for exactly
+    // this figure; Paystack's initialize fixes the charge (and its pay-with-transfer account) too.
+    let checkoutUrl: string | undefined;
+    let providerReference: string | null = null;
+
+    if (provider === "paystack") {
+      // Paystack amounts are in KOBO — this ×100 is the only init-side conversion; the webhook
+      // divides by 100 exactly once before the exact-amount check.
+      const data = await paystackInit({
+        email,
+        amount: Math.round(amount * 100),
+        currency: "NGN",
+        reference: ourReference,          // Paystack echoes OUR reference on webhook + verify
+        callback_url: redirectUrl,
+        channels: method === "card" ? ["card"] : ["bank_transfer"],
+        metadata: { business_id: bizId, plan_key, cycle, business_name: businessName.slice(0, 100) },
+      });
+      checkoutUrl = data?.authorization_url;
+      // Stays null until the webhook writes Paystack's transaction id — storing the init-time
+      // access_code here would leave pending rows holding a different identifier type than paid ones.
+      providerReference = null;
+    } else {
+      const tx = await monnify("/api/v1/merchant/transactions/init-transaction", {
+        method: "POST",
+        body: JSON.stringify({
+          amount, customerName: businessName.slice(0, 100), customerEmail: email,
+          paymentReference: ourReference,
+          paymentDescription: `iTrova ${plan_key} (${cycle})`.slice(0, 100),
+          currencyCode: "NGN", contractCode: CONTRACT(),
+          redirectUrl,
+          // Open the provider on the method the customer picked; the amount is fixed either way.
+          paymentMethods: method === "card" ? ["CARD"] : ["ACCOUNT_TRANSFER"],
+        }),
+      });
+      checkoutUrl = tx?.checkoutUrl;
+      providerReference = tx?.transactionReference ?? null;
+    }
 
     await admin.from("billing_payment")
-      .update({ provider_reference: tx?.transactionReference ?? null })
+      .update({ provider_reference: providerReference })
       .eq("our_reference", ourReference);
 
     return json({
-      method, reference: ourReference, amount, quote,
-      checkout_url: tx?.checkoutUrl,
-      provider_reference: tx?.transactionReference ?? null,
+      method, provider, reference: ourReference, amount, quote,
+      checkout_url: checkoutUrl,
+      provider_reference: providerReference,
     });
   } catch (e) {
-    // Never leak Monnify's raw error to the browser; it goes to this function's logs instead.
+    // Never leak the provider's raw error to the browser; it goes to this function's logs instead.
     console.error("create-payment failed:", e);
     return json({ error: "Couldn't start the payment. Please try again." }, 500);
   }
