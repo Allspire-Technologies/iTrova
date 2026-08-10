@@ -398,10 +398,12 @@ export default function AppShell() {
         )}
         <OfflineBanner />
         <main className="flex-1 p-4 lg:p-8 animate-fade-in">
-          <div key={location.key} className="w-full">
+          <div key={location.pathname} className="w-full">
             {/* A page crash shows the fallback but keeps the nav/header usable; lazy route chunks
-                suspend into the skeleton while they load. Keyed by location so navigating away
-                clears a crashed page. */}
+                suspend into the skeleton while they load. Keyed by PATHNAME so navigating to a
+                different page clears a crashed one — but NOT by location.key: a search-param
+                rewrite (Settings consuming ?pay=1 via setSearchParams) must update the mounted
+                page in place, not remount it and wipe the state it just derived. */}
             <ErrorBoundary variant="inline">
               <Suspense fallback={<TablePageSkeleton />}>
                 <Outlet />

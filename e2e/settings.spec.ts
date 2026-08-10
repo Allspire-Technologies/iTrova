@@ -227,6 +227,20 @@ test.describe("Settings", () => {
     await expect(page.getByRole("dialog").getByText(/Pay for Pro/)).toBeVisible();
   });
 
+  test("the expiry badge works while Settings is already open on another tab", async ({ page }) => {
+    // Same-route navigation: Settings is mounted (on Business), so the ?tab/?pay params arrive via
+    // the router with no fresh page load — the mount-time initializers never re-run. This is the
+    // path that silently did nothing before the useSearchParams rework.
+    await authenticate(page, { role: "owner", subscriptionTier: "pro", subscriptionCycle: "monthly",
+      subscriptionRenewsAt: new Date(Date.now() + 3 * 86_400_000).toISOString() });
+    await stubRows(page, "plans", plans);
+    await page.goto("/settings");
+    await expect(page.getByRole("button", { name: "Business", exact: true })).toBeVisible();
+    await page.getByRole("link", { name: /Expires in/ }).click();
+    await expect(page).toHaveURL(/tab=billing/);
+    await expect(page.getByRole("dialog").getByText(/Pay for Pro/)).toBeVisible();
+  });
+
   test("an expiring plan can be renewed from its own card", async ({ page }) => {
     await authenticate(page, { role: "owner", subscriptionTier: "pro", subscriptionCycle: "monthly",
       subscriptionRenewsAt: new Date(Date.now() + 3 * 86_400_000).toISOString() });

@@ -15,9 +15,13 @@
 //   Dashboard: turn OFF "Verify JWT with legacy secret" for this function.
 //   CLI:       supabase functions deploy monnify-webhook --no-verify-jwt
 // Then set this URL as the webhook in the Monnify dashboard.
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// Pinned exact version — a floating @2 could silently change behaviour between cold starts.
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 
-const BASE = () => Deno.env.get("MONNIFY_BASE_URL") ?? "https://sandbox.monnify.com";
+// No default host: sandbox-vs-live must be an explicit choice (same rule as create-payment).
+// An unset MONNIFY_BASE_URL would re-verify live transactions against the sandbox, where they
+// don't exist, and every activation would fail.
+const BASE = () => Deno.env.get("MONNIFY_BASE_URL") ?? "";
 const API_KEY = () => Deno.env.get("MONNIFY_API_KEY") ?? "";
 const SECRET = () => Deno.env.get("MONNIFY_SECRET_KEY") ?? "";
 
@@ -61,7 +65,9 @@ async function getTransaction(transactionReference: string): Promise<Record<stri
     signal: DEADLINE(),
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(`Monnify transaction lookup failed (${res.status})`);
+  if (!res.ok || body?.requestSuccessful === false) {
+    throw new Error(`Monnify transaction lookup failed (${res.status}): ${body?.responseMessage ?? "unknown error"}`);
+  }
   return body?.responseBody ?? {};
 }
 
@@ -70,8 +76,8 @@ Deno.serve(async (req) => {
 
   // Without the secret, signature verification would run against an empty HMAC key —
   // misconfiguration must fail loudly, not quietly reject (or worse, accept) webhooks.
-  if (!API_KEY() || !SECRET()) {
-    console.error("monnify-webhook: MONNIFY_API_KEY / MONNIFY_SECRET_KEY not configured");
+  if (!API_KEY() || !SECRET() || !BASE()) {
+    console.error("monnify-webhook: MONNIFY_API_KEY / MONNIFY_SECRET_KEY / MONNIFY_BASE_URL not configured");
     return json({ error: "not configured" }, 500);
   }
 
@@ -97,8 +103,15 @@ Deno.serve(async (req) => {
     console.log("monnify-webhook: ignoring event", event ?? "(none)");
     return json({ ok: true, ignored: event ?? "no eventType" });
   }
-  if (!ourReference) return json({ ok: true, ignored: "no paymentReference" });
-  if (!providerReference) return json({ ok: true, ignored: "no transactionReference" });
+  // Past this point Monnify says real money arrived. Returning 200 stops its retries, so an
+  // event we can't match MUST leave a loud log — it's the only trace the payment gets.
+  if (!ourReference || !providerReference) {
+    console.error(
+      "monnify-webhook: SUCCESSFUL_TRANSACTION with missing reference(s) — payment is untracked!",
+      JSON.stringify({ paymentReference: ourReference ?? null, transactionReference: providerReference ?? null }),
+    );
+    return json({ ok: true, ignored: "missing reference(s)" });
+  }
 
   try {
     const tx = await getTransaction(providerReference);
@@ -108,12 +121,13 @@ Deno.serve(async (req) => {
       console.warn("monnify-webhook: transaction not PAID", providerReference, status);
       return json({ ok: true, ignored: `status ${status}` });
     }
-    // 4,500 of some other currency must not buy a ₦4,500 plan. (Soft-defaults to NGN when the
-    // field is absent so an API shape change can't block every activation.)
-    const currency = String(tx?.currencyCode ?? tx?.currency ?? "NGN");
+    // 4,500 of some other currency must not buy a ₦4,500 plan. Strict, like the Paystack
+    // webhook: an absent currency field is rejected too — if Monnify's API shape ever changes,
+    // activation must stop and say why, not guess.
+    const currency = String(tx?.currencyCode ?? tx?.currency ?? "");
     if (currency !== "NGN") {
-      console.warn("monnify-webhook: unexpected currency", providerReference, currency);
-      return json({ ok: true, ignored: `currency ${currency}` });
+      console.warn("monnify-webhook: unexpected currency", providerReference, currency || "(absent)");
+      return json({ ok: true, ignored: `currency ${currency || "(absent)"}` });
     }
 
     // Keep only what reconciliation needs — the full payload carries payer identity and card
@@ -139,7 +153,13 @@ Deno.serve(async (req) => {
       console.error("monnify-webhook: activation failed", error.message);
       return json({ error: error.message }, 500);
     }
-    console.log("monnify-webhook:", JSON.stringify(result));
+    // Confirmed money that did NOT activate (unknown reference, amount mismatch, …) is exactly
+    // what support will be asked about — keep it at error level so it stands out in the logs.
+    if (result && (result as Record<string, unknown>)?.activated === false) {
+      console.error("monnify-webhook: payment confirmed but NOT activated:", JSON.stringify(result));
+    } else {
+      console.log("monnify-webhook:", JSON.stringify(result));
+    }
     return json({ ok: true, result });
   } catch (e) {
     console.error("monnify-webhook error:", e);

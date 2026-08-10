@@ -27,8 +27,9 @@ begin
   return new;
 end; $$;
 
--- Full re-declare of the activation function (from 20260802110000); the only change is the
--- profiles.onboarded update after the businesses update.
+-- Full re-declare of the activation function (from 20260802110000). Changes in this version:
+-- the profiles.onboarded update after the businesses update, and the money-record notes are
+-- provider-aware (initcap(provider) instead of hardcoded "Monnify") in both insert paths.
 create or replace function public.activate_subscription_from_payment(
   p_our_reference text, p_provider_reference text, p_amount_paid numeric, p_raw jsonb default null
 ) returns jsonb
