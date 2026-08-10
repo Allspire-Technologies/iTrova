@@ -18,7 +18,7 @@ import { isDirty, isPasswordFormReady } from "@/lib/settingsForms";
 import { toast } from "sonner";
 import { Eye, EyeOff, Building2, Globe, Bell, Link2, CreditCard, Shield, CheckCircle2, Scale, ChevronRight, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { LEGAL_LINKS } from "@/lib/legalLinks";
 import { isEmailConfirmed, isValidEmail, normalizeEmail, verifyAction } from "@/lib/emailVerification";
 import { latestPaymentStatus } from "@/lib/billing";
@@ -339,17 +339,22 @@ export default function Settings() {
   const { fmtDate } = useDateFormat();
   const isOwner = role === "owner";
 
+  // The URL params live in react-router, not window.location: the shell's expiry badge does a
+  // client-side navigate, and only the router's own state re-renders an already-mounted Settings.
+  // (A raw history.replaceState would also leave the router unaware of the rewrite.)
+  const [searchParams, setSearchParams] = useSearchParams();
+
   // ?pay=1 comes from the plan-expiry badge. Renew the plan they're actually on — `subscription.tier`
   // keeps the real tier even once it has lapsed (the app treats an expired plan as Free for access,
   // but you renew what you had, not Free). Cleared after use so a refresh doesn't reopen it.
   const [payNowPlan, setPayNowPlan] = useState<string | null>(null);
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("pay") !== "1") return;
+    if (searchParams.get("pay") !== "1") return;
     const tier = subscription?.tier;
     if (!tier || tier === "free") return;
     setPayNowPlan(tier);
-    window.history.replaceState({}, "", "/settings?tab=billing");
-  }, [subscription?.tier]);
+    setSearchParams({ tab: "billing" }, { replace: true });
+  }, [subscription?.tier, searchParams, setSearchParams]);
 
   // A pending move to Free. It takes effect when the paid period ends, so this is just the intent —
   // the business keeps everything it paid for until then, and paying again clears it server-side.
@@ -375,16 +380,16 @@ export default function Settings() {
     (supabase as any).rpc("my_referee_discount").then(({ data }: { data: unknown }) => setRefereeDiscount(Number(data) || 0));
   }, [isOwner, business]);
 
-  // Returning from Monnify's card page. The webhook is what actually activates the plan, so confirm
+  // Returning from the provider's page. The webhook is what actually activates the plan, so confirm
   // against our own record rather than trusting the redirect, then tidy the URL.
+  const paidParam = searchParams.get("paid");
   useEffect(() => {
-    const ref = new URLSearchParams(window.location.search).get("paid");
-    if (!ref) return;
+    if (!paidParam) return;
     let tries = 0;
     let timer: number | undefined;
     let cancelled = false;   // leaving the page must stop the retry chain (and its URL rewrite)
     const check = async () => {
-      const status = await latestPaymentStatus(ref);
+      const status = await latestPaymentStatus(paidParam);
       if (cancelled) return;
       if (status === "paid") {
         toast.success("Payment received — your plan is active.");
@@ -395,12 +400,12 @@ export default function Settings() {
         timer = window.setTimeout(check, 3000);   // the webhook can land a moment after the redirect
         return;
       }
-      window.history.replaceState({}, "", "/settings?tab=billing");
+      setSearchParams({ tab: "billing" }, { replace: true });
     };
     check();
     return () => { cancelled = true; if (timer) window.clearTimeout(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [paidParam]);
 
   // Business Profile
   const [bizName, setBizName] = useState("");
@@ -455,23 +460,32 @@ export default function Settings() {
 
   // Sectioned layout: tabs + per-card view→edit. Data cards render read-only until Edit is pressed.
   type SettingsTab = "business" | "preferences" | "billing" | "permissions" | "security";
-  // ?tab=billing&paid=<ref> is where Monnify returns a card payer — land them on Billing, not the
+  const isSettingsTab = (t: string | null): t is SettingsTab =>
+    (["business", "preferences", "billing", "permissions", "security"] as const).includes(t as SettingsTab);
+  // ?tab=billing&paid=<ref> is where the provider returns a payer — land them on Billing, not the
   // default Business tab, and confirm the payment they just made.
   const [tab, setTab] = useState<SettingsTab>(() => {
-    const t = new URLSearchParams(window.location.search).get("tab");
-    return (["business", "preferences", "billing", "permissions", "security"] as const).includes(t as SettingsTab)
-      ? (t as SettingsTab) : "business";
+    const t = searchParams.get("tab");
+    return isSettingsTab(t) ? t : "business";
   });
+  // Follow ?tab= on LATER navigations too — the badge can link here while Settings is already
+  // mounted, where the initializer above never re-runs.
+  const tabParam = searchParams.get("tab");
+  useEffect(() => {
+    if (isSettingsTab(tabParam)) setTab(tabParam);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabParam]);
   const [editProfile, setEditProfile] = useState(false);
   const [editExporter, setEditExporter] = useState(false);
   const [editRegional, setEditRegional] = useState(false);
   const [editIntegrations, setEditIntegrations] = useState(false);
-  // Non-owners have no Business/Billing cards — land them on Preferences.
+  // Non-owners have no Business/Billing cards — land them on Preferences. `tab` is a real
+  // dependency: with pages no longer remounting on same-path navigations, a restricted tab can
+  // arrive via ?tab= AFTER mount, and the guard must re-run then, not only when the role loads.
   useEffect(() => {
     if (role && !isOwner && (tab === "business" || tab === "billing")) setTab("preferences");
     if (role && role === "cashier" && tab === "permissions") setTab("preferences");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [role, isOwner]);
+  }, [role, isOwner, tab]);
 
   // Hydrate the form state from the loaded business/profile — also used by Cancel to discard edits.
   const hydrateFromBusiness = () => {

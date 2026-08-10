@@ -20,7 +20,8 @@
 //   CLI:       supabase functions deploy paystack-webhook --no-verify-jwt
 // Then set this URL as the webhook in the Paystack dashboard (test and live are configured
 // SEPARATELY — setting one does not set the other).
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// Pinned exact version — a floating @2 could silently change behaviour between cold starts.
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 
 const PAYSTACK_SECRET = () => Deno.env.get("PAYSTACK_SECRET_KEY") ?? "";
 
@@ -90,7 +91,12 @@ Deno.serve(async (req) => {
     console.log("paystack-webhook: ignoring event", event ?? "(none)");
     return json({ ok: true, ignored: event ?? "no event" });
   }
-  if (!ourReference) return json({ ok: true, ignored: "no reference" });
+  // Past this point Paystack says real money arrived. Returning 200 stops its retries, so an
+  // event we can't match MUST leave a loud log — it's the only trace the payment gets.
+  if (!ourReference) {
+    console.error("paystack-webhook: charge.success with no reference — payment is untracked!");
+    return json({ ok: true, ignored: "no reference" });
+  }
 
   try {
     const tx = await verifyTransaction(ourReference);
@@ -135,7 +141,13 @@ Deno.serve(async (req) => {
       console.error("paystack-webhook: activation failed", error.message);
       return json({ error: error.message }, 500);
     }
-    console.log("paystack-webhook:", JSON.stringify(result));
+    // Confirmed money that did NOT activate (unknown reference, amount mismatch, …) is exactly
+    // what support will be asked about — keep it at error level so it stands out in the logs.
+    if (result && (result as Record<string, unknown>)?.activated === false) {
+      console.error("paystack-webhook: payment confirmed but NOT activated:", JSON.stringify(result));
+    } else {
+      console.log("paystack-webhook:", JSON.stringify(result));
+    }
     return json({ ok: true, result });
   } catch (e) {
     console.error("paystack-webhook error:", e);
