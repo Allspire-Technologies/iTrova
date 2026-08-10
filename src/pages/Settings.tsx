@@ -479,12 +479,13 @@ export default function Settings() {
   const [editExporter, setEditExporter] = useState(false);
   const [editRegional, setEditRegional] = useState(false);
   const [editIntegrations, setEditIntegrations] = useState(false);
-  // Non-owners have no Business/Billing cards — land them on Preferences.
+  // Non-owners have no Business/Billing cards — land them on Preferences. `tab` is a real
+  // dependency: with pages no longer remounting on same-path navigations, a restricted tab can
+  // arrive via ?tab= AFTER mount, and the guard must re-run then, not only when the role loads.
   useEffect(() => {
     if (role && !isOwner && (tab === "business" || tab === "billing")) setTab("preferences");
     if (role && role === "cashier" && tab === "permissions") setTab("preferences");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [role, isOwner]);
+  }, [role, isOwner, tab]);
 
   // Hydrate the form state from the loaded business/profile — also used by Cancel to discard edits.
   const hydrateFromBusiness = () => {

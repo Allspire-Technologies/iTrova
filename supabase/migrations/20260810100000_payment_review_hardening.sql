@@ -53,11 +53,19 @@ begin
          coalesce(bp.method, 'manual')
   from public.cs_renewal_payment rp
   -- Joined on the payment reference the activation stamped into ref_no — a business/day/amount
-  -- heuristic fans out when two equal payments land on one day.
-  left join public.billing_payment bp
-    on bp.business_id = rp.business_id
-   and rp.ref_no is not null
-   and (bp.provider_reference = rp.ref_no or bp.our_reference = rp.ref_no)
+  -- heuristic fans out when two equal payments land on one day. LATERAL LIMIT 1 so one ref_no
+  -- can never fan out across the two reference columns either (the namespaces don't overlap —
+  -- ours are ITV-…, providers' are MNFY|…/numeric — but the query shouldn't rely on that);
+  -- our own reference is the canonical identifier, so it wins any tie.
+  left join lateral (
+    select b.method, b.status, b.provider_reference, b.our_reference
+    from public.billing_payment b
+    where b.business_id = rp.business_id
+      and rp.ref_no is not null
+      and (b.provider_reference = rp.ref_no or b.our_reference = rp.ref_no)
+    order by (b.our_reference = rp.ref_no) desc
+    limit 1
+  ) bp on true
   where rp.business_id = v_biz
     and (bp.status is null or bp.status = 'paid')
   order by rp.paid_at desc, rp.created_at desc;
