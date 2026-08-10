@@ -77,7 +77,7 @@ test.describe("Settings", () => {
     await expect(page.getByText("Subscription Plan", { exact: true })).toBeVisible();
     await expect(page.getByText("Pro", { exact: true })).toBeVisible();
     await expect(page.getByText("Current plan")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Request upgrade" })).toHaveCount(2);
+    await expect(page.getByRole("button", { name: /^Pay ₦/ })).toHaveCount(2); // paid plans now collect in-app
     // billing cycles + promo come from the catalogue
     await expect(page.getByRole("button", { name: "Annually" }).first()).toBeVisible();
     await expect(page.getByText(/Launch offer/)).toBeVisible();
@@ -95,8 +95,178 @@ test.describe("Settings", () => {
     // Pro monthly: ₦5,000 − 10% launch promo = ₦4,500, then − 20% referral = ₦3,600.
     await expect(page.getByText("Referral · 20% off first payment").first()).toBeVisible();
     await expect(page.getByText("₦3,600").first()).toBeVisible();
-    // The upgrade request carries the referral discount to the sales team.
-    await expect(page.getByRole("button", { name: "Request upgrade" }).first()).toBeVisible();
+    // The pay button carries the discounted amount, so you pay what you were shown.
+    await expect(page.getByRole("button", { name: "Pay ₦3,600" })).toBeVisible();
+  });
+
+  test("switching to a cycle you aren't billed on becomes payable, not 'Current plan'", async ({ page }) => {
+    // Subscribed to Pro MONTHLY. The Pro card should read "Current plan" on monthly...
+    await authenticate(page, { role: "owner", subscriptionTier: "pro", subscriptionCycle: "monthly" });
+    await stubRows(page, "plans", plans);
+    await page.goto("/settings");
+    await page.getByRole("button", { name: "Billing", exact: true }).click();
+    const proCard = page.getByTestId("plan-card-pro");
+    await expect(proCard.getByText("Current plan")).toBeVisible();
+
+    // ...and offer to sell the annual cycle once it's selected, instead of dead-ending.
+    await proCard.getByRole("button", { name: "Annually" }).click();
+    await expect(page.getByRole("button", { name: /Switch to Annually · ₦/ })).toBeVisible();
+  });
+
+  test("a lower PAID plan is payable; only Free is a no-payment downgrade", async ({ page }) => {
+    // On Business: Pro is a downgrade but still costs money, so it must be payable.
+    await authenticate(page, { role: "owner", subscriptionTier: "business", subscriptionCycle: "monthly" });
+    await stubRows(page, "plans", plans);
+    await page.goto("/settings");
+    await page.getByRole("button", { name: "Billing", exact: true }).click();
+    // Free (₦0) is the only no-payment card.
+    await expect(page.getByRole("button", { name: "Downgrade to Free" })).toHaveCount(1);
+    // Pro is cheaper than Business but still priced — it gets a Pay button.
+    await expect(page.getByRole("button", { name: /^Pay ₦/ })).toHaveCount(1);
+  });
+
+  test("downgrading to Free confirms first and takes effect at the end of the paid period", async ({ page }) => {
+    let sent: Record<string, unknown> | null = null;
+    await authenticate(page, { role: "owner", subscriptionTier: "business", subscriptionCycle: "monthly", onRoutes: async (p) => {
+      await p.route("**/rest/v1/rpc/set_subscription_cancel**", (r) => {
+        sent = r.request().postDataJSON();
+        return r.fulfill({ status: 200, contentType: "application/json", body: "true" });
+      });
+    }});
+    await stubRows(page, "plans", plans);
+    await page.goto("/settings");
+    await page.getByRole("button", { name: "Billing", exact: true }).click();
+    await page.getByRole("button", { name: "Downgrade to Free" }).click();
+
+    // It must be explicit that they keep what they paid for — nothing is refunded.
+    await expect(page.getByText(/keep your current plan.*until|end of your current period/i)).toBeVisible();
+    await page.getByRole("button", { name: "Move to Free" }).click();
+    expect(sent).toMatchObject({ p_cancel: true });
+    await expect(page.getByText(/move to Free at the end of your period/i)).toBeVisible();
+  });
+
+  test("a pending move to Free is shown and can be called off", async ({ page }) => {
+    let sent: Record<string, unknown> | null = null;
+    await authenticate(page, { role: "owner", subscriptionTier: "business", subscriptionCycle: "monthly",
+      cancelAtPeriodEnd: true, onRoutes: async (p) => {
+        await p.route("**/rest/v1/rpc/set_subscription_cancel**", (r) => {
+          sent = r.request().postDataJSON();
+          return r.fulfill({ status: 200, contentType: "application/json", body: "false" });
+        });
+      } });
+    await stubRows(page, "plans", plans);
+    await page.goto("/settings");
+    await page.getByRole("button", { name: "Billing", exact: true }).click();
+    await expect(page.getByText(/Moving to Free/)).toBeVisible();
+    await page.getByRole("button", { name: "Keep my current plan" }).click();
+    expect(sent).toMatchObject({ p_cancel: false });
+  });
+
+  test("paying hands off to Monnify in the SAME tab with the amount bound server-side", async ({ page }) => {
+    let sentBody: Record<string, unknown> | null = null;
+    await authenticate(page, { role: "owner", businessName: "Sunrise Stores", onRoutes: async (p) => {
+      await p.route("**/functions/v1/create-payment**", (r) => {
+        sentBody = r.request().postDataJSON();
+        return r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+          method: "transfer", provider: "monnify", reference: "ITV-abc-1", amount: 4500,
+          quote: { amount: 4500, currency: "NGN", list_amount: 5000, cycle_discount: 0, referee_discount: 0 },
+          checkout_url: "https://sandbox.monnify.com/checkout/ITV-abc-1",
+        }) });
+      });
+      // Stub the provider page — the SAME tab must navigate there (no second app tab to babysit).
+      await p.route("https://sandbox.monnify.com/**", (r) =>
+        r.fulfill({ status: 200, contentType: "text/html", body: "<h1>Monnify checkout stub</h1>" }));
+    }});
+    await stubRows(page, "plans", plans);
+    await page.goto("/settings");
+    await page.getByRole("button", { name: "Billing", exact: true }).click();
+    await page.getByRole("button", { name: /^Pay ₦/ }).first().click();
+
+    await page.getByRole("dialog").getByRole("button", { name: /Bank transfer/ }).click();
+    // The amount is bound to the provider's transaction, so the customer can't pay a different figure.
+    await expect(page).toHaveURL("https://sandbox.monnify.com/checkout/ITV-abc-1");
+    // The browser asks for a plan + cycle only — never a price, never a provider. The server
+    // decides what it costs and which processor takes it.
+    expect(sentBody).toMatchObject({ plan_key: expect.any(String), cycle: expect.any(String), method: "transfer" });
+    expect(sentBody).not.toHaveProperty("amount");
+    expect(sentBody).not.toHaveProperty("provider");
+  });
+
+  test("when the platform routes payments to Paystack, checkout navigates to Paystack", async ({ page }) => {
+    await authenticate(page, { role: "owner", businessName: "Sunrise Stores", onRoutes: async (p) => {
+      await p.route("**/functions/v1/create-payment**", (r) =>
+        r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+          method: "card", provider: "paystack", reference: "ITV-abc-2", amount: 4500,
+          quote: { amount: 4500, currency: "NGN", list_amount: 5000, cycle_discount: 0, referee_discount: 0 },
+          checkout_url: "https://checkout.paystack.com/abc123",
+        }) }));
+      await p.route("https://checkout.paystack.com/**", (r) =>
+        r.fulfill({ status: 200, contentType: "text/html", body: "<h1>Paystack checkout stub</h1>" }));
+    }});
+    await stubRows(page, "plans", plans);
+    await page.goto("/settings");
+    await page.getByRole("button", { name: "Billing", exact: true }).click();
+    await page.getByRole("button", { name: /^Pay ₦/ }).first().click();
+
+    // The customer never chose a provider — the server did; the same tab goes wherever it said.
+    await page.getByRole("dialog").getByRole("button", { name: /Card/ }).click();
+    await expect(page).toHaveURL("https://checkout.paystack.com/abc123");
+  });
+
+  test("the plan-expiry badge takes you straight to paying for the plan you're on", async ({ page }) => {
+    // Expiring in 3 days: the header badge should land on Billing with the payment already open,
+    // rather than dropping the user on Settings to hunt for it.
+    await authenticate(page, { role: "owner", subscriptionTier: "pro", subscriptionCycle: "monthly",
+      subscriptionRenewsAt: new Date(Date.now() + 3 * 86_400_000).toISOString() });
+    await stubRows(page, "plans", plans);
+    await page.goto("/");
+    const badge = page.getByRole("link", { name: /Expires in/ });
+    await expect(badge).toBeVisible();
+    await badge.click();
+    await expect(page).toHaveURL(/tab=billing/);
+    await expect(page.getByRole("dialog").getByText(/Pay for Pro/)).toBeVisible();
+  });
+
+  test("an expiring plan can be renewed from its own card", async ({ page }) => {
+    await authenticate(page, { role: "owner", subscriptionTier: "pro", subscriptionCycle: "monthly",
+      subscriptionRenewsAt: new Date(Date.now() + 3 * 86_400_000).toISOString() });
+    await stubRows(page, "plans", plans);
+    await page.goto("/settings");
+    await page.getByRole("button", { name: "Billing", exact: true }).click();
+    // Previously the current plan showed a label and nothing else — no way to pay for the next period.
+    await expect(page.getByRole("button", { name: /^Renew · ₦/ })).toBeVisible();
+  });
+
+  test("billing history pages at 5 and offers view + download per payment", async ({ page }) => {
+    // 7 payments → 2 pages at 5 per page.
+    const history = Array.from({ length: 7 }, (_, i) => ({
+      id: `pay-${i}`, paid_at: `2026-0${(i % 9) + 1}-15`, plan_key: "pro", cycle: "monthly",
+      amount: 4500, currency: "NGN", reference: `MNFY-${i}`, method: i === 0 ? "card" : "transfer",
+    }));
+    await authenticate(page, { role: "owner", subscriptionTier: "pro", subscriptionCycle: "monthly", onRoutes: async (p) => {
+      await p.route("**/rest/v1/rpc/my_billing_history**", (r) =>
+        r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(history) }));
+    }});
+    await stubRows(page, "plans", plans);
+    await page.goto("/settings");
+    await page.getByRole("button", { name: "Billing", exact: true }).click();
+
+    await expect(page.getByText("Billing history")).toBeVisible();
+    const card = page.getByTestId("billing-history");
+    // 5 on the first page, not all 7.
+    await expect(page.getByText("iTrova Pro — Monthly")).toHaveCount(5);
+
+    // Each payment offers both actions.
+    await page.getByRole("button", { name: /Actions for/ }).first().click();
+    await expect(page.getByRole("menuitem", { name: "View invoice" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Download invoice" })).toBeVisible();
+    await page.getByRole("menuitem", { name: "View invoice" }).click();
+    await expect(page.getByRole("dialog").getByText("Total paid")).toBeVisible();
+    await page.getByRole("dialog").getByRole("button", { name: "Close" }).first().click(); // the X is also named Close
+
+    // Page 2 holds the remaining 2.
+    await card.getByRole("button", { name: "Next page" }).click();
+    await expect(page.getByText("iTrova Pro — Monthly")).toHaveCount(2);
   });
 
   test("Refer & earn card shows the code, share actions and referral count (Billing tab)", async ({ page }) => {

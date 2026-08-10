@@ -11,8 +11,11 @@ import { Store, Sparkles, LayoutGrid, Gauge, Check } from "lucide-react";
 import { CURRENCY_OPTIONS } from "@/lib/format";
 import SearchableSelect from "@/components/SearchableSelect";
 import { MODULE_CHOICES, SCALE_QUESTIONS, recommendPlan, type ScaleAnswers } from "@/lib/planRecommend";
-import { effectivePrice } from "@/lib/planPricing";
+import { effectivePrice, cyclePrice, CYCLE_LABEL } from "@/lib/planPricing";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import { lazy, Suspense } from "react";
+
+const PaySubscriptionDialog = lazy(() => import("@/components/settings/PaySubscriptionDialog"));
 
 // Onboarding: business basics → module picker → scale bands →
 // plan recommendation (with an optional one-off 7-day trial) → done. The module/scale selection is
@@ -22,6 +25,7 @@ import ConfirmDialog from "@/components/ConfirmDialog";
 export default function OnboardingDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { business, user, profile, plans, refresh } = useAuth();
   const [step, setStep] = useState(0);
+  const [payOpen, setPayOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const [bizName, setBizName] = useState(business?.name || "");
@@ -70,12 +74,23 @@ export default function OnboardingDialog({ open, onClose }: { open: boolean; onC
     }
   };
 
-  const requestUpgrade = () => {
-    if (reco.kind !== "plan") return;
-    const price = money(effectivePrice(reco.plan.price_amount, reco.plan.promo_percent ?? 0, reco.plan.promo_until), reco.plan.price_currency || "NGN");
-    const msg = `Hi, I'd like to upgrade ${business?.name || "my business"} to the ${reco.plan.name} plan — ${price}/month.`;
-    window.open(`https://wa.me/2348137000305?text=${encodeURIComponent(msg)}`, "_blank");
-  };
+  // The billing cycle to charge for. Monthly is what the recommendation quotes, so pay for that;
+  // fall back to whatever the plan actually offers if monthly isn't priced.
+  // recommendPlan returns a narrowed shape without prices, so read the cycles off the catalogue.
+  const recoFull = reco.kind === "plan" ? plans.find(p => p.key === reco.plan.key) : undefined;
+  const recoPrice =
+    (recoFull?.prices ?? []).find(p => p.is_active && p.cycle === "monthly")
+    ?? (recoFull?.prices ?? []).find(p => p.is_active)
+    ?? null;
+  const recoCycle = recoPrice?.cycle ?? "monthly";
+  // What the button charges: the price of THE CYCLE BEING SOLD, with its standing discount and any
+  // promo — not the plan's monthly base. A referral discount, if any, shows on the server quote in
+  // the payment dialog, which is authoritative either way.
+  const recoAmount = reco.kind === "plan"
+    ? (recoPrice
+        ? cyclePrice(Number(recoPrice.price_amount), Number(recoPrice.discount_percent ?? 0), reco.plan.promo_percent ?? 0, reco.plan.promo_until)
+        : effectivePrice(reco.plan.price_amount, reco.plan.promo_percent ?? 0, reco.plan.promo_until))
+    : 0;
 
   const startTrial = async () => {
     if (reco.kind !== "plan") return;
@@ -246,8 +261,10 @@ export default function OnboardingDialog({ open, onClose }: { open: boolean; onC
                         Start 7-day free trial
                       </Button>
                     )}
-                    <Button variant="outline" className="w-full" onClick={requestUpgrade} disabled={busy}>
-                      Request immediate upgrade
+                    {/* Pay right here — this is peak intent. It used to open a WhatsApp message and
+                        hand the customer to a human, which lost the moment. */}
+                    <Button variant="outline" className="w-full" onClick={() => setPayOpen(true)} disabled={busy}>
+                      Upgrade now — pay {money(recoAmount, reco.plan.price_currency || "NGN")}{recoCycle !== "monthly" ? ` · ${CYCLE_LABEL[recoCycle]}` : ""}
                     </Button>
                     <Button variant="ghost" className="w-full text-muted-foreground" onClick={() => next()} disabled={busy}>
                       Use iTrova for Free for now
@@ -284,6 +301,21 @@ export default function OnboardingDialog({ open, onClose }: { open: boolean; onC
         </div>
       </DialogContent>
     </Dialog>
+
+    {/* Paying from onboarding: once the webhook CONFIRMS payment the plan is live, so close setup
+        rather than leaving them on a screen still offering the trial they just paid past. Closing
+        the dialog without paying keeps onboarding open — the tier alone is not proof of payment. */}
+    {payOpen && reco.kind === "plan" && (
+      <Suspense fallback={null}>
+        <PaySubscriptionDialog
+          open={payOpen}
+          onOpenChange={setPayOpen}
+          onPaid={() => { finish(`You're on ${reco.plan.name} — welcome aboard.`).catch(() => onClose()); }}
+          planKey={reco.plan.key} planName={reco.plan.name} cycle={recoCycle}
+          currency={reco.plan.price_currency || "NGN"}
+        />
+      </Suspense>
+    )}
 
     <ConfirmDialog
       open={closeConfirm}

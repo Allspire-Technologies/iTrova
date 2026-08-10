@@ -7,6 +7,10 @@ export type AuthOptions = {
   role?: "owner" | "manager" | "cashier";
   ownerName?: string;
   businessName?: string;
+  subscriptionTier?: string;
+  subscriptionCycle?: string | null;
+  cancelAtPeriodEnd?: boolean;
+  subscriptionRenewsAt?: string | null;
   /** Register extra routes after the defaults but before navigation — these win over the catch-all. */
   onRoutes?: (page: Page) => Promise<void>;
   /** Let the one-time "What's new" wizard appear (default: pre-marked seen so it stays out of the way). */
@@ -43,7 +47,14 @@ export async function authenticate(page: Page, opts: AuthOptions = {}) {
     owner_id: FAKE_USER.id,
     currency: "NGN",
     timezone: "Africa/Lagos",
-    subscription_tier: "free",
+    subscription_tier: opts.subscriptionTier ?? "free",
+    subscription_cycle: opts.subscriptionCycle ?? null,
+    cancel_at_period_end: opts.cancelAtPeriodEnd ?? false,
+    subscription_started_at: opts.subscriptionTier && opts.subscriptionTier !== "free" ? "2026-07-01T00:00:00Z" : null,
+    // "in" check so an EXPLICIT null (paid tier, no renewal date) isn't replaced by the default.
+    subscription_renews_at: "subscriptionRenewsAt" in opts
+      ? opts.subscriptionRenewsAt
+      : (opts.subscriptionTier && opts.subscriptionTier !== "free" ? "2099-01-01T00:00:00Z" : null),
     whatsapp_number: null,
     created_at: "2026-06-01T00:00:00Z",
   };
