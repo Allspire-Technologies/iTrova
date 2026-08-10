@@ -14,9 +14,13 @@
 //   Paystack: PAYSTACK_SECRET_KEY  (test = sk_test_…, live = sk_live_… — mode is IN THE KEY)
 // (SUPABASE_URL / _ANON_KEY / _SERVICE_ROLE_KEY are injected automatically.)
 // Deploy with verify_jwt ON — the caller's JWT identifies the business.
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// Pinned exact version — a floating @2 could silently change behaviour between cold starts.
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 
-const BASE = () => Deno.env.get("MONNIFY_BASE_URL") ?? "https://sandbox.monnify.com";
+// No default host: sandbox-vs-live must be an explicit choice. An unset MONNIFY_BASE_URL on
+// production would otherwise send real customers to the sandbox; the config check below
+// rejects Monnify payments until it is set.
+const BASE = () => Deno.env.get("MONNIFY_BASE_URL") ?? "";
 const API_KEY = () => Deno.env.get("MONNIFY_API_KEY") ?? "";
 const SECRET = () => Deno.env.get("MONNIFY_SECRET_KEY") ?? "";
 const CONTRACT = () => Deno.env.get("MONNIFY_CONTRACT_CODE") ?? "";
@@ -92,22 +96,34 @@ Deno.serve(async (req) => {
     const { data: bizId, error: bizErr } = await caller.rpc("current_business_id");
     if (bizErr || !bizId) return json({ error: "No business found for this account." }, 403);
 
+    const admin = createClient(url, service);
+
+    // Only the owner commits the business to a subscription. Staff paying the business's bill
+    // wouldn't lose anyone money, but plan changes are an owner decision — same gate as
+    // set_subscription_cancel.
+    const { data: isOwner, error: ownerErr } = await admin
+      .rpc("has_business_role", { _business_id: bizId, _user_id: user.id, _role: "owner" });
+    if (ownerErr) return json({ error: ownerErr.message }, 500);
+    if (!isOwner) return json({ error: "Only the business owner can pay for a subscription." }, 403);
+
     const { plan_key, cycle, method = "transfer", return_origin } = await req.json().catch(() => ({}));
     if (!plan_key || !cycle) return json({ error: "A plan and billing cycle are required." }, 400);
     if (!["transfer", "card"].includes(method)) return json({ error: "Unsupported payment method." }, 400);
 
-    const admin = createClient(url, service);
-
-    // ---- Which provider serves this payment is OUR call, read server-side. Default: Monnify.
+    // ---- Which provider serves this payment is OUR call, read server-side. A failed read
+    // aborts: routing money on a guess is worse than asking the customer to retry. Monnify is
+    // the default only when the read SUCCEEDS and no row exists yet.
     const { data: cfg, error: cfgErr } = await admin.from("billing_config").select("active_provider").maybeSingle();
-    // A failed read must not silently reroute money — log it, then fall back to the default.
-    if (cfgErr) console.error("create-payment: billing_config read failed, defaulting to monnify:", cfgErr.message);
+    if (cfgErr) {
+      console.error("create-payment: billing_config read failed:", cfgErr.message);
+      return json({ error: "Couldn't start the payment. Please try again." }, 500);
+    }
     const provider: "monnify" | "paystack" = cfg?.active_provider === "paystack" ? "paystack" : "monnify";
     if (provider === "paystack" && !PAYSTACK_SECRET()) {
       return json({ error: "Payments aren't configured — set PAYSTACK_SECRET_KEY." }, 500);
     }
-    if (provider === "monnify" && (!API_KEY() || !SECRET() || !CONTRACT())) {
-      return json({ error: "Payments aren't configured — set MONNIFY_API_KEY, MONNIFY_SECRET_KEY and MONNIFY_CONTRACT_CODE." }, 500);
+    if (provider === "monnify" && (!API_KEY() || !SECRET() || !CONTRACT() || !BASE())) {
+      return json({ error: "Payments aren't configured — set MONNIFY_API_KEY, MONNIFY_SECRET_KEY, MONNIFY_CONTRACT_CODE and MONNIFY_BASE_URL." }, 500);
     }
 
     // Card payment sends the user off to the provider and back, so we must return them to the origin
@@ -188,9 +204,15 @@ Deno.serve(async (req) => {
       providerReference = tx?.transactionReference ?? null;
     }
 
-    await admin.from("billing_payment")
-      .update({ provider_reference: providerReference })
-      .eq("our_reference", ourReference);
+    // Paystack rows keep provider_reference null until the webhook writes the transaction id,
+    // so there is nothing to persist on that path. A failure here is logged but not fatal:
+    // the webhook matches by our_reference, so the payment still completes.
+    if (providerReference !== null) {
+      const { error: refErr } = await admin.from("billing_payment")
+        .update({ provider_reference: providerReference })
+        .eq("our_reference", ourReference);
+      if (refErr) console.error("create-payment: storing provider_reference failed:", refErr.message);
+    }
 
     return json({
       method, provider, reference: ourReference, amount, quote,

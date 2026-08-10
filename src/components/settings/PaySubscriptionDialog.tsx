@@ -7,8 +7,9 @@ import { Building2, CreditCard, CheckCircle2, Loader2, ExternalLink } from "luci
 import { createPayment, latestPaymentStatus, type PaymentStart } from "@/lib/billing";
 import { useAuth } from "@/contexts/AuthContext";
 
-/** Pay for a plan by bank transfer or card, both settled on Monnify with the amount locked in.
- *  The amount shown is the server's quote, not a figure computed here — see src/lib/billing.ts. */
+/** Pay for a plan by bank transfer or card, settled on whichever provider the platform has
+ *  active, with the amount locked to the transaction. The amount shown is the server's quote,
+ *  not a figure computed here — see src/lib/billing.ts. */
 export default function PaySubscriptionDialog({
   open, onOpenChange, planKey, planName, cycle, currency = "NGN", onPaid,
 }: {
@@ -22,7 +23,12 @@ export default function PaySubscriptionDialog({
   const [busy, setBusy] = useState(false);
   const [paid, setPaid] = useState(false);
   const [failed, setFailed] = useState(false);
-  const poll = useRef<number | null>(null);
+  const [timedOut, setTimedOut] = useState(false);
+  // The poll ticks against the LATEST callbacks without restarting the interval every time a
+  // parent render hands down a new function identity.
+  const refreshRef = useRef(refresh);
+  const onPaidRef = useRef(onPaid);
+  useEffect(() => { refreshRef.current = refresh; onPaidRef.current = onPaid; });
 
   const money = (n: number) =>
     new Intl.NumberFormat(undefined, { style: "currency", currency, currencyDisplay: "narrowSymbol", maximumFractionDigits: 0 }).format(n);
@@ -51,25 +57,29 @@ export default function PaySubscriptionDialog({
   };
 
   // Money arrives out-of-band (the customer's bank app), so watch for the webhook to land.
-  // Both outcomes are terminal: stop polling on paid AND on mismatch (no toast every 5s).
+  // Terminal states: paid, mismatch, and a 5-minute deadline — an unreachable webhook must
+  // present as "we haven't seen it yet", never as an indefinite spinner.
   useEffect(() => {
-    if (!start?.reference || paid || failed) return;
-    poll.current = window.setInterval(async () => {
+    if (!start?.reference || paid || failed || timedOut) return;
+    let attempts = 0;
+    const id = window.setInterval(async () => {
       const status = await latestPaymentStatus(start.reference);
       if (status === "paid") {
         setPaid(true);
         toast.success("Payment received — your plan is active.");
-        await refresh();
-        onPaid?.();
+        await refreshRef.current();
+        onPaidRef.current?.();
       } else if (status === "mismatch") {
         setFailed(true);
         toast.warning("The amount received didn't match — your plan isn't active yet. Please contact us.");
+      } else if (++attempts >= 60) {
+        setTimedOut(true);
       }
     }, 5000);
-    return () => { if (poll.current) window.clearInterval(poll.current); };
-  }, [start?.reference, paid, failed, refresh, onPaid]);
+    return () => window.clearInterval(id);
+  }, [start?.reference, paid, failed, timedOut]);
 
-  useEffect(() => { if (!open) { setStart(null); setPaid(false); setFailed(false); } }, [open]);
+  useEffect(() => { if (!open) { setStart(null); setPaid(false); setFailed(false); setTimedOut(false); } }, [open]);
 
 
   const q = start?.quote;
@@ -133,6 +143,14 @@ export default function PaySubscriptionDialog({
               <p className="text-xs text-destructive">
                 The amount received didn't match, so your plan isn't active. Contact us and we'll sort it out.
               </p>
+            ) : timedOut ? (
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  We haven't seen the confirmation yet. If you've paid, it can take a few minutes to land —
+                  check Billing history shortly, or contact us if it doesn't appear.
+                </p>
+                <Button variant="outline" size="sm" onClick={() => setTimedOut(false)}>Check again</Button>
+              </div>
             ) : (
               <p className="text-xs text-muted-foreground flex items-center gap-1.5">
                 <Loader2 className="size-3.5 animate-spin" /> Waiting for confirmation… you can close this and come back.

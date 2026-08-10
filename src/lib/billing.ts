@@ -68,6 +68,11 @@ export async function latestPaymentStatus(reference: string): Promise<string | n
   const sb = supabase as any;
   const { data, error } = await sb
     .from("billing_payment").select("status").eq("our_reference", reference).maybeSingle();
-  if (error) return null;
+  if (error) {
+    // Null also means "not paid yet" to the poller — leave a trace so a broken query is
+    // distinguishable from a payment that simply hasn't landed.
+    console.error("latestPaymentStatus failed:", error.message);
+    return null;
+  }
   return (data as { status?: string } | null)?.status ?? null;
 }
