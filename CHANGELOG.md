@@ -3,6 +3,23 @@
 All notable, user-facing changes to iTrova are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); entries are grouped by ship date, newest first.
 
+## 2026-08-13 — Spend your referral credit
+
+The credit you earn by referring other businesses now pays for your own subscription, without
+asking us to apply it.
+
+### Added
+- **Use your referral credit at checkout** — when you renew or upgrade, the payment window offers
+  your available credit. It comes off the price and you pay the difference; if your credit covers
+  the whole plan, it activates with no payment page at all. Anything left over stays on your
+  balance for next time, and you can switch it off if you'd rather pay in full.
+- **Receipts show how you paid** — billing history and every invoice now split what was settled by
+  referral credit and what was paid by card or transfer, instead of showing a single figure.
+
+### Changed
+- **Refer & earn shows what you can actually spend.** The credit figure now matches what checkout
+  will honour — it excludes anything a payment you've already started is holding.
+
 ## 2026-08-13 — Pay for your plan in the app
 
 Upgrading no longer means messaging us and waiting. Pick a plan, pay by transfer or card, and it
