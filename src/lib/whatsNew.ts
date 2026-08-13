@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Moon, Search, FileText, Trash2, BarChart3, Sparkles, FilePlus, CreditCard } from "lucide-react";
+import { Moon, Search, FileText, Trash2, BarChart3, Sparkles, FilePlus, CreditCard, Gift } from "lucide-react";
 
 // One-time "What's new" wizard content. Append a new entry (with a higher id) whenever a feature
 // ships; users only see entries newer than the last one they dismissed, tracked in localStorage.
@@ -66,6 +66,14 @@ export const WHATS_NEW: WhatsNewEntry[] = [
     icon: CreditCard,
     title: "Pay for your plan in the app",
     body: "Upgrade or renew without messaging us: pay by bank transfer or card and your plan activates itself. A transfer gets a one-off account number for the exact amount. You'll also find your billing history there, with a receipt to download for every payment.",
+    route: "/settings?tab=billing",
+    cta: "Open Billing",
+  },
+  {
+    id: 9,
+    icon: Gift,
+    title: "Spend your referral credit",
+    body: "The credit you earn from referring other businesses now pays for your own plan. When you renew or upgrade, it comes off the price and you pay the difference — or nothing at all if it covers the whole plan. Whatever's left stays on your balance.",
     route: "/settings?tab=billing",
     cta: "Open Billing",
   },
