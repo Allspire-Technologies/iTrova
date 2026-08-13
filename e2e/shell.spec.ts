@@ -61,16 +61,18 @@ test.describe("App shell — theme, search, what's new", () => {
     await expect(dialog.getByText("Dark mode")).toBeVisible();
 
     const next = dialog.getByRole("button", { name: "Next", exact: true });
-    for (let i = 0; i < 50 && (await next.count()); i++) {
+    while (await next.count()) {          // the test timeout is the backstop, not an entry cap
       await next.click();
       await expect(dialog).toBeVisible();
     }
-    await expect(next).toHaveCount(0);   // reached the last card
 
     // The final entry lives on a page, so its button takes you there and dismisses. Matched by
-    // exclusion (Back/Skip/Close) so the label can change with the entry.
+    // exclusion (Back/Skip/Close) so the label can change with the entry, and the destination is
+    // only asserted as "somewhere else" — pinning it to a route would go stale the next time an
+    // entry is appended, which is the whole reason this test was rewritten.
+    const before = page.url();
     await dialog.getByRole("button", { name: /^(?!Back$|Skip$|Close$).+$/ }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    await expect(page).toHaveURL(/\/settings\?tab=billing/);   // where the newest entry points today
+    expect(page.url()).not.toBe(before);
   });
 });
