@@ -125,7 +125,7 @@ export default function Team() {
   const sendInvite = async () => {
     if (!business || !inviteEmail) return;
     if (isAtLimit(members.length, business.subscription_tier, "staff")) {
-      toast.error(limitMessage("staff"));
+      toast.error(limitMessage("staff", tier));
       return;
     }
     setSubmitting(true);
@@ -298,7 +298,7 @@ export default function Team() {
           <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden"
             onChange={e => e.target.files?.[0] && importCsv(e.target.files[0])} />
           <Button variant="outline" onClick={downloadTemplate}><Download className="size-4" /> CSV Template</Button>
-          {can("team", "invite") && hasModule("csv_import") && can("team", "csv_import") && <Hint label={atStaffLimit ? limitMessage("staff") : undefined} wrap><Button variant="outline" onClick={() => fileRef.current?.click()} disabled={atStaffLimit}><Upload className="size-4" /> Import CSV</Button></Hint>}
+          {can("team", "invite") && hasModule("csv_import") && can("team", "csv_import") && <Hint label={atStaffLimit ? limitMessage("staff", tier) : undefined} wrap><Button variant="outline" onClick={() => fileRef.current?.click()} disabled={atStaffLimit}><Upload className="size-4" /> Import CSV</Button></Hint>}
           {can("team", "csv_export") && <Button variant="outline" onClick={exportMembers} disabled={members.length === 0}><Download className="size-4" /> Export</Button>}
           {staffLimit !== null && members.length >= Math.floor(staffLimit * 0.8) && (
             <span className={`self-center text-xs font-medium ${atStaffLimit ? "text-destructive" : "text-amber-600 dark:text-amber-400"}`}>
@@ -307,7 +307,7 @@ export default function Team() {
           )}
           {can("team", "invite") && (
           <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
-          <Hint label={atStaffLimit ? limitMessage("staff") : undefined} wrap>
+          <Hint label={atStaffLimit ? limitMessage("staff", tier) : undefined} wrap>
             <DialogTrigger asChild>
               <Button variant="hero" disabled={atStaffLimit}><UserPlus className="size-4" /> Invite teammate</Button>
             </DialogTrigger>

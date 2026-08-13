@@ -1,17 +1,21 @@
 import { test, expect } from "@playwright/test";
 import { authenticate, stubRows } from "./support/auth";
 
+// Plans carry their own modules and limits, exactly as the backend publishes them — the app holds
+// no copy of either, so a fixture without `modules` would grant everything.
+const FREE_MODULES = ["inventory", "pos", "invoices", "reports", "team"];
+const PAID_MODULES = [...FREE_MODULES, "suppliers", "raw_materials", "purchase_orders", "csv_import", "csv_export"];
 const base = { price_currency: "NGN", is_active: true, business_id: null, promo_percent: 0, promo_label: null, promo_until: null };
 const plans = [
-  { ...base, id: "pl-1", key: "free", name: "Free", description: "Small shops", price_amount: 0, billing_period: null, features: ["Inventory management", "POS & sales"], limits: { products: 100 }, sort_order: 1,
+  { ...base, id: "pl-1", key: "free", name: "Free", description: "Small shops", price_amount: 0, billing_period: null, features: ["Inventory management", "POS & sales"], limits: { inventory: 25, invoices: 50, team: 3 }, modules: FREE_MODULES, sort_order: 1,
     prices: [{ id: "pp-1", cycle: "monthly", price_amount: 0, discount_percent: 0, is_active: true, sort_order: 1 }] },
-  { ...base, id: "pl-2", key: "pro", name: "Pro", description: "Growing", price_amount: 5000, billing_period: "month", features: ["Everything in Free", "AI Insights"], limits: { products: null }, sort_order: 2,
+  { ...base, id: "pl-2", key: "pro", name: "Pro", description: "Growing", price_amount: 5000, billing_period: "month", features: ["Everything in Free", "AI Insights"], limits: { inventory: 1000, team: 7 }, modules: PAID_MODULES, sort_order: 2,
     promo_percent: 10, promo_label: "Launch offer", promo_until: "2999-01-01T00:00:00Z",
     prices: [
       { id: "pp-2", cycle: "monthly", price_amount: 5000, discount_percent: 0, is_active: true, sort_order: 1 },
       { id: "pp-3", cycle: "annual", price_amount: 48000, discount_percent: 20, is_active: true, sort_order: 4 },
     ] },
-  { ...base, id: "pl-3", key: "business", name: "Business", description: "Multi-branch", price_amount: 15000, billing_period: "month", features: ["Everything in Pro"], limits: { products: null }, sort_order: 3,
+  { ...base, id: "pl-3", key: "business", name: "Business", description: "Multi-branch", price_amount: 15000, billing_period: "month", features: ["Everything in Pro"], limits: { inventory: 10000, team: 15 }, modules: [...PAID_MODULES, "general_store", "production"], sort_order: 3,
     prices: [
       { id: "pp-4", cycle: "monthly", price_amount: 15000, discount_percent: 0, is_active: true, sort_order: 1 },
       { id: "pp-5", cycle: "annual", price_amount: 144000, discount_percent: 20, is_active: true, sort_order: 4 },
@@ -51,8 +55,8 @@ test.describe("Settings", () => {
   });
 
   test("module-specific Settings are hidden when the business lacks the module", async ({ page }) => {
-    // The Free plan resolves to FREE_MODULES (no export_invoices / general_store / production /
-    // expenditure), so those modules' Settings should not render.
+    // The Free plan publishes its own module list (no export_invoices / general_store /
+    // production / expenditure), so those modules' Settings should not render.
     await authenticate(page, { role: "owner" });
     await stubRows(page, "plans", plans);
     await page.goto("/settings");

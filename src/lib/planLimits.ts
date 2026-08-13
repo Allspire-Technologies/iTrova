@@ -13,17 +13,6 @@ const RESOURCE_MODULE: Record<PlanResource, string> = {
   staff:          "team",
 };
 
-// The Free tier's caps come from the DB (plans.limits) and load into `registry` at startup. These are
-// only the fallback used before that loads (and for an unknown tier), so keep them matching the DB
-// Free plan — and only for the resources Free is actually limited on. Free's other modules (suppliers,
-// raw materials, purchase orders) aren't included in the plan, so they carry no cap here (modules and
-// limits stay aligned).
-const FREE_LIMITS: Partial<Record<PlanResource, number>> = {
-  products:  25,
-  invoices:  50,
-  staff:      3,
-};
-
 const RESOURCE_LABELS: Record<PlanResource, string> = {
   products:       "products",
   suppliers:      "suppliers",
@@ -33,26 +22,30 @@ const RESOURCE_LABELS: Record<PlanResource, string> = {
   staff:          "team members",
 };
 
-// Limits by plan key, populated from the Supabase `plans` table at runtime. Until it's
-// loaded (or for an unknown tier) we fall back to the Free caps so enforcement is safe.
+// Limits by plan key, populated from the Supabase `plans` table at runtime. This is the ONLY
+// source of a cap — there is no hardcoded copy here. plans.limits is edited from the CRM, so any
+// number written into this file starts drifting the moment someone changes a plan (it did: this
+// file said 25/50, the migration seed said 100/300, and production said 25/50/3 — three answers to
+// one question). Before the plans load, nothing is capped client-side; the database triggers are
+// the enforcement, and the UI is a courtesy on top of them.
 const registry: Record<string, PlanLimits> = {};
 
 export function registerPlanLimits(plans: { key: string; limits?: PlanLimits | null }[]): void {
   for (const p of plans) registry[p.key] = p.limits ?? {};
 }
 
-/** Returns the numeric cap for a resource on the given tier, or null if unlimited. */
+/** The numeric cap for a resource on the given tier, or null when the plan doesn't cap it (and
+ *  before the plans have loaded). Read straight from what the backend published — a plan that
+ *  omits a key is unlimited for that resource, exactly as the database reads it. */
 export function getLimit(tier: string | null | undefined, resource: PlanResource): number | null {
   const planLimits = tier ? registry[tier] : undefined;
-  if (planLimits) {
-    const moduleKey = RESOURCE_MODULE[resource];
-    const v = moduleKey in planLimits ? planLimits[moduleKey]
-      : resource in planLimits ? planLimits[resource]
-      : undefined;
-    if (v !== undefined) return v == null ? null : Number(v);
-  }
-  if (!tier || tier === "free") return FREE_LIMITS[resource] ?? null;
-  return null;
+  if (!planLimits) return null;
+  const moduleKey = RESOURCE_MODULE[resource];
+  const v = moduleKey in planLimits ? planLimits[moduleKey]
+    : resource in planLimits ? planLimits[resource]
+    : undefined;
+  if (v === undefined || v === null) return null;
+  return Number(v);
 }
 
 /** True when count has reached or exceeded the plan cap. */
@@ -61,9 +54,14 @@ export function isAtLimit(count: number, tier: string | null | undefined, resour
   return limit !== null && count >= limit;
 }
 
-/** Human-readable message to show when a limit is hit — the number comes from the DB-driven cap. */
-export function limitMessage(resource: PlanResource): string {
-  const limit = getLimit("free", resource);
+/** Human-readable message to show when a limit is hit — the number and the plan named are the
+ *  CALLER'S, not Free's. Quoting the Free cap to a paying customer ("Free plan limit reached
+ *  (3 team members)" on Pro, whose cap is 10) is both wrong and insulting. */
+export function limitMessage(resource: PlanResource, tier?: string | null): string {
+  const t = tier || "free";
+  const limit = getLimit(t, resource);
   const label = RESOURCE_LABELS[resource];
-  return `Free plan limit reached (${limit} ${label}). Upgrade to Pro to add more.`;
+  const planName = t.charAt(0).toUpperCase() + t.slice(1);
+  const upgrade = t === "free" ? "Upgrade to Pro to add more." : "Upgrade your plan to add more.";
+  return `${planName} plan limit reached (${limit} ${label}). ${upgrade}`;
 }

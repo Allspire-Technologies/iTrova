@@ -152,7 +152,7 @@ export default function Inventory() {
     e.preventDefault();
     if (!business) return;
     if (!editing && isAtLimit(items.length, business.subscription_tier, "products")) {
-      toast.error(limitMessage("products"));
+      toast.error(limitMessage("products", tier));
       return;
     }
     const sku = (form.sku || "").trim();
@@ -359,7 +359,7 @@ export default function Inventory() {
         <div className="flex gap-2 flex-wrap">
           <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => e.target.files?.[0] && importCsv(e.target.files[0])} />
           <Button variant="outline" onClick={downloadTemplate}><Download className="size-4" /> CSV Template</Button>
-          {online && hasModule("csv_import") && <Hint label={atProductLimit ? limitMessage("products") : undefined} wrap><Button variant="outline" onClick={() => fileRef.current?.click()} disabled={atProductLimit}><Upload className="size-4" /> Import CSV</Button></Hint>}
+          {online && hasModule("csv_import") && <Hint label={atProductLimit ? limitMessage("products", tier) : undefined} wrap><Button variant="outline" onClick={() => fileRef.current?.click()} disabled={atProductLimit}><Upload className="size-4" /> Import CSV</Button></Hint>}
           {hasModule("csv_export") && <Button variant="outline" onClick={exportCsv} disabled={items.length === 0}><Download className="size-4" /> Export</Button>}
           {productLimit !== null && items.length >= Math.floor(productLimit * 0.8) && (
             <span className={`self-center text-xs font-medium ${atProductLimit ? "text-destructive" : "text-amber-600 dark:text-amber-400"}`}>
@@ -370,7 +370,7 @@ export default function Inventory() {
           <Dialog open={open} onOpenChange={setOpen}>
             {/* Hint wraps the TRIGGER, not the Button: asChild must hand its props straight to the
                 Button, or the dialog stops opening. */}
-            <Hint label={atProductLimit ? limitMessage("products") : undefined} wrap>
+            <Hint label={atProductLimit ? limitMessage("products", tier) : undefined} wrap>
               <DialogTrigger asChild>
                 <Button variant="hero" onClick={openAdd} disabled={atProductLimit}><Plus className="size-4" /> Add product</Button>
               </DialogTrigger>
