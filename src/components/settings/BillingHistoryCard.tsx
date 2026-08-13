@@ -12,7 +12,9 @@ import { useDateFormat } from "@/hooks/useDateFormat";
 import { listBillingHistory, type BillingHistoryRow } from "@/lib/billing";
 import { downloadPdf, pdfMoneyFormatter } from "@/lib/pdf";
 
-const METHOD_LABEL: Record<string, string> = { transfer: "Bank transfer", card: "Card", manual: "Recorded by our team" };
+const METHOD_LABEL: Record<string, string> = {
+  transfer: "Bank transfer", card: "Card", credit: "Referral credit", manual: "Recorded by our team",
+};
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** Settings → Billing: what this business has paid for its subscription, with a receipt per payment. */
@@ -41,6 +43,17 @@ export default function BillingHistoryCard() {
   const describe = (r: BillingHistoryRow) =>
     `iTrova ${r.planKey ? cap(r.planKey) : "subscription"}${r.cycle ? ` — ${cap(r.cycle)}` : ""}`;
 
+  // How the payment was settled. `amount` is what the plan cost; referral credit may have covered
+  // part or all of it, so the cash line is the remainder — showing only the total would tell a
+  // customer they paid cash they never sent.
+  const settlement = (r: BillingHistoryRow) => {
+    const cash = Math.max(0, r.amount - r.creditApplied);
+    const lines: { method: string; amount: number }[] = [];
+    if (r.creditApplied > 0) lines.push({ method: "Referral credit", amount: r.creditApplied });
+    if (cash > 0 || lines.length === 0) lines.push({ method: METHOD_LABEL[r.method] ?? r.method, amount: cash });
+    return lines;
+  };
+
   const download = async (r: BillingHistoryRow) => {
     try {
       await downloadPdf({
@@ -54,7 +67,7 @@ export default function BillingHistoryCard() {
         items: [{ description: describe(r), quantity: 1, unit_price: r.amount, line_total: r.amount }],
         subtotal: r.amount,
         total: r.amount,
-        payments: [{ method: METHOD_LABEL[r.method] ?? r.method, amount: r.amount }],
+        payments: settlement(r),
         formatMoney: pdfMoneyFormatter(r.currency),
         notes: "Thank you for subscribing to iTrova.",
       }, `itrova-receipt-${receiptNumber(r)}.pdf`);
@@ -92,6 +105,8 @@ export default function BillingHistoryCard() {
                   <div className="font-medium text-brand-dark truncate">{describe(r)}</div>
                   <div className="text-xs text-muted-foreground">
                     {fmtDate(r.paidAt)} · {METHOD_LABEL[r.method] ?? r.method}
+                    {r.creditApplied > 0 && r.creditApplied < r.amount &&
+                      ` · includes ${money(r.creditApplied, r.currency)} referral credit`}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -141,14 +156,19 @@ export default function BillingHistoryCard() {
                   <span className="tabular-nums">{money(viewing.amount, viewing.currency)}</span>
                 </div>
                 <div className="flex justify-between gap-4 p-3 font-semibold text-brand-dark">
-                  <span>Total paid</span>
+                  <span>Total</span>
                   <span className="tabular-nums">{money(viewing.amount, viewing.currency)}</span>
                 </div>
+                {/* How it was settled — the lines add up to the total, so referral credit is never
+                    presented as cash the customer sent. */}
+                {settlement(viewing).map((s) => (
+                  <div key={s.method} className="flex justify-between gap-4 p-3 text-muted-foreground">
+                    <span>Paid with {s.method.toLowerCase()}</span>
+                    <span className="tabular-nums">{money(s.amount, viewing.currency)}</span>
+                  </div>
+                ))}
               </div>
-              <div className="text-xs text-muted-foreground">
-                Paid by {METHOD_LABEL[viewing.method] ?? viewing.method}
-                {viewing.reference ? ` · Ref ${viewing.reference}` : ""}
-              </div>
+              {viewing.reference && <div className="text-xs text-muted-foreground">Ref {viewing.reference}</div>}
             </div>
           )}
           <DialogFooter>

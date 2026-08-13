@@ -256,6 +256,9 @@ test.describe("Settings", () => {
     const history = Array.from({ length: 7 }, (_, i) => ({
       id: `pay-${i}`, paid_at: `2026-0${(i % 9) + 1}-15`, plan_key: "pro", cycle: "monthly",
       amount: 4500, currency: "NGN", reference: `MNFY-${i}`, method: i === 0 ? "card" : "transfer",
+      // Row 0 was settled entirely with referral credit; row 1 was part credit, part transfer.
+      credit_applied: i === 0 ? 4500 : i === 1 ? 1000 : 0,
+      ...(i === 0 ? { method: "credit" } : {}),
     }));
     await authenticate(page, { role: "owner", subscriptionTier: "pro", subscriptionCycle: "monthly", onRoutes: async (p) => {
       await p.route("**/rest/v1/rpc/my_billing_history**", (r) =>
@@ -270,12 +273,19 @@ test.describe("Settings", () => {
     // 5 on the first page, not all 7.
     await expect(page.getByText("iTrova Pro — Monthly")).toHaveCount(5);
 
+    // A part-credit payment says so on the row — the total alone would imply all of it was cash.
+    await expect(page.getByText(/includes ₦1,000 referral credit/)).toBeVisible();
+
     // Each payment offers both actions.
     await page.getByRole("button", { name: /Actions for/ }).first().click();
     await expect(page.getByRole("menuitem", { name: "View invoice" })).toBeVisible();
     await expect(page.getByRole("menuitem", { name: "Download invoice" })).toBeVisible();
     await page.getByRole("menuitem", { name: "View invoice" }).click();
-    await expect(page.getByRole("dialog").getByText("Total paid")).toBeVisible();
+    // Row 0 was covered by credit: the receipt shows the plan's cost AND how it was settled, so
+    // referral credit is never presented as cash the customer sent.
+    const invoice = page.getByRole("dialog");
+    await expect(invoice.getByText("Total", { exact: true })).toBeVisible();
+    await expect(invoice.getByText("Paid with referral credit")).toBeVisible();
     await page.getByRole("dialog").getByRole("button", { name: "Close" }).first().click(); // the X is also named Close
 
     // Page 2 holds the remaining 2.
@@ -289,6 +299,8 @@ test.describe("Settings", () => {
         r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
       await p.route("**/rest/v1/referral_config**", (r) => j(r, { business_share_percent: 25, referee_discount_percent: 20 }));
       await p.route("**/rest/v1/rpc/my_referral_earnings**", (r) => j(r, [{ referred_count: 4, converted_count: 2, earned: 45000, credited: 0, accrued: 45000 }]));
+      // The card shows the SPENDABLE balance (what checkout will honour), not earned − credited.
+      await p.route("**/rest/v1/rpc/my_referral_credit**", (r) => j(r, 45000));
       await p.route("**/rest/v1/rpc/ensure_referral_code**", (r) => j(r, "SUNRISESTO0305"));
     }});
     await page.goto("/settings");
@@ -303,5 +315,109 @@ test.describe("Settings", () => {
     // Earnings accrue as subscription credit at the business share rate.
     await expect(page.getByText("credit available")).toBeVisible();
     await expect(page.getByText("₦45,000").first()).toBeVisible();
+  });
+
+  test("referral credit offsets the price; the browser sends a yes/no, never a figure", async ({ page }) => {
+    let sentBody: Record<string, unknown> | null = null;
+    await authenticate(page, { role: "owner", businessName: "Sunrise Stores", onRoutes: async (p) => {
+      // Pro monthly is ₦4,500 after the launch promo; ₦3,000 of credit leaves ₦1,500 to collect.
+      await p.route("**/rest/v1/rpc/my_payment_quote**", (r) =>
+        r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([{
+          amount: 4500, currency: "NGN", list_amount: 5000, cycle_discount: 0, referee_discount: 0,
+          credit_available: 3000, credit_applicable: 3000, amount_due: 1500,
+        }]) }));
+      await p.route("**/functions/v1/create-payment**", (r) => {
+        sentBody = r.request().postDataJSON();
+        return r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+          method: "transfer", provider: "monnify", reference: "ITV-abc-9", amount: 4500,
+          amount_due: 1500, credit_applied: 3000,
+          checkout_url: "https://sandbox.monnify.com/checkout/ITV-abc-9",
+        }) });
+      });
+      await p.route("https://sandbox.monnify.com/**", (r) =>
+        r.fulfill({ status: 200, contentType: "text/html", body: "<h1>Monnify checkout stub</h1>" }));
+    }});
+    await stubRows(page, "plans", plans);
+    await page.goto("/settings");
+    await page.getByRole("button", { name: "Billing", exact: true }).click();
+    await page.getByRole("button", { name: /^Pay ₦/ }).first().click();
+
+    const dialog = page.getByRole("dialog");
+    // Credit is offered ON by default, with the arithmetic shown rather than a bare total.
+    await expect(dialog.getByText("−₦3,000")).toBeVisible();
+    await expect(dialog.getByText("₦1,500")).toBeVisible();
+    // Declining it is one click, and the full price comes back.
+    await dialog.getByRole("switch").click();
+    await expect(dialog.getByText("₦4,500").last()).toBeVisible();
+    await dialog.getByRole("switch").click();
+
+    await dialog.getByRole("button", { name: /Bank transfer/ }).click();
+    await expect(page).toHaveURL("https://sandbox.monnify.com/checkout/ITV-abc-9");
+    // How much credit exists, and how much of it applies, is the server's call — the browser only
+    // says whether to use it.
+    expect(sentBody).toMatchObject({ use_credit: true });
+    expect(sentBody).not.toHaveProperty("amount");
+    expect(sentBody).not.toHaveProperty("credit_applied");
+  });
+
+  test("credit that covers the plan activates it with no payment page at all", async ({ page }) => {
+    await authenticate(page, { role: "owner", businessName: "Sunrise Stores", onRoutes: async (p) => {
+      await p.route("**/rest/v1/rpc/my_payment_quote**", (r) =>
+        r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([{
+          amount: 4500, currency: "NGN", list_amount: 5000, cycle_discount: 0, referee_discount: 0,
+          credit_available: 6000, credit_applicable: 4500, amount_due: 0,
+        }]) }));
+      await p.route("**/functions/v1/create-payment**", (r) =>
+        r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+          activated: true, provider: "credit", method: "credit", reference: "ITV-CR-abc",
+          amount: 4500, amount_due: 0, credit_applied: 4500,
+        }) }));
+    }});
+    await stubRows(page, "plans", plans);
+    await page.goto("/settings");
+    await page.getByRole("button", { name: "Billing", exact: true }).click();
+    await page.getByRole("button", { name: /^Pay ₦/ }).first().click();
+
+    const dialog = page.getByRole("dialog");
+    // No method picker: there is nothing to collect.
+    await expect(dialog.getByText(/covers this plan in full/)).toBeVisible();
+    await expect(dialog.getByRole("button", { name: /Bank transfer/ })).toHaveCount(0);
+    // The leftover stays on the account rather than being burnt on a cheaper plan.
+    await expect(dialog.getByText("₦1,500 of credit stays on your account.")).toBeVisible();
+
+    await dialog.getByRole("button", { name: /Confirm — use ₦4,500 credit/ }).click();
+    await expect(dialog.getByText("Credit applied")).toBeVisible();
+    await expect(dialog.getByText(/₦4,500 of referral credit was used/)).toBeVisible();
+    // Nobody left the app: no provider was involved.
+    await expect(page).toHaveURL(/\/settings/);
+  });
+
+  test("credit spent elsewhere mid-payment refuses the activation and keeps the dialog usable", async ({ page }) => {
+    // The concurrency outcome the locking is built around: the quote said the credit covered the
+    // plan, but by the time the server took the row lock another payment had spent it. The plan
+    // must NOT activate, and the customer must be left somewhere they can act.
+    await authenticate(page, { role: "owner", businessName: "Sunrise Stores", onRoutes: async (p) => {
+      await p.route("**/rest/v1/rpc/my_payment_quote**", (r) =>
+        r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([{
+          amount: 4500, currency: "NGN", list_amount: 5000, cycle_discount: 0, referee_discount: 0,
+          credit_available: 6000, credit_applicable: 4500, amount_due: 0,
+        }]) }));
+      await p.route("**/functions/v1/create-payment**", (r) =>
+        r.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({
+          error: "Your referral credit no longer covers this plan. Please reopen the payment.",
+        }) }));
+    }});
+    await stubRows(page, "plans", plans);
+    await page.goto("/settings");
+    await page.getByRole("button", { name: "Billing", exact: true }).click();
+    await page.getByRole("button", { name: /^Pay ₦/ }).first().click();
+
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("button", { name: /Confirm — use ₦4,500 credit/ }).click();
+
+    // No false success, and the confirm button is still there to try again.
+    await expect(dialog.getByText("Credit applied")).toHaveCount(0);
+    await expect(dialog.getByRole("button", { name: /Confirm — use ₦4,500 credit/ })).toBeVisible();
+    await expect(page).toHaveURL(/\/settings/);
   });
 });

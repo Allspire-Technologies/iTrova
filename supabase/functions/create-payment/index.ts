@@ -1,6 +1,7 @@
 // create-payment — starts a subscription payment for the CALLER'S OWN business.
 //
-// The browser sends only { plan_key, cycle, method }. It never sends an amount OR a provider:
+// The browser sends only { plan_key, cycle, method, use_credit }. It never sends an amount, a
+// provider, OR a credit figure — use_credit is a yes/no and the balance is computed here:
 // the price is read server-side from quote_subscription_price(), which applies the cycle discount
 // and the referred-business first-payment discount, and the provider (Monnify or Paystack) comes
 // from the billing_config row the platform team controls. So a tampered request cannot buy
@@ -106,9 +107,60 @@ Deno.serve(async (req) => {
     if (ownerErr) return json({ error: ownerErr.message }, 500);
     if (!isOwner) return json({ error: "Only the business owner can pay for a subscription." }, 403);
 
-    const { plan_key, cycle, method = "transfer", return_origin } = await req.json().catch(() => ({}));
+    const { plan_key, cycle, method = "transfer", return_origin, use_credit } = await req.json().catch(() => ({}));
     if (!plan_key || !cycle) return json({ error: "A plan and billing cycle are required." }, 400);
     if (!["transfer", "card"].includes(method)) return json({ error: "Unsupported payment method." }, 400);
+
+    // ---- Price it SERVER-SIDE. This is the only place an amount comes from.
+    const { data: quoteRows, error: quoteErr } = await admin
+      .rpc("quote_subscription_price", { p_business_id: bizId, p_plan_key: plan_key, p_cycle: cycle });
+    if (quoteErr) return json({ error: quoteErr.message }, 400);
+    const quote = Array.isArray(quoteRows) ? quoteRows[0] : quoteRows;
+    const amount = Number(quote?.amount ?? 0);
+    if (!(amount > 0)) return json({ error: "That plan has no payable price." }, 400);
+
+    // ---- Referral credit, also server-side. The browser sends a yes/no, never a figure: how much
+    // credit exists is ours to compute, and min(available, price) is applied so the customer can
+    // never spend more credit than the plan costs (the excess stays on their balance).
+    //
+    // This read is ADVISORY — it only decides which path to take below. Every figure that ends up
+    // costing anyone money is re-derived inside a locked RPC, because a read here followed by a
+    // write later is exactly the race that lets two concurrent payments claim one balance.
+    let creditApplied = 0;
+    if (use_credit === true) {
+      const { data: creditRaw, error: creditErr } = await admin
+        .rpc("_referral_credit", { p_business_id: bizId });
+      if (creditErr) {
+        console.error("create-payment: referral credit read failed:", creditErr.message);
+        return json({ error: "Couldn't check your referral credit. Please try again." }, 500);
+      }
+      creditApplied = Math.min(Number(creditRaw ?? 0), amount);
+    }
+    const due = Math.max(0, amount - creditApplied);
+
+    // ---- Fully covered by credit: no provider, no checkout page, no money to move. The RPC
+    // re-reads BOTH the price and the balance under a row lock before activating, so this call
+    // is a request to activate, not an instruction the Edge Function can get wrong.
+    if (due === 0) {
+      const { data: act, error: actErr } = await admin.rpc("activate_subscription_with_credit", {
+        p_business_id: bizId, p_plan_key: plan_key, p_cycle: cycle, p_actor: user.id,
+      });
+      if (actErr) {
+        console.error("create-payment: credit activation failed:", actErr.message);
+        return json({ error: "Couldn't apply your credit. Please try again." }, 500);
+      }
+      if (!act?.ok) {
+        // Balance moved between the quote and the lock (a concurrent spend). Ask them to retry
+        // rather than silently charging a card they didn't expect to use.
+        console.error("create-payment: credit activation refused:", JSON.stringify(act));
+        return json({ error: "Your referral credit no longer covers this plan. Please reopen the payment." }, 409);
+      }
+      return json({
+        activated: true, provider: "credit", method: "credit",
+        reference: act.reference, amount, amount_due: 0,
+        credit_applied: Number(act.credit_applied ?? creditApplied), quote,
+      });
+    }
 
     // ---- Which provider serves this payment is OUR call, read server-side. A failed read
     // aborts: routing money on a guess is worse than asking the customer to retry. Monnify is
@@ -143,25 +195,49 @@ Deno.serve(async (req) => {
       ? return_origin
       : fallback;
 
-    // ---- Price it SERVER-SIDE. This is the only place an amount comes from.
-    const { data: quoteRows, error: quoteErr } = await admin
-      .rpc("quote_subscription_price", { p_business_id: bizId, p_plan_key: plan_key, p_cycle: cycle });
-    if (quoteErr) return json({ error: quoteErr.message }, 400);
-    const quote = Array.isArray(quoteRows) ? quoteRows[0] : quoteRows;
-    const amount = Number(quote?.amount ?? 0);
-    if (!(amount > 0)) return json({ error: "That plan has no payable price." }, 400);
-
     const { data: biz } = await admin.from("businesses").select("name").eq("id", bizId).maybeSingle();
     const businessName = biz?.name ?? "iTrova customer";
     const email = user.email ?? `${bizId}@no-email.itrova`;
 
-    // ---- Record the intent first, so the webhook has something to match against.
+    // ---- Record the intent BEFORE asking the provider for anything, so the webhook always has
+    // something to match against.
     const ourReference = `ITV-${String(bizId).slice(0, 8)}-${Date.now()}`;
-    const { error: insErr } = await admin.from("billing_payment").insert({
-      business_id: bizId, plan_key, cycle, amount, currency: quote?.currency ?? "NGN",
-      method, provider, our_reference: ourReference, created_by: user.id,
+    // Opened ATOMICALLY: the RPC locks the business row, re-reads the price and the
+    // balance, sizes the credit and writes the row in one transaction. Doing that read here and
+    // the insert separately let two payments started at the same moment both claim one balance.
+    // It also returns fully_covered if the credit grew since the advisory read above.
+    const { data: intent, error: intentErr } = await admin.rpc("create_payment_intent", {
+      p_business_id: bizId, p_plan_key: plan_key, p_cycle: cycle, p_method: method,
+      p_provider: provider, p_use_credit: use_credit === true,
+      p_our_reference: ourReference, p_actor: user.id,
     });
-    if (insErr) return json({ error: insErr.message }, 500);
+    if (intentErr) {
+      console.error("create-payment: opening the intent failed:", intentErr.message);
+      return json({ error: "Couldn't start the payment. Please try again." }, 500);
+    }
+    if (!intent?.ok) return json({ error: intent?.error ?? "Couldn't start the payment." }, 400);
+
+    if (intent.fully_covered) {
+      const { data: act, error: actErr } = await admin.rpc("activate_subscription_with_credit", {
+        p_business_id: bizId, p_plan_key: plan_key, p_cycle: cycle, p_actor: user.id,
+      });
+      if (actErr || !act?.ok) {
+        console.error("create-payment: credit activation failed:", actErr?.message ?? JSON.stringify(act));
+        return json({ error: "Couldn't apply your credit. Please reopen the payment." }, 409);
+      }
+      return json({
+        activated: true, provider: "credit", method: "credit",
+        reference: act.reference, amount, amount_due: 0,
+        credit_applied: Number(act.credit_applied ?? 0), quote,
+      });
+    }
+
+    // The provider is asked for the CASH figure the intent settled on; credit_applied carries the
+    // rest of the price. The activation's exact-amount check compares against that cash figure, so
+    // a part-credit payment is verified exactly like any other, and the credit is debited only on
+    // success.
+    const cashDue = Number(intent.due);
+    creditApplied = Number(intent.credit_applied ?? 0);
 
     const redirectUrl = `${origin}/settings?tab=billing&paid=${encodeURIComponent(ourReference)}`;
 
@@ -176,7 +252,7 @@ Deno.serve(async (req) => {
       // divides by 100 exactly once before the exact-amount check.
       const data = await paystackInit({
         email,
-        amount: Math.round(amount * 100),
+        amount: Math.round(cashDue * 100),
         currency: "NGN",
         reference: ourReference,          // Paystack echoes OUR reference on webhook + verify
         callback_url: redirectUrl,
@@ -191,7 +267,7 @@ Deno.serve(async (req) => {
       const tx = await monnify("/api/v1/merchant/transactions/init-transaction", {
         method: "POST",
         body: JSON.stringify({
-          amount, customerName: businessName.slice(0, 100), customerEmail: email,
+          amount: cashDue, customerName: businessName.slice(0, 100), customerEmail: email,
           paymentReference: ourReference,
           paymentDescription: `iTrova ${plan_key} (${cycle})`.slice(0, 100),
           currencyCode: "NGN", contractCode: CONTRACT(),
@@ -216,6 +292,7 @@ Deno.serve(async (req) => {
 
     return json({
       method, provider, reference: ourReference, amount, quote,
+      amount_due: cashDue, credit_applied: creditApplied,
       checkout_url: checkoutUrl,
       provider_reference: providerReference,
     });
