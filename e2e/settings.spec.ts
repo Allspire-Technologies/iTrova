@@ -391,4 +391,33 @@ test.describe("Settings", () => {
     // Nobody left the app: no provider was involved.
     await expect(page).toHaveURL(/\/settings/);
   });
+
+  test("credit spent elsewhere mid-payment refuses the activation and keeps the dialog usable", async ({ page }) => {
+    // The concurrency outcome the locking is built around: the quote said the credit covered the
+    // plan, but by the time the server took the row lock another payment had spent it. The plan
+    // must NOT activate, and the customer must be left somewhere they can act.
+    await authenticate(page, { role: "owner", businessName: "Sunrise Stores", onRoutes: async (p) => {
+      await p.route("**/rest/v1/rpc/my_payment_quote**", (r) =>
+        r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([{
+          amount: 4500, currency: "NGN", list_amount: 5000, cycle_discount: 0, referee_discount: 0,
+          credit_available: 6000, credit_applicable: 4500, amount_due: 0,
+        }]) }));
+      await p.route("**/functions/v1/create-payment**", (r) =>
+        r.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({
+          error: "Your referral credit no longer covers this plan. Please reopen the payment.",
+        }) }));
+    }});
+    await stubRows(page, "plans", plans);
+    await page.goto("/settings");
+    await page.getByRole("button", { name: "Billing", exact: true }).click();
+    await page.getByRole("button", { name: /^Pay ₦/ }).first().click();
+
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("button", { name: /Confirm — use ₦4,500 credit/ }).click();
+
+    // No false success, and the confirm button is still there to try again.
+    await expect(dialog.getByText("Credit applied")).toHaveCount(0);
+    await expect(dialog.getByRole("button", { name: /Confirm — use ₦4,500 credit/ })).toBeVisible();
+    await expect(page).toHaveURL(/\/settings/);
+  });
 });
