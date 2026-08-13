@@ -3,6 +3,53 @@
 All notable, user-facing changes to iTrova are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); entries are grouped by ship date, newest first.
 
+## 2026-08-13 — Pay for your plan in the app
+
+Upgrading no longer means messaging us and waiting. Pick a plan, pay by transfer or card, and it
+activates itself.
+
+### Added
+- **Pay for your subscription in Settings → Billing** — choose bank transfer or card and finish on a
+  secure payment page. A transfer gets a one-off account number for that exact amount, so there's no
+  wrong figure to send and nothing to reconcile by hand. Your plan activates as soon as the payment
+  is confirmed.
+- **Billing history** — every subscription payment on your account, five to a page, each with a
+  receipt you can view on screen or download as a PDF.
+- **Renew before you expire without losing days** — renewing the same plan and cycle early starts the
+  new period when the current one ends, so paying five days early doesn't cost you five days.
+- **Move to Free yourself** — with a confirmation first. You keep the plan you paid for until the end
+  of the period, then move down; nothing is cut short.
+- **Your referral discount applies itself** — if you signed up with someone's referral code, the
+  discount comes off your first payment automatically, shown on the plan card before you pay.
+
+### Changed
+- **Billing cycles are now exact day counts** — monthly is 30 days, quarterly 90, six-monthly 180 and
+  yearly 365, so "renews in N days" no longer drifts with the length of the month. Existing renewal
+  dates were left exactly as promised.
+- **Paying happens in the same tab** and brings you straight back to Billing when it's done — no
+  stray second tab to close.
+
+## 2026-08-04 — Reports you can hand to someone
+
+### Added
+- **Cashiers can download their own sales report.** They could already see it; now the Export PDF
+  button works for them too, and the file contains only what their screen shows.
+
+### Fixed
+- **Report PDFs read properly.** Amounts print as `NGN 45,000.00` instead of a box where the naira
+  sign should be, stock turnover shows `2.10x` (or "Sold out") instead of stray symbols, and every
+  column heading now sits directly over its own figures.
+
+## 2026-08-02 — Draft invoices leave your stock alone
+
+### Added
+- **Save as draft** — start an invoice, keep it as a draft, and finish it later.
+
+### Changed
+- **A draft no longer holds stock.** Stock is deducted when you issue the invoice, not while you're
+  still drafting it, so a half-written invoice can't make a product look out of stock. Moving an
+  issued invoice back to draft returns its stock to your shelves.
+
 ## 2026-07-31 — A tidier, friendlier app
 
 ### Added
