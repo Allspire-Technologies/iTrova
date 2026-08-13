@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -83,14 +83,28 @@ export default function OnboardingDialog({ open, onClose }: { open: boolean; onC
     ?? (recoFull?.prices ?? []).find(p => p.is_active)
     ?? null;
   const recoCycle = recoPrice?.cycle ?? "monthly";
-  // What the button charges: the price of THE CYCLE BEING SOLD, with its standing discount and any
-  // promo — not the plan's monthly base. A referral discount, if any, shows on the server quote in
-  // the payment dialog, which is authoritative either way.
-  const recoAmount = reco.kind === "plan"
+  // A business that signed up with someone's referral code gets a first-payment discount. It was
+  // already applied where it matters (the server prices every payment), but the wizard quoted the
+  // undiscounted figure — so a referred business saw one number here and a smaller one at checkout.
+  // Server-validated: my_referee_discount returns 0 unless the code is real and nothing has been
+  // paid yet. Read once when the wizard opens; the quote in the pay dialog stays authoritative.
+  const [refereeDiscount, setRefereeDiscount] = useState(0);
+  useEffect(() => {
+    if (!open) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any).rpc("my_referee_discount")
+      .then(({ data }: { data: unknown }) => setRefereeDiscount(Number(data) || 0))
+      .catch(() => setRefereeDiscount(0));
+  }, [open]);
+
+  // What the button charges: the price of THE CYCLE BEING SOLD, with its standing discount, any
+  // promo, and the referral discount — not the plan's monthly base.
+  const recoBase = reco.kind === "plan"
     ? (recoPrice
         ? cyclePrice(Number(recoPrice.price_amount), Number(recoPrice.discount_percent ?? 0), reco.plan.promo_percent ?? 0, reco.plan.promo_until)
         : effectivePrice(reco.plan.price_amount, reco.plan.promo_percent ?? 0, reco.plan.promo_until))
     : 0;
+  const recoAmount = refereeDiscount > 0 ? Math.round(recoBase * (1 - refereeDiscount / 100)) : recoBase;
 
   const startTrial = async () => {
     if (reco.kind !== "plan") return;

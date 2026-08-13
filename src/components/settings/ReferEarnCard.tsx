@@ -10,13 +10,14 @@ import { Gift, Copy, MessageCircle } from "lucide-react";
 // - shows/generates the business's own referral code (NAMESLUG + last 4 phone digits, server-side)
 // - one-tap WhatsApp share of the ?ref= signup link
 // - if THIS business was referred and hasn't paid yet, shows the first-payment discount note.
-// All program numbers come from referral_config (nothing hardcoded); rewards are applied manually
-// by the team, so this card is informational + share tooling only.
+// All program numbers come from referral_config (nothing hardcoded). Earned credit is spent from
+// the payment window (it offsets the price, or covers it outright), so this card shows the balance
+// and the share tooling — it doesn't move money itself.
 
 const SIGNUP_BASE = "https://itrova.allspire.tech/auth";
 
 type Config = { business_share_percent: number; referee_discount_percent: number };
-type Earnings = { referred: number; converted: number; earned: number; credited: number; accrued: number };
+type Earnings = { referred: number; converted: number; earned: number; credited: number; spendable: number };
 
 const money = (n: number) => `₦${Math.round(n).toLocaleString("en-NG")}`;
 
@@ -35,11 +36,18 @@ export default function ReferEarnCard() {
   const loadStats = async () => {
     // my_referral_earnings lives in the CRM migration (reads cs_renewal_payment + cs_referral_payout
     // on the shared DB); it returns counts + earned/credited/accrued for this business.
-    const { data } = await sb.rpc("my_referral_earnings");
-    const row = Array.isArray(data) ? data[0] : data;
+    // "Credit available" comes from my_referral_credit instead of accrued: that is the number the
+    // checkout will actually honour — floored at zero and net of any balance a pending payment is
+    // holding — so the card can't promise credit the pay dialog then refuses.
+    const [earnings, credit] = await Promise.all([
+      sb.rpc("my_referral_earnings"),
+      sb.rpc("my_referral_credit"),
+    ]);
+    const row = Array.isArray(earnings.data) ? earnings.data[0] : earnings.data;
     if (row) setStats({
       referred: Number(row.referred_count) || 0, converted: Number(row.converted_count) || 0,
-      earned: Number(row.earned) || 0, credited: Number(row.credited) || 0, accrued: Number(row.accrued) || 0,
+      earned: Number(row.earned) || 0, credited: Number(row.credited) || 0,
+      spendable: Number(credit.data) || 0,
     });
   };
 
@@ -127,12 +135,15 @@ export default function ReferEarnCard() {
                     <div className="text-xs text-muted-foreground">now subscribed</div>
                   </div>
                   <div className="rounded-lg border border-brand/30 bg-brand-light/40 px-4 py-2">
-                    <div className="text-lg font-semibold text-brand-dark">{money(stats.accrued)}</div>
+                    <div className="text-lg font-semibold text-brand-dark">{money(stats.spendable)}</div>
                     <div className="text-xs text-muted-foreground">credit available</div>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  You've earned {money(stats.earned)} in referral credit so far{stats.credited > 0 ? `, ${money(stats.credited)} already applied` : ""}. Contact us to put your available credit toward your subscription.
+                  You've earned {money(stats.earned)} in referral credit so far{stats.credited > 0 ? `, ${money(stats.credited)} already applied` : ""}.
+                  {stats.spendable > 0
+                    ? " Use it when you renew or upgrade — it's offered in the payment window, and anything left over stays here."
+                    : " It's offered in the payment window whenever you renew or upgrade."}
                 </p>
               </>
             ) : (

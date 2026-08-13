@@ -92,7 +92,13 @@ export async function buildPdf(input: PdfDocInput) {
     ]),
     styles: { fontSize: 10, cellPadding: 6 },
     headStyles: { fillColor: [30, 41, 59], textColor: 255 },
+    // Numbers sit right; Description stays left. columnStyles aligns BODY cells only, so the
+    // headers need their own pass — otherwise "Qty"/"Unit price"/"Total" float left of the
+    // figures they label and the table reads as misaligned.
     columnStyles: { 1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "right" } },
+    didParseCell: (d: { section: string; column: { index: number }; cell: { styles: { halign?: string } } }) => {
+      if (d.section === "head" && d.column.index > 0) d.cell.styles.halign = "right";
+    },
     margin: { left: M, right: M },
   });
 
@@ -128,16 +134,22 @@ export async function buildPdf(input: PdfDocInput) {
   doc.text(money(input.total), vx, row, { align: "right" });
   doc.setTextColor(0);
 
-  // Payment method(s) below the total: "Paid via Cash" (single) or an itemised split.
+  // Payment method(s) below the total: "Paid via Cash" (single) or an itemised split. A split
+  // draws the label and the amount as two columns — label left, amount right — like every other
+  // row in this block. Printing "label  amount" as ONE right-aligned string only lines the figures
+  // up when the labels happen to be the same width.
   const pays = (input.payments ?? []).filter((p) => p.method);
   if (pays.length) {
     row += 16;
     doc.setFont("helvetica", "normal").setFontSize(9).setTextColor(90);
-    doc.text(pays.length === 1 ? `Paid via ${paymentLabel(pays[0].method)}` : "Paid via:", lx, row);
-    if (pays.length > 1) {
+    if (pays.length === 1) {
+      doc.text(`Paid via ${paymentLabel(pays[0].method)}`, lx, row);
+    } else {
+      doc.text("Paid via", lx, row);
       for (const p of pays) {
-        doc.text(`${paymentLabel(p.method)}  ${money(p.amount)}`, vx, row, { align: "right" });
-        row += 12;
+        row += 13;
+        doc.text(paymentLabel(p.method), lx + 10, row);
+        doc.text(money(p.amount), vx, row, { align: "right" });
       }
     }
     doc.setTextColor(0);
