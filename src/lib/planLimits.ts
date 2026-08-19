@@ -44,8 +44,11 @@ export function getLimit(tier: string | null | undefined, resource: PlanResource
   const v = moduleKey in planLimits ? planLimits[moduleKey]
     : resource in planLimits ? planLimits[resource]
     : undefined;
-  if (v === undefined || v === null) return null;
-  return Number(v);
+  // Only a real finite number is a cap — the same rule as _plan_cap in the database, which warns
+  // and treats any other JSON type as unrestricted. Number("") is 0, so coercing here would have
+  // the UI lock every control at a cap of zero over a config typo the database ignores.
+  if (typeof v !== "number" || !Number.isFinite(v)) return null;
+  return v;
 }
 
 /** True when count has reached or exceeded the plan cap. */

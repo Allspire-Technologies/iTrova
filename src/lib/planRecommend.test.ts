@@ -90,7 +90,11 @@ describe("registry sanity", () => {
   it("every module choice is a known module key", () => {
     // Mirrors public.app_modules — the catalogue the CRM picks plan modules from. A choice whose
     // key isn't in there can never be granted by any plan, so the picker would offer a module the
-    // customer can't get.
+    // customer can't get. When a migration registers a new module, add its key here too; the
+    // catalogue is seeded by 20260624180000_plan_modules.sql and extended by each feature's own
+    // migration (general_store 20260703230000, production 20260707100000, expenditure
+    // 20260708100000, export_invoices 20260704120000, accounting 20260715110000,
+    // assets 20260721110000).
     const known = new Set([
       "inventory", "pos", "suppliers", "raw_materials", "invoices", "purchase_orders",
       "reports", "team", "general_store", "production", "expenditure", "accounting", "assets",
