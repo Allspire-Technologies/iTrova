@@ -55,9 +55,18 @@ begin
   if v_limits is null then return null; end if;
   v_val := coalesce(v_limits -> _module, v_limits -> _legacy);
   if v_val is null or jsonb_typeof(v_val) = 'null' then return null; end if;
+  -- Validate rather than cast-and-hope: a cap written as a string or object is a configuration
+  -- mistake, and it should be visible in the logs as one, not silently swallowed below.
+  if jsonb_typeof(v_val) <> 'number' then
+    raise warning 'plan cap for % is not a number: %', coalesce(_module, _legacy), v_val;
+    return null;
+  end if;
   return (v_val #>> '{}')::numeric;
 exception when others then
-  return null; -- a malformed limits value must never block writes
+  -- Deliberately fails OPEN. A malformed plan row is a config typo; blocking on it would stop every
+  -- business on that plan from creating anything — a self-inflicted outage in exchange for a
+  -- temporary cap bypass. Same policy as 20260726100000, stated here so it stays a choice.
+  return null;
 end; $$;
 
 -- ---------------------------------------------------------------- 3. the two missing tables

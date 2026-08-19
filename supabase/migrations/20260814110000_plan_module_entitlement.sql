@@ -39,12 +39,18 @@ begin
   if v_modules is null then
     select modules into v_modules from public.plans where key = 'free' and is_active;
   end if;
-  if v_modules is null or jsonb_typeof(v_modules) <> 'array' or jsonb_array_length(v_modules) = 0 then
+  if v_modules is not null and jsonb_typeof(v_modules) <> 'array' then
+    raise warning 'plan modules is not an array: %', v_modules;   -- visible config mistake
+    return true;
+  end if;
+  if v_modules is null or jsonb_array_length(v_modules) = 0 then
     return true;
   end if;
   return v_modules ? _module;
 exception when others then
-  return true;   -- malformed plan config must never block writes
+  -- Deliberately fails OPEN, same policy as _plan_cap: a malformed plan row must not lock every
+  -- business on that plan out of its own modules. The cost of the alternative is an outage.
+  return true;
 end $$;
 revoke all on function public._plan_has_module(uuid, text) from public, anon;
 grant execute on function public._plan_has_module(uuid, text) to authenticated, service_role;
@@ -105,6 +111,12 @@ begin
   if v_biz is null then return '[]'::jsonb; end if;
   v_tier := public._effective_tier(v_biz);
   select modules into v_modules from public.plans where key = coalesce(v_tier, 'free') and is_active;
+  if v_modules is null then
+    -- Same fallback as _plan_has_module. Without it an unknown or deactivated plan returned '[]',
+    -- which the app reads as "unconfigured, allow everything" while the trigger was applying the
+    -- Free plan's list — the UI would offer modules the insert then refused.
+    select modules into v_modules from public.plans where key = 'free' and is_active;
+  end if;
   return coalesce(v_modules, '[]'::jsonb);
 end $$;
 revoke all on function public.my_plan_modules() from public, anon;
