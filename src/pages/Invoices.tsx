@@ -292,7 +292,7 @@ export default function Invoices() {
   const save = async (asDraft = false) => {
     if (!business) return;
     if (!editing && isAtLimit(items.length, business.subscription_tier, "invoices")) {
-      toast.error(limitMessage("invoices"));
+      toast.error(limitMessage("invoices", tier));
       return;
     }
     if (!form.customer_name.trim()) return toast.error("Customer name is required");
@@ -686,7 +686,7 @@ export default function Invoices() {
               {items.length} / {invoiceLimit}
             </span>
           )}
-          <Hint label={atInvoiceLimit ? limitMessage("invoices") : undefined} wrap><Button onClick={openAdd} disabled={atInvoiceLimit}><Plus className="size-4 mr-1" /> New invoice</Button></Hint>
+          <Hint label={atInvoiceLimit ? limitMessage("invoices", tier) : undefined} wrap><Button onClick={openAdd} disabled={atInvoiceLimit}><Plus className="size-4 mr-1" /> New invoice</Button></Hint>
         </div>
       </div>
 
@@ -732,7 +732,7 @@ export default function Invoices() {
             <h3 className="font-display text-lg font-semibold text-brand-dark">No invoices yet</h3>
             <p className="text-muted-foreground text-sm mt-1 mb-4">Sales recorded at the Point of Sale appear here automatically — or create a manual invoice for a customer.</p>
             {can("invoices", "create") && (
-              <Hint label={atInvoiceLimit ? limitMessage("invoices") : undefined} wrap><Button variant="brand" onClick={openAdd} disabled={atInvoiceLimit}><Plus className="size-4" /> New invoice</Button></Hint>
+              <Hint label={atInvoiceLimit ? limitMessage("invoices", tier) : undefined} wrap><Button variant="brand" onClick={openAdd} disabled={atInvoiceLimit}><Plus className="size-4" /> New invoice</Button></Hint>
             )}
           </div>
         ) : (
