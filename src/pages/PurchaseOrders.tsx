@@ -190,7 +190,7 @@ export default function PurchaseOrders() {
   const create = async () => {
     if (!business) return;
     if (isAtLimit(items.length, business.subscription_tier, "purchaseOrders")) {
-      toast.error(limitMessage("purchaseOrders"));
+      toast.error(limitMessage("purchaseOrders", tier));
       return;
     }
     if (lines.some(l => !l.description.trim())) return toast.error("Every line needs a description");
@@ -432,14 +432,14 @@ export default function PurchaseOrders() {
         <div className="flex gap-2 flex-wrap">
           <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => e.target.files?.[0] && importCsv(e.target.files[0])} />
           <Button variant="outline" onClick={downloadTemplate}><Download className="size-4" /> CSV Template</Button>
-          {hasModule("csv_import") && can("purchase_orders", "csv_import") && <Hint label={atPoLimit ? limitMessage("purchaseOrders") : undefined} wrap><Button variant="outline" onClick={() => fileRef.current?.click()} disabled={atPoLimit}><Upload className="size-4" /> Import CSV</Button></Hint>}
+          {hasModule("csv_import") && can("purchase_orders", "csv_import") && <Hint label={atPoLimit ? limitMessage("purchaseOrders", tier) : undefined} wrap><Button variant="outline" onClick={() => fileRef.current?.click()} disabled={atPoLimit}><Upload className="size-4" /> Import CSV</Button></Hint>}
           {hasModule("csv_export") && <Button variant="outline" onClick={exportCsv} disabled={filtered.length === 0}><Download className="size-4" /> Export CSV</Button>}
           {poLimit !== null && items.length >= Math.floor(poLimit * 0.8) && (
             <span className={`self-center text-xs font-medium ${atPoLimit ? "text-destructive" : "text-amber-600 dark:text-amber-400"}`}>
               {items.length} / {poLimit}
             </span>
           )}
-          <Hint label={atPoLimit ? limitMessage("purchaseOrders") : undefined} wrap><Button onClick={() => { if (atPoLimit) { toast.error(limitMessage("purchaseOrders")); return; } setOpen(true); }} disabled={atPoLimit}><Plus className="size-4 mr-1" /> New PO</Button></Hint>
+          <Hint label={atPoLimit ? limitMessage("purchaseOrders", tier) : undefined} wrap><Button onClick={() => { if (atPoLimit) { toast.error(limitMessage("purchaseOrders", tier)); return; } setOpen(true); }} disabled={atPoLimit}><Plus className="size-4 mr-1" /> New PO</Button></Hint>
         </div>
       </div>
 
@@ -468,7 +468,7 @@ export default function PurchaseOrders() {
             <h3 className="font-display text-lg font-semibold text-brand-dark">No purchase orders yet</h3>
             <p className="text-muted-foreground text-sm mt-1 mb-4">Raise an order to a supplier — receiving it books the stock (and landed costs) automatically.</p>
             {can("purchase_orders", "create") && (
-              <Button variant="brand" onClick={() => { if (atPoLimit) { toast.error(limitMessage("purchaseOrders")); return; } setOpen(true); }} disabled={atPoLimit}><Plus className="size-4" /> New PO</Button>
+              <Button variant="brand" onClick={() => { if (atPoLimit) { toast.error(limitMessage("purchaseOrders", tier)); return; } setOpen(true); }} disabled={atPoLimit}><Plus className="size-4" /> New PO</Button>
             )}
           </div>
         ) : (
