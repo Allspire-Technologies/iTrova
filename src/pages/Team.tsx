@@ -59,7 +59,12 @@ export default function Team() {
 
   const tier = business?.subscription_tier;
   const staffLimit = getLimit(tier, "staff");
-  const atStaffLimit = isAtLimit(members.length, tier, "staff");
+  // Seats in use = members PLUS invitations still awaiting acceptance — the same sum the database
+  // trigger counts. Counting members alone let the page offer an Invite button that the insert then
+  // refused, because every pending invite is already holding a seat.
+  const pendingInvites = invites.filter(i => !i.accepted_at).length;
+  const seatsUsed = members.length + pendingInvites;
+  const atStaffLimit = isAtLimit(seatsUsed, tier, "staff");
 
   const formatLastSeen = (ts: string | null) => {
     if (!ts) return "Never logged in";
@@ -124,8 +129,8 @@ export default function Team() {
 
   const sendInvite = async () => {
     if (!business || !inviteEmail) return;
-    if (isAtLimit(members.length, business.subscription_tier, "staff")) {
-      toast.error(limitMessage("staff"));
+    if (isAtLimit(seatsUsed, business.subscription_tier, "staff")) {
+      toast.error(limitMessage("staff", tier));
       return;
     }
     setSubmitting(true);
@@ -239,7 +244,7 @@ export default function Team() {
         rows,
         members.map(m => m.email || ""),
         invites.filter(i => !i.accepted_at).map(i => i.email),
-        members.length,
+        seatsUsed,   // pending invites already hold seats, so the import must count them too
         getLimit(business.subscription_tier, "staff"),
       );
       if (plan.invites.length === 0 && plan.rejected.length === 0) {
@@ -298,16 +303,17 @@ export default function Team() {
           <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden"
             onChange={e => e.target.files?.[0] && importCsv(e.target.files[0])} />
           <Button variant="outline" onClick={downloadTemplate}><Download className="size-4" /> CSV Template</Button>
-          {can("team", "invite") && hasModule("csv_import") && can("team", "csv_import") && <Hint label={atStaffLimit ? limitMessage("staff") : undefined} wrap><Button variant="outline" onClick={() => fileRef.current?.click()} disabled={atStaffLimit}><Upload className="size-4" /> Import CSV</Button></Hint>}
+          {can("team", "invite") && hasModule("csv_import") && can("team", "csv_import") && <Hint label={atStaffLimit ? limitMessage("staff", tier) : undefined} wrap><Button variant="outline" onClick={() => fileRef.current?.click()} disabled={atStaffLimit}><Upload className="size-4" /> Import CSV</Button></Hint>}
           {can("team", "csv_export") && <Button variant="outline" onClick={exportMembers} disabled={members.length === 0}><Download className="size-4" /> Export</Button>}
-          {staffLimit !== null && members.length >= Math.floor(staffLimit * 0.8) && (
+          {staffLimit !== null && seatsUsed >= Math.floor(staffLimit * 0.8) && (
             <span className={`self-center text-xs font-medium ${atStaffLimit ? "text-destructive" : "text-amber-600 dark:text-amber-400"}`}>
-              {members.length} / {staffLimit} seats
+              {seatsUsed} / {staffLimit} seats
+              {pendingInvites > 0 && <span className="font-normal"> ({pendingInvites} pending)</span>}
             </span>
           )}
           {can("team", "invite") && (
           <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
-          <Hint label={atStaffLimit ? limitMessage("staff") : undefined} wrap>
+          <Hint label={atStaffLimit ? limitMessage("staff", tier) : undefined} wrap>
             <DialogTrigger asChild>
               <Button variant="hero" disabled={atStaffLimit}><UserPlus className="size-4" /> Invite teammate</Button>
             </DialogTrigger>

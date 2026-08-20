@@ -8,21 +8,15 @@ export function canAccessModule(planModules: string[] | null | undefined, key: s
   return planModules.includes(key);
 }
 
-/** Known Free-tier modules — the safety baseline if the Free plan row is misconfigured. */
-export const FREE_MODULES = [
-  "inventory", "pos", "suppliers", "raw_materials", "invoices",
-  "purchase_orders", "reports", "team", "csv_import", "csv_export",
-];
-
 /**
- * The modules to gate by for a resolved plan. Surgical guard: if the *Free* plan has no
- * modules configured, fall back to FREE_MODULES instead of letting canAccessModule fail
- * open and silently grant everything. Other plans (and an unresolved/null plan) keep the
- * existing opt-in behaviour.
+ * The modules to gate by for a resolved plan — whatever the backend published for it, and nothing
+ * else. There is deliberately no hardcoded list here: plans.modules is edited from the CRM, so a
+ * copy in the app is stale the day someone changes a plan (the old FREE_MODULES constant still
+ * carried suppliers, raw materials, purchase orders and CSV long after Free stopped including
+ * them). The database enforces entitlement independently, so a plan row that lists nothing grants
+ * everything in both layers rather than the two disagreeing.
  */
 export function planModules(plan: { key: string; modules?: string[] | null } | null | undefined): string[] | null {
   if (!plan) return null;
-  if (plan.modules && plan.modules.length > 0) return plan.modules;
-  if (plan.key === "free") return FREE_MODULES;
-  return null;
+  return plan.modules && plan.modules.length > 0 ? plan.modules : null;
 }
