@@ -21,6 +21,19 @@ describe("getLimit", () => {
     expect(getLimit("free", "suppliers")).toBeNull();
     expect(getLimit("free", "purchaseOrders")).toBeNull();
   });
+  it("treats malformed caps as no cap — the same fail-open rule as the database", () => {
+    // _plan_cap warns and returns null for any non-number JSON value. If the client coerced
+    // instead, Number("") = 0 would lock every control while the database accepts the write.
+    registerPlanLimits([{ key: "broken", limits: {
+      inventory: "25" as unknown as number,   // numeric string: DB ignores it, so must we
+      invoices: "" as unknown as number,      // Number("") === 0 — the dangerous one
+      team: NaN,
+    } }]);
+    expect(getLimit("broken", "products")).toBeNull();
+    expect(getLimit("broken", "invoices")).toBeNull();
+    expect(getLimit("broken", "staff")).toBeNull();
+    expect(isAtLimit(999, "broken", "invoices")).toBe(false);
+  });
 });
 
 describe("isAtLimit", () => {
