@@ -3,6 +3,26 @@
 All notable, user-facing changes to iTrova are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); entries are grouped by ship date, newest first.
 
+## 2026-08-20 — Plan limits that mean what they say
+
+Your plan's limits and included modules are now enforced by our servers, not just by the app —
+so every business plays by the same rules, whichever way they reach iTrova.
+
+### Changed
+- **Accurate limit messages** — when you reach a limit, the message now names *your* plan and
+  *your* cap. A Pro business at its team cap sees "Pro plan limit reached (7 team members)", not
+  Free's numbers.
+- **Team seats count pending invites** — an invitation that hasn't been accepted yet already holds
+  a seat, and the seat counter now shows it ("5 / 7 seats (2 pending)"), so an invite can't be
+  offered and then refused.
+- **Expired subscriptions behave like Free everywhere** — when a paid plan lapses, its limits and
+  modules now match what the app already showed. Renewing from Billing restores everything
+  instantly, and nothing you created is ever touched.
+
+### Fixed
+- Limits are checked against live figures from your account rather than a copy inside the app, so
+  the numbers you see always match what's enforced.
+
 ## 2026-08-13 — Spend your referral credit
 
 The credit you earn by referring other businesses now pays for your own subscription, without
