@@ -10,6 +10,13 @@ on:
         required: false
         default: ""
 
+# One run at a time, queued not cancelled: a manual dispatch overlapping the schedule would let
+# both read the idempotency log before either writes it — the classic double-send. Static group
+# (not per-ref) because every run hits the same production database.
+concurrency:
+  group: email-alerts
+  cancel-in-progress: false
+
 jobs:
   send:
     runs-on: ubuntu-latest
