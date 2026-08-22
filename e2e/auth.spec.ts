@@ -81,6 +81,13 @@ test.describe("Auth — login", () => {
   });
 });
 
+// A genuinely NEW signup carries the created identity; Supabase returns identities: [] (with a
+// 200!) when the email already has an account and confirmations are on — anti-enumeration.
+const NEW_SIGNUP_USER = {
+  ...FAKE_USER,
+  identities: [{ id: FAKE_USER.id, user_id: FAKE_USER.id, provider: "email" }],
+};
+
 test.describe("Auth — signup", () => {
   test("switches to the create-account tab", async ({ page }) => {
     await page.goto("/auth");
@@ -126,7 +133,7 @@ test.describe("Auth — signup", () => {
     let payload = "";
     await page.route("**/auth/v1/signup**", (route) => {
       payload = route.request().postData() ?? "";
-      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ...FAKE_USER, confirmation_sent_at: "2026-07-18T00:00:00Z" }) });
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ...NEW_SIGNUP_USER, confirmation_sent_at: "2026-07-18T00:00:00Z" }) });
     });
     await page.goto("/auth");
     await page.getByRole("tab", { name: "Create account" }).click();
@@ -164,7 +171,7 @@ test.describe("Auth — signup", () => {
   });
 
   test("shows 'check your inbox' when confirmation is required", async ({ page }) => {
-    await stubSignup(page, { status: 200, body: { ...FAKE_USER, confirmation_sent_at: "2026-06-22T00:00:00Z" } });
+    await stubSignup(page, { status: 200, body: { ...NEW_SIGNUP_USER, confirmation_sent_at: "2026-06-22T00:00:00Z" } });
     await page.goto("/auth");
     await page.getByRole("tab", { name: "Create account" }).click();
     await page.locator("#bn").fill("Sunrise Stores");
@@ -187,6 +194,25 @@ test.describe("Auth — signup", () => {
     await page.locator("#cp").fill("password123");
     await page.getByRole("button", { name: "Create my business" }).click();
     await expect(page.getByText("User already registered")).toBeVisible();
+  });
+
+  test("an already-registered email gets pointed at sign-in, not a dead 'check your inbox'", async ({ page }) => {
+    // With confirmations ON, Supabase answers an existing email with SUCCESS and identities: []
+    // (anti-enumeration) and sends nothing — without the app-side check, the person waits for an
+    // email that never comes.
+    await stubSignup(page, { status: 200, body: { ...FAKE_USER, identities: [] } });
+    await page.goto("/auth");
+    await page.getByRole("tab", { name: "Create account" }).click();
+    await page.locator("#bn").fill("Sunrise Stores");
+    await page.locator("#on").fill("Ada Obi");
+    await page.locator("#se").fill("ada@sunrise.test");
+    await page.locator("#sp").fill("password123");
+    await page.locator("#cp").fill("password123");
+    await page.getByRole("button", { name: "Create my business" }).click();
+    await expect(page.getByText(/already has an iTrova account/)).toBeVisible();
+    // Landed on Sign in with the email carried over — one field left to fill.
+    await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
+    await expect(page.locator("#le")).toHaveValue("ada@sunrise.test");
   });
 
   test("blocks an invalid email (client-side)", async ({ page }) => {

@@ -94,6 +94,17 @@ export default function Auth() {
     });
     setBusy(false);
     if (error) return toast.error(error.message);
+    // An email that already has an account: Supabase deliberately returns SUCCESS here
+    // (anti-enumeration), with an empty identities array and no email sent — so without this
+    // check the person is told "check your email" and nothing ever arrives. Pointing them at
+    // sign-in reveals the account exists, which we accept: quietly losing a returning customer
+    // is worse than confirming their own email has an account.
+    if (data.user && (data.user.identities?.length ?? 0) === 0) {
+      toast.error("This email already has an iTrova account — sign in instead, or use Forgot password.");
+      setLoginEmail(normalizeEmail(signupEmail));
+      setTab("login");
+      return;
+    }
     // When email confirmation is enabled, signUp returns no session — the user
     // must activate via the emailed link before they can sign in.
     if (data.session) {

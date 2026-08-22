@@ -3,6 +3,14 @@
 All notable, user-facing changes to iTrova are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); entries are grouped by ship date, newest first.
 
+## 2026-08-20 — Signing up with an email that already has an account now tells you so
+
+### Fixed
+- **No more waiting for a confirmation email that never comes.** Creating an account with an email
+  that's already on iTrova used to show "check your inbox" and send nothing. It now tells you the
+  email already has an account and takes you straight to Sign in with your email filled in — use
+  *Forgot password* from there if you need it.
+
 ## 2026-08-13 — Spend your referral credit
 
 The credit you earn by referring other businesses now pays for your own subscription, without
