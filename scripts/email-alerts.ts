@@ -43,8 +43,14 @@ async function main() {
   const from = env("EMAIL_FROM");
   const now = Date.now();
 
-  const smokeTo = process.env.SMOKE_TEST_TO;
+  const smokeTo = process.env.SMOKE_TEST_TO?.trim();
   if (smokeTo) {
+    // Exactly ONE plain mailbox — nodemailer expands comma/semicolon lists into multiple
+    // recipients, and "one test email" must not quietly become several.
+    if (!/^[^\s,;<>]+@[^\s,;<>]+\.[^\s,;<>]+$/.test(smokeTo)) {
+      console.error(`SMOKE_TEST_TO must be a single email address, got: ${JSON.stringify(smokeTo)}`);
+      process.exit(1);
+    }
     await transporter.sendMail({
       from, to: smokeTo,
       subject: "iTrova email-alerts smoke test",
