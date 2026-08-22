@@ -1,6 +1,11 @@
 // Daily email alerts: renewal reminders (3 days out) + limit warnings (80% and at the cap).
-// Runs in GitHub Actions as service_role, sends via sender.net SMTP. The selection/threshold
-// logic is the unit-tested src/lib helpers so behaviour matches the app.
+// Runs in GitHub Actions as service_role, sends via SMTP (Resend: smtp.resend.com, user "resend",
+// pass = the API key — all provider detail lives in the SMTP_* repo secrets, none here). The
+// selection/threshold logic is the unit-tested src/lib helpers so behaviour matches the app.
+//
+// SMOKE_TEST_TO=someone@example.com sends ONE test email to that address and exits without
+// touching the snapshot or the idempotency log — for verifying a transport/secrets change
+// (like a provider switch) without emailing real customers.
 import { createClient } from "@supabase/supabase-js";
 import nodemailer from "nodemailer";
 import { getLimit, registerPlanLimits, type PlanLimits } from "../src/lib/planLimits";
@@ -37,6 +42,23 @@ async function main() {
   });
   const from = env("EMAIL_FROM");
   const now = Date.now();
+
+  const smokeTo = process.env.SMOKE_TEST_TO?.trim();
+  if (smokeTo) {
+    // Exactly ONE plain mailbox — nodemailer expands comma/semicolon lists into multiple
+    // recipients, and "one test email" must not quietly become several.
+    if (!/^[^\s,;<>]+@[^\s,;<>]+\.[^\s,;<>]+$/.test(smokeTo)) {
+      console.error(`SMOKE_TEST_TO must be a single email address, got: ${JSON.stringify(smokeTo)}`);
+      process.exit(1);
+    }
+    await transporter.sendMail({
+      from, to: smokeTo,
+      subject: "iTrova email-alerts smoke test",
+      html: "<p>The alerts pipeline can send through the configured SMTP transport. No customer emails were sent by this run.</p>",
+    });
+    console.log(`Smoke test sent to ${smokeTo} — exiting without processing alerts.`);
+    return;
+  }
 
   const { data: plans, error: planErr } = await supabase.from("plans").select("key, name, limits");
   if (planErr) throw planErr;

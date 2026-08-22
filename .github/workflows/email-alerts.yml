@@ -3,7 +3,19 @@ name: Email alerts
 on:
   schedule:
     - cron: "0 7 * * *" # daily 07:00 UTC (08:00 Africa/Lagos)
-  workflow_dispatch: {} # allow manual runs (e.g. to test)
+  workflow_dispatch: # manual runs; smoke_test_to verifies the SMTP transport without emailing customers
+    inputs:
+      smoke_test_to:
+        description: "Send ONE test email to this address and exit (no customer emails)"
+        required: false
+        default: ""
+
+# One run at a time, queued not cancelled: a manual dispatch overlapping the schedule would let
+# both read the idempotency log before either writes it — the classic double-send. Static group
+# (not per-ref) because every run hits the same production database.
+concurrency:
+  group: email-alerts
+  cancel-in-progress: false
 
 jobs:
   send:
@@ -24,3 +36,4 @@ jobs:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          SMOKE_TEST_TO: ${{ inputs.smoke_test_to }}
