@@ -38,7 +38,7 @@ as $$
             'cycle', pp.cycle,
             'list', pp.price_amount,
             'discount_percent', pp.discount_percent
-          ) order by pp.sort_order)
+          ) order by pp.sort_order, array_position(array['monthly','quarterly','biannual','annual'], pp.cycle))
           from public.plan_prices pp
           where pp.plan_id = p.id and pp.is_active
         ), '[]'::jsonb)
