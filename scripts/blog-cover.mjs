@@ -10,7 +10,8 @@
 // Options: --accent green|amber|red (tag dot colour, default green)
 //          --pos "x% y%"  which part of the screenshot the tilted cover frame shows (default "0% 22%")
 //          --only cover|inline  (default: both)
-// Writes <out>/<slug>-cover-1200x630.png (OG/social size) and <out>/<slug>-inline.png (1600x1000, for the article body).
+// Writes <out>/<slug>-cover-1200x630.png (OG/social layout) and <out>/<slug>-inline.png (1600x1000 layout).
+// Both render at 2x device scale on purpose (2400x1260 / 3200x2000 pixels) so they stay crisp on retina screens.
 // Screenshots should come from the demo-seeded app (e2e/screenshots.spec.ts) so no customer data is published.
 import { chromium } from "playwright";
 import fs from "node:fs";
@@ -31,15 +32,33 @@ function parseArgs(argv) {
 
 const args = parseArgs(process.argv.slice(2));
 const out = args.out || "docs/knowledge/screenshots/blog";
+const SLUG_RE = /^[a-z0-9][a-z0-9_-]{0,80}$/i;
+const ONLY = new Set(["cover", "inline"]);
+
+function validate(p, i) {
+  const where = args.batch ? `batch item ${i}` : "arguments";
+  if (!p || typeof p !== "object") return `${where}: expected an object`;
+  for (const k of ["title", "image"]) if (typeof p[k] !== "string" || !p[k].trim()) return `${where}: missing --${k}`;
+  if (!fs.existsSync(p.image)) return `${where}: image not found: ${p.image}`;
+  const slug = p.slug || path.basename(p.image, path.extname(p.image));
+  if (!SLUG_RE.test(slug)) return `${where}: slug "${slug}" must be letters, digits, - or _ (no path separators)`;
+  if (p.only !== undefined && !ONLY.has(p.only)) return `${where}: --only must be cover or inline`;
+  if (p.accent !== undefined && !ACCENTS[p.accent]) return `${where}: --accent must be one of ${Object.keys(ACCENTS).join(", ")}`;
+  return null;
+}
+
 let posts;
 if (args.batch) {
   posts = JSON.parse(fs.readFileSync(args.batch, "utf8"));
+  if (!Array.isArray(posts)) { console.error("--batch file must be a JSON array of posts"); process.exit(1); }
 } else {
-  if (!args.title || !args.image) {
-    console.error("Need --title and --image (or --batch file.json). See header of this script.");
-    process.exit(1);
-  }
   posts = [args];
+}
+const problems = posts.map(validate).filter(Boolean);
+if (problems.length) {
+  for (const m of problems) console.error(m);
+  console.error("Nothing rendered. See the header of this script for usage.");
+  process.exit(1);
 }
 fs.mkdirSync(out, { recursive: true });
 
@@ -86,6 +105,7 @@ try {
     const jobs = [];
     if (p.only !== "inline") jobs.push(["cover-1200x630", coverHtml(p, img), 1200, 630]);
     if (p.only !== "cover") jobs.push(["inline", inlineHtml(img), 1600, 1000]);
+    // 2x device scale is deliberate (retina-crisp); the names describe the CSS layout size.
     for (const [kind, html, width, height] of jobs) {
       const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 2 });
       await page.setContent(html, { waitUntil: "load" });
