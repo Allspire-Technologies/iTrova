@@ -68,7 +68,8 @@ const INVOICES = [
 ];
 
 const INVOICE_ITEMS = [
-  { invoice_id: "i3", description: "Sugar 50kg", quantity: 2, unit_price: 41000, line_total: 82000 },
+  // Reports/Dashboard select products(name) + invoices!inner(issue_date) on this table.
+  { invoice_id: "i3", product_id: "p5", description: "Sugar 50kg", quantity: 2, unit_price: 41000, line_total: 82000, products: { name: "Sugar 50kg" }, invoices: { issue_date: "2026-06-28" } },
 ];
 
 const SUPPLIERS = [
