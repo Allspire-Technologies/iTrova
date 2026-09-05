@@ -301,7 +301,7 @@ export default function POS() {
         setDiscount(0);
         resetPayment();
         await refreshQueues();
-        toast.success("Sale saved offline — it will sync when you're back online.");
+        toast.success("Sale saved offline — tap Sync now when you're back online.");
       } catch {
         toast.error("Couldn't save the sale on this device.");
       } finally {
