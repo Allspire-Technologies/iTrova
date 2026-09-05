@@ -13,7 +13,7 @@ export function OfflineGate({ children }: { children: ReactNode }) {
       <h1 className="font-display text-xl font-bold text-brand-dark">You're offline</h1>
       <p className="text-sm text-muted-foreground">
         This feature needs an internet connection. Point of Sale still works, and any sales you make
-        are saved on this device and sync automatically when you're back online.
+        are saved on this device. Tap Sync now in Point of Sale when you're back online to upload them.
       </p>
     </div>
   );
