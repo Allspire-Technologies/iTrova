@@ -105,7 +105,7 @@ export function OfflineInvoices() {
     await applyLocalPaymentDelta(paying.id, amt); // optimistic: shrink the cached balance
     setPaying(null);
     await refresh();
-    toast.success("Deposit saved — it'll sync to the invoice when you're back online.");
+    toast.success("Deposit saved — tap Sync now when you're back online to send it to the invoice.");
   };
 
   const discardPayment = async (paymentId: string) => {
@@ -151,7 +151,7 @@ export function OfflineInvoices() {
     setCreating(false);
     setNewForm(EMPTY_NEW_INVOICE);
     await refresh();
-    toast.success("Invoice saved offline — it'll sync when you're back online.");
+    toast.success("Invoice saved offline — tap Sync now when you're back online to upload it.");
   };
 
   const openEdit = (r: Row) => {
@@ -246,7 +246,7 @@ export function OfflineInvoices() {
       <div className="flex items-end justify-between flex-wrap gap-4">
         <div>
           <h1 className="font-display text-3xl lg:text-4xl font-bold text-brand-dark">Invoices (offline)</h1>
-          <p className="text-muted-foreground mt-1">Create invoices and record deposits on this device. They sync when you{"'"}re back online.</p>
+          <p className="text-muted-foreground mt-1">Create invoices and record deposits on this device. Tap Sync now when you{"'"}re back online to upload them.</p>
         </div>
         {canCreate && <Button variant="brand" onClick={() => { setNewForm(EMPTY_NEW_INVOICE); setCreating(true); }}><Plus className="size-4" /> New invoice</Button>}
       </div>
