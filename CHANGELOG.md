@@ -12,6 +12,8 @@ All notable, user-facing changes to iTrova are recorded here. The format follows
 - **The Dashboard and Reports show their figures first** and fetch the charting code in the
   background, with a soft placeholder holding each chart's space until it draws. On a slow
   connection the page is usable a few seconds earlier than before. Charts still work offline.
+- **Faster sign-in and reload.** Loading your profile, business and role now takes two trips to the
+  server instead of three, so the app appears sooner after you sign in or refresh the page.
 
 ## 2026-08-20 — Signing up with an email that already has an account now tells you so
 

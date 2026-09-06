@@ -181,7 +181,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const loadProfile = async (uid: string) => {
-    const { data: p, error: pErr } = await supabase.from("profiles").select("*").eq("id", uid).maybeSingle();
+    // Two round-trips instead of three: the role rows only need the user id, so they ride with the
+    // profile; then the business row and the RBAC maps load together once the business is known.
+    const [{ data: p, error: pErr }, { data: roles, error: rErr }] = await Promise.all([
+      supabase.from("profiles").select("*").eq("id", uid).maybeSingle(),
+      supabase.from("user_roles").select("role, business_id").eq("user_id", uid),
+    ]);
     if (pErr) { await hydrateFromCache(); return; } // offline / unreachable
     // No profile row while online = the account was removed (e.g. the business was deleted in the CRM,
     // which purges its users). Every signup creates a profile, so this only hits deleted accounts —
@@ -189,11 +194,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!p) { await supabase.auth.signOut(); return; }
     setProfile(p as Profile | null);
     if (p?.business_id) {
-      const [{ data: b, error: bErr }, { data: roles, error: rErr }] = await Promise.all([
+      if (rErr) { await hydrateFromCache(); return; } // offline mid-load
+      const list = ((roles as { role: AppRole; business_id: string }[] | null) || [])
+        .filter(r => r.business_id === p.business_id).map(r => r.role);
+      list.sort((a, b) => ROLE_RANK[a] - ROLE_RANK[b]);
+      const appRole = list[0] ?? null;
+      const [{ data: b, error: bErr }] = await Promise.all([
         supabase.from("businesses").select("*").eq("id", p.business_id).maybeSingle(),
-        supabase.from("user_roles").select("role").eq("user_id", uid).eq("business_id", p.business_id),
+        loadAccess(uid, p.business_id, appRole),
       ]);
-      if (bErr || rErr) { await hydrateFromCache(); return; } // offline mid-load
+      if (bErr) { await hydrateFromCache(); return; } // offline mid-load
       // trial_plan/trial_started_at postdate the generated Supabase types (20260706150000) —
       // select("*") returns them at runtime; cast through unknown until the types are regenerated.
       const biz = b as unknown as Business | null;
@@ -203,11 +213,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setBusiness(null);
         setSubscription(null);
       }
-      const list = ((roles as { role: AppRole }[] | null) || []).map(r => r.role);
-      list.sort((a, b) => ROLE_RANK[a] - ROLE_RANK[b]);
-      const appRole = list[0] ?? null;
       setRole(appRole);
-      await loadAccess(uid, p.business_id, appRole);
     } else {
       setBusiness(null);
       setSubscription(null);
