@@ -316,7 +316,7 @@ export async function seedDemo(page: Page) {
   await page.route("**/rest/v1/activity_log**", (r) => fulfill(r, ACTIVITY_LOG));
   await page.route("**/rest/v1/invitations**", (r) => fulfill(r, INVITATIONS));
   await page.route("**/rest/v1/user_roles**", (r) =>
-    fulfill(r, r.request().url().includes("user_id=") ? [{ user_id: FAKE_USER.id, role: "owner" }] : USER_ROLES));
+    fulfill(r, r.request().url().includes("user_id=") ? [{ user_id: FAKE_USER.id, business_id: BIZ, role: "owner" }] : USER_ROLES));
   await page.route("**/rest/v1/profiles**", (r) => {
     // AuthContext reads its own profile via .eq("id", …).maybeSingle(); list views use .in(...) or
     // .eq("business_id", …). Match the `id` column precisely — "business_id=eq." also contains "id=eq.".

@@ -17,7 +17,7 @@ test.describe("Team", () => {
         await p.route("**/rest/v1/user_roles**", (r) => {
           // AuthContext filters by user_id (resolve my role); the Team list filters by business only.
           const rows = r.request().url().includes("user_id=")
-            ? [{ user_id: FAKE_USER.id, role: "owner" }]
+            ? [{ user_id: FAKE_USER.id, business_id: "biz-1", role: "owner" }]
             : [{ user_id: FAKE_USER.id, role: "owner" }, { user_id: "staff-1", role: "cashier" }];
           return r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(rows) });
         });
@@ -52,7 +52,7 @@ test.describe("Team", () => {
       onRoutes: async (p) => {
         await p.route("**/rest/v1/user_roles**", (r) => {
           const rows = r.request().url().includes("user_id=")
-            ? [{ user_id: FAKE_USER.id, role: "owner" }]
+            ? [{ user_id: FAKE_USER.id, business_id: "biz-1", role: "owner" }]
             : [{ user_id: FAKE_USER.id, role: "owner" }, { user_id: "staff-1", role: "cashier" }];
           return r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(rows) });
         });
