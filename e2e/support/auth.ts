@@ -65,7 +65,7 @@ export async function authenticate(page: Page, opts: AuthOptions = {}) {
   await page.route("**/rest/v1/**", (r) => fulfillJson(r, []));
   await page.route("**/rest/v1/profiles**", (r) => singleOrArray(r, profile));
   await page.route("**/rest/v1/businesses**", (r) => singleOrArray(r, business));
-  await page.route("**/rest/v1/user_roles**", (r) => fulfillJson(r, [{ user_id: FAKE_USER.id, role }]));
+  await page.route("**/rest/v1/user_roles**", (r) => fulfillJson(r, [{ user_id: FAKE_USER.id, business_id: BUSINESS_ID, role }]));
   if (opts.onRoutes) await opts.onRoutes(page); // registered last -> takes precedence over the catch-all
 
   // Keep the one-time "What's new" wizard out of the way of unrelated tests unless one opts in.
