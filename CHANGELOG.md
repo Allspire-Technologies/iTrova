@@ -3,6 +3,21 @@
 All notable, user-facing changes to iTrova are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); entries are grouped by ship date, newest first.
 
+## 2026-09-06 — Dashboard loads faster
+
+### Changed
+- **The Dashboard now fetches only today's sale lines** for the Top products card, instead of every
+  sale line the business has ever recorded. Businesses with months of sales history will notice the
+  Dashboard open noticeably faster, especially on slow connections. Nothing on the page changes.
+- **The Dashboard and Reports show their figures first** and fetch the charting code in the
+  background, with a soft placeholder holding each chart's space until it draws. On a slow
+  connection the page is usable a few seconds earlier than before. Charts still work offline.
+- **Faster sign-in and reload.** Loading your profile, business and role now takes two trips to the
+  server instead of three, so the app appears sooner after you sign in or refresh the page.
+- **Faster lists and reports on busy accounts.** The database now has indexes on the columns every
+  sales, invoice, stock and purchase-order screen filters by, so those screens stop slowing down as
+  your history grows.
+
 ## 2026-08-20 — Signing up with an email that already has an account now tells you so
 
 ### Fixed
