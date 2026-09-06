@@ -3,6 +3,13 @@
 All notable, user-facing changes to iTrova are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); entries are grouped by ship date, newest first.
 
+## 2026-09-06 — Dashboard loads faster
+
+### Changed
+- **The Dashboard now fetches only today's sale lines** for the Top products card, instead of every
+  sale line the business has ever recorded. Businesses with months of sales history will notice the
+  Dashboard open noticeably faster, especially on slow connections. Nothing on the page changes.
+
 ## 2026-08-20 — Signing up with an email that already has an account now tells you so
 
 ### Fixed
