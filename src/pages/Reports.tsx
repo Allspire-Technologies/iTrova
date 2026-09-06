@@ -9,7 +9,7 @@ import { useCurrency } from "@/hooks/useCurrency";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { Download, TrendingUp, ShoppingCart, Package, AlertTriangle, Truck, Users, ArrowUpRight, ArrowDownRight, ChevronLeft, ChevronRight, Wallet, Receipt, Info, Factory, Boxes } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, AreaChart, Area, CartesianGrid, PieChart, Pie, Cell } from "recharts";
+import { TrendAreaChart, RevenueBarChart, PaymentDonut } from "@/components/charts/LazyCharts";
 import { paymentLabel } from "@/lib/receipt";
 import { pdfMoneyFormatter } from "@/lib/pdf";
 import { toast } from "sonner";
@@ -529,24 +529,7 @@ export default function Reports() {
                 <CardHeader><CardTitle className="font-display text-lg">My sales trend</CardTitle></CardHeader>
                 <CardContent>
                   <div className="h-64" role="img" aria-label="Area chart of your daily sales across the selected period">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={myTrend}>
-                        <defs>
-                          <linearGradient id="mr" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="hsl(var(--brand))" stopOpacity={0.4}/>
-                            <stop offset="100%" stopColor="hsl(var(--brand))" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                        <XAxis dataKey="day" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
-                        <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
-                        <Tooltip
-                          contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 12, fontSize: 12 }}
-                          formatter={(v: number) => fmt(v)}
-                        />
-                        <Area type="monotone" dataKey="total" stroke="hsl(var(--brand))" strokeWidth={2.5} fill="url(#mr)" />
-                      </AreaChart>
-                    </ResponsiveContainer>
+                    <TrendAreaChart data={myTrend} fmt={fmt} gradientId="mr" detailed />
                   </div>
                 </CardContent>
               </Card>
@@ -598,24 +581,7 @@ export default function Reports() {
             <CardHeader><CardTitle className="font-display text-lg">Revenue trend</CardTitle></CardHeader>
             <CardContent>
               <div className="h-64" role="img" aria-label="Area chart of daily sales revenue across the selected period">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={dailyTrend}>
-                    <defs>
-                      <linearGradient id="r" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="hsl(var(--brand))" stopOpacity={0.4}/>
-                        <stop offset="100%" stopColor="hsl(var(--brand))" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis dataKey="day" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
-                    <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
-                    <Tooltip
-                      contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 12, fontSize: 12 }}
-                      formatter={(v: number) => fmt(v)}
-                    />
-                    <Area type="monotone" dataKey="total" stroke="hsl(var(--brand))" strokeWidth={2.5} fill="url(#r)" />
-                  </AreaChart>
-                </ResponsiveContainer>
+                <TrendAreaChart data={dailyTrend} fmt={fmt} gradientId="r" detailed />
               </div>
             </CardContent>
           </Card>
@@ -666,18 +632,7 @@ export default function Reports() {
                   <p className="text-sm text-muted-foreground">No sales in this period.</p>
                 ) : (
                   <div className="h-64" role="img" aria-label="Horizontal bar chart of the top products ranked by revenue in the selected period">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={topProducts} layout="vertical" margin={{ left: 8 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                        <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={11} tickFormatter={(v) => fmt(v)} />
-                        <YAxis type="category" dataKey="name" width={120} stroke="hsl(var(--muted-foreground))" fontSize={11} />
-                        <Tooltip
-                          contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 12, fontSize: 12 }}
-                          formatter={(v: number) => fmt(v)}
-                        />
-                        <Bar dataKey="revenue" fill="hsl(var(--brand))" radius={[0, 6, 6, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
+                    <RevenueBarChart data={topProducts} fmt={fmt} labelWidth={120} />
                   </div>
                 )}
               </CardContent>
@@ -707,18 +662,7 @@ export default function Reports() {
                   <p className="text-sm text-muted-foreground">No sales in this period.</p>
                 ) : (
                   <div className="h-56" role="img" aria-label="Horizontal bar chart of sales revenue per staff member in the selected period">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={byStaff} layout="vertical" margin={{ left: 8 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                        <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={11} tickFormatter={(v) => fmt(v)} />
-                        <YAxis type="category" dataKey="name" width={100} stroke="hsl(var(--muted-foreground))" fontSize={11} />
-                        <Tooltip
-                          contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 12, fontSize: 12 }}
-                          formatter={(v: number) => fmt(v)}
-                        />
-                        <Bar dataKey="revenue" fill="hsl(var(--brand))" radius={[0, 6, 6, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
+                    <RevenueBarChart data={byStaff} fmt={fmt} labelWidth={100} />
                   </div>
                 )}
               </CardContent>
@@ -771,17 +715,7 @@ export default function Reports() {
                 ) : (
                   <div className="flex flex-col items-center gap-4 sm:flex-row">
                     <div className="h-48 w-full sm:w-1/2" role="img" aria-label="Donut chart of money collected by payment method in the selected period; the list beside it gives each method's amount and share">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie data={payMethods} dataKey="total" nameKey="method" innerRadius={45} outerRadius={72} paddingAngle={2}>
-                            {payMethods.map((_, i) => <Cell key={i} fill={PAY_COLORS[i % PAY_COLORS.length]} />)}
-                          </Pie>
-                          <Tooltip
-                            contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 12, fontSize: 12 }}
-                            formatter={(v: number, n) => [fmt(v), paymentLabel(String(n))]}
-                          />
-                        </PieChart>
-                      </ResponsiveContainer>
+                      <PaymentDonut data={payMethods} colors={PAY_COLORS} fmt={fmt} label={paymentLabel} radius={[45, 72]} />
                     </div>
                     <div className="w-full space-y-2 sm:w-1/2">
                       {payMethods.map((r, i) => (

@@ -32,6 +32,7 @@ const OFFLINE_SEEDS = [
   "src/pages/POS.tsx",
   "src/pages/Inventory.tsx",
   "src/pages/Invoices.tsx",
+  "src/components/charts/Charts.tsx", // Dashboard loads its charts lazily; still needed offline
 ];
 
 function offlineClosure() {
